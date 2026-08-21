@@ -1,0 +1,34 @@
+{
+  "name": "@masterclip/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masterclip/agents": "workspace:*",
+    "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/auth": "workspace:*",
+    "@masterclip/cost-engine": "workspace:*",
+    "@masterclip/database": "workspace:*",
+    "@masterclip/domain": "workspace:*",
+    "@masterclip/media-tools": "workspace:*",
+    "@masterclip/model-router": "workspace:*",
+    "@masterclip/prompt-compiler": "workspace:*",
+    "@masterclip/provider-core": "workspace:*",
+    "@masterclip/provider-fal": "workspace:*",
+    "@masterclip/provider-google": "workspace:*",
+    "@masterclip/provider-luma": "workspace:*",
+    "@masterclip/provider-mock": "workspace:*",
+    "@masterclip/provider-muapi": "workspace:*",
+    "@masterclip/provider-replicate": "workspace:*",
+    "@masterclip/provider-runway": "workspace:*",
+    "@masterclip/provider-selfhosted": "workspace:*",
+    "@masterclip/qc-engine": "workspace:*",
+    "@masterclip/queue": "workspace:*",
+    "@masterclip/shared": "workspace:*"
+  }
+}

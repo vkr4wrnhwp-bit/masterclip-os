@@ -1,0 +1,16 @@
+{
+  "name": "@masterclip/cost-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masterclip/database": "workspace:*",
+    "@masterclip/provider-core": "workspace:*",
+    "@masterclip/shared": "workspace:*"
+  }
+}

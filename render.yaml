@@ -1,0 +1,58 @@
+# MASTERCLIP OS — cinematic AI-video render factory. Split out of
+# music-artist-hub; this repo is the whole product, so the service builds from
+# the repository root.
+#
+# Docker rather than the native Node runtime because ffmpeg and ffprobe are
+# load-bearing here, not incidental: they render, probe, measure and transcode
+# on the critical path, and QC is meaningless without them.
+#
+# One container runs both processes. Generation never happens inside an HTTP
+# request — the API queues work and a worker performs it. scripts/serve.mjs
+# starts the worker and the API together and exits if either dies.
+services:
+  - type: web
+    name: masterclip
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # a paid instance is required for the disk below, and rendered
+    # video needs somewhere durable to live. On the free plan, delete the `disk:`
+    # block and the two /var/data paths: everything still runs, but the database
+    # and every rendered clip vanish on each deploy, restart and spin-down.
+    healthCheckPath: /api/health
+    # A documentation edit should not trigger the full ffmpeg-and-27-packages
+    # image build.
+    buildFilter:
+      paths:
+        - "**"
+      ignoredPaths:
+        - docs/**
+        - "*.md"
+        - "**/*.md"
+    envVars:
+      # Render terminates TLS and proxies, so X-Forwarded-For is written by a
+      # proxy we control and can be believed.
+      - key: TRUST_PROXY
+        value: "true"
+      # The database and every rendered clip, thumbnail and master, on the disk
+      # mounted below so they outlive the container.
+      - key: SQLITE_PATH
+        value: /var/data/masterclip.sqlite
+      - key: STORAGE_LOCAL_ROOT
+        value: /var/data/storage
+      # SESSION_SECRET signs CSRF tokens; ASSET_SIGNING_SECRET signs media
+      # URLs. Render generates each once and keeps it. Neither may be blank in
+      # production.
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ASSET_SIGNING_SECRET
+        generateValue: true
+      # The owner account, created at boot before anything is listening.
+      # Render prompts for both when the blueprint is synced.
+      - key: SEED_EMAIL
+        sync: false
+      - key: SEED_PASSWORD
+        sync: false
+    disk:
+      name: masterclip-data
+      mountPath: /var/data
+      sizeGB: 5

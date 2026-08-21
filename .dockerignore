@@ -1,0 +1,38 @@
+# Docker build context. Without this, `COPY apps ./apps` and `COPY packages
+# ./packages` drag in 26 nested node_modules directories full of symlinks that
+# point at host paths — they break the install they were meant to skip, and the
+# context transfer alone dwarfs the source.
+
+# Dependencies and build output: the image installs and builds its own.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+
+# Local runtime state: the database, rendered clips, thumbnails and masters.
+# The container mounts a disk for these; baking a developer's copy into the
+# image would ship their data and then be shadowed by the mount anyway.
+var
+
+# Secrets. Nothing here is COPYed today, but the cost of being wrong about that
+# later is a provider key inside a distributed image layer.
+.env
+.env.*
+!.env.example
+
+# Test and tooling artefacts.
+test-results
+playwright-report
+coverage
+.vitest
+
+# Source control and editor state.
+.git
+.gitignore
+.github
+**/.DS_Store
+
+# Docs and compose file: not needed to build or run.
+docs
+docker-compose.yml

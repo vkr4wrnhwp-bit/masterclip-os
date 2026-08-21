@@ -1,0 +1,60 @@
+# Optional services.
+#
+# MASTERCLIP OS runs without any of this: SQLite and local file storage are the
+# defaults, and a clean checkout needs nothing but Node and ffmpeg. Bring these
+# up when you want the PostgreSQL and S3 paths exercised.
+#
+#   pnpm docker:up
+#   DB_DRIVER=postgres STORAGE_DRIVER=s3 pnpm dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: masterclip
+      POSTGRES_PASSWORD: masterclip
+      POSTGRES_DB: masterclip
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U masterclip']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # S3-compatible object storage for exercising the S3 driver locally.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: masterclip
+      MINIO_ROOT_PASSWORD: masterclip-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Creates the bucket once MinIO is up, then exits.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 masterclip masterclip-secret; do sleep 1; done;
+      mc mb --ignore-existing local/masterclip;
+      echo 'bucket ready';
+      "
+
+volumes:
+  postgres-data:
+  minio-data:

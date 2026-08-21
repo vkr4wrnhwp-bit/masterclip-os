@@ -1,0 +1,23 @@
+{
+  "name": "@masterclip/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "masterclip": "src/main.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@masterclip/database": "workspace:*",
+    "@masterclip/domain": "workspace:*",
+    "@masterclip/media-tools": "workspace:*",
+    "@masterclip/prompt-compiler": "workspace:*",
+    "@masterclip/provider-core": "workspace:*",
+    "@masterclip/queue": "workspace:*",
+    "@masterclip/runtime": "workspace:*",
+    "@masterclip/shared": "workspace:*",
+    "@masterclip/shot-schema": "workspace:*"
+  }
+}

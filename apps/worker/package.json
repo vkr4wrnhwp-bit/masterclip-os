@@ -1,0 +1,23 @@
+{
+  "name": "@masterclip/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node ../../dist/worker.js"
+  },
+  "dependencies": {
+    "@masterclip/agents": "workspace:*",
+    "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/cost-engine": "workspace:*",
+    "@masterclip/database": "workspace:*",
+    "@masterclip/domain": "workspace:*",
+    "@masterclip/media-tools": "workspace:*",
+    "@masterclip/provider-core": "workspace:*",
+    "@masterclip/qc-engine": "workspace:*",
+    "@masterclip/queue": "workspace:*",
+    "@masterclip/runtime": "workspace:*",
+    "@masterclip/shared": "workspace:*"
+  }
+}
