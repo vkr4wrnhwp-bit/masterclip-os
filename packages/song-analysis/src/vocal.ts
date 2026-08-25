@@ -1,0 +1,195 @@
+import { mean, normalize, smooth } from './dsp.js'
+import type { AnalysisFrames } from './frames.js'
+
+/**
+ * Vocal-activity detection.
+ *
+ * Without source separation this is a *proxy*, and it is named one everywhere
+ * it surfaces. Lead vocal concentrates energy in roughly 200 Hz–2 kHz, is more
+ * tonal than percussion, and moves its spectral centroid continuously — the
+ * detector scores those three properties per frame. Confidence is capped
+ * accordingly; a dense guitar record will score higher than it should, and the
+ * UI says so rather than presenting occupancy as a fact.
+ *
+ * When real stems exist, the caller passes the isolated vocal stem in as the
+ * analysed signal and confidence rises — same code path, better input.
+ */
+
+export interface VocalActivity {
+  /** Per-frame vocal-likelihood, 0–1. */
+  likelihood: number[]
+  /** Per-frame boolean after thresholding and hysteresis. */
+  active: boolean[]
+  /** Continuous phrases as `[startSeconds, endSeconds]`. */
+  phrases: Array<[number, number]>
+  /** Share of runtime with detected vocal, 0–1. */
+  occupancy: number
+  /** Time of the first sustained vocal onset, or null when none is detected. */
+  firstVocalSeconds: number | null
+  confidence: number
+  method: string
+}
+
+/** Below this the frame is a rest, not a quiet vocal. */
+const ACTIVATION_THRESHOLD = 0.55
+/** Hysteresis: an already-active phrase survives down to here. */
+const SUSTAIN_THRESHOLD = 0.4
+/** Phrases shorter than this are transients, not sung phrases. */
+const MIN_PHRASE_SECONDS = 0.35
+/** Rests shorter than this are breaths inside a phrase, not phrase boundaries. */
+const MAX_BREATH_SECONDS = 0.3
+
+export function detectVocalActivity(frames: AnalysisFrames, opts: { isolatedVocal?: boolean } = {}): VocalActivity {
+  if (frames.count === 0) {
+    return { likelihood: [], active: [], phrases: [], occupancy: 0, firstVocalSeconds: null, confidence: 0, method: 'spectral_band_proxy' }
+  }
+
+  const midBand = normalize(frames.midBand)
+  // Vocals are more tonal than drums and cymbals: low flatness scores high.
+  const tonality = normalize(frames.flatness.map((value) => 1 - value))
+  // A held or moving pitch shifts the centroid frame to frame; steady machinery
+  // does not. Small continuous motion is the signature.
+  const motion = normalize(centroidMotion(frames.centroid))
+  const level = normalize(frames.energy.map((value) => Math.log10(value + 1e-6)))
+
+  const likelihood = smooth(
+    frames.energy.map((_, i) => 0.4 * midBand[i]! + 0.25 * tonality[i]! + 0.2 * motion[i]! + 0.15 * level[i]!),
+    2,
+  )
+
+  const active = new Array<boolean>(frames.count)
+  let inPhrase = false
+  for (let i = 0; i < frames.count; i++) {
+    const value = likelihood[i]!
+    inPhrase = inPhrase ? value >= SUSTAIN_THRESHOLD : value >= ACTIVATION_THRESHOLD
+    active[i] = inPhrase
+  }
+
+  const phrases = phrasesFrom(active, frames.frameSeconds)
+  const activeFrames = active.reduce((count, value) => count + (value ? 1 : 0), 0)
+
+  return {
+    likelihood: likelihood.map((value) => Math.round(value * 1000) / 1000),
+    active,
+    phrases,
+    occupancy: frames.count > 0 ? activeFrames / frames.count : 0,
+    firstVocalSeconds: phrases.length > 0 ? Math.round(phrases[0]![0] * 100) / 100 : null,
+    // A separated vocal stem is direct evidence; a full mix is inference.
+    confidence: opts.isolatedVocal ? 0.85 : 0.45,
+    method: opts.isolatedVocal ? 'isolated_stem_envelope' : 'spectral_band_proxy',
+  }
+}
+
+function centroidMotion(centroid: number[]): number[] {
+  const motion = new Array<number>(centroid.length).fill(0)
+  for (let i = 1; i < centroid.length; i++) {
+    const delta = Math.abs(centroid[i]! - centroid[i - 1]!)
+    // Vibrato and melodic movement are small continuous changes; a cymbal crash
+    // is a large discontinuity, and scoring it as vocal motion would be wrong.
+    motion[i] = delta > 0.001 && delta < 0.05 ? delta : 0
+  }
+  return motion
+}
+
+function phrasesFrom(active: boolean[], frameSeconds: number): Array<[number, number]> {
+  const raw: Array<[number, number]> = []
+  let start = -1
+  for (let i = 0; i < active.length; i++) {
+    if (active[i] && start < 0) start = i
+    else if (!active[i] && start >= 0) {
+      raw.push([start * frameSeconds, i * frameSeconds])
+      start = -1
+    }
+  }
+  if (start >= 0) raw.push([start * frameSeconds, active.length * frameSeconds])
+
+  // Merge across breaths, then drop what is left that is too short to be sung.
+  const merged: Array<[number, number]> = []
+  for (const phrase of raw) {
+    const previous = merged[merged.length - 1]
+    if (previous && phrase[0] - previous[1] <= MAX_BREATH_SECONDS) previous[1] = phrase[1]
+    else merged.push([...phrase])
+  }
+  return merged
+    .filter((phrase) => phrase[1] - phrase[0] >= MIN_PHRASE_SECONDS)
+    .map((phrase) => [Math.round(phrase[0] * 100) / 100, Math.round(phrase[1] * 100) / 100] as [number, number])
+}
+
+export interface VocalPhraseMetrics {
+  averagePhraseSeconds: number | null
+  longestPhraseSeconds: number | null
+  averageRestSeconds: number | null
+  restRatio: number | null
+  /** Longest continuous phrase with no centroid movement — a held-note proxy. */
+  heldNoteSeconds: number | null
+}
+
+export function vocalPhraseMetrics(activity: VocalActivity, durationSeconds: number, frames: AnalysisFrames): VocalPhraseMetrics {
+  if (activity.phrases.length === 0) {
+    return { averagePhraseSeconds: null, longestPhraseSeconds: null, averageRestSeconds: null, restRatio: null, heldNoteSeconds: null }
+  }
+  const lengths = activity.phrases.map(([from, to]) => to - from)
+  const rests: number[] = []
+  for (let i = 1; i < activity.phrases.length; i++) {
+    rests.push(activity.phrases[i]![0] - activity.phrases[i - 1]![1])
+  }
+  const sung = lengths.reduce((sum, value) => sum + value, 0)
+
+  return {
+    averagePhraseSeconds: round(mean(lengths)),
+    longestPhraseSeconds: round(Math.max(...lengths)),
+    averageRestSeconds: rests.length > 0 ? round(mean(rests)) : null,
+    restRatio: durationSeconds > 0 ? round(Math.max(0, 1 - sung / durationSeconds)) : null,
+    heldNoteSeconds: longestSteadyPitch(activity, frames),
+  }
+}
+
+/** Longest run of active frames whose spectral centroid barely moves. */
+function longestSteadyPitch(activity: VocalActivity, frames: AnalysisFrames): number | null {
+  let best = 0
+  let run = 0
+  for (let i = 1; i < frames.count; i++) {
+    const steady = activity.active[i] && Math.abs(frames.centroid[i]! - frames.centroid[i - 1]!) < 0.004
+    run = steady ? run + 1 : 0
+    if (run > best) best = run
+  }
+  const seconds = best * frames.frameSeconds
+  return seconds >= 0.4 ? round(seconds) : null
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * Melodic range proxy from the spectral centroid of voiced frames.
+ *
+ * Reported as a normalized register band rather than note names: deriving a
+ * lead-vocal pitch from a full mix is not reliable enough to print "your chorus
+ * tops out at G5". What *is* defensible is whether two sections sit in the same
+ * register, which is the question that matters for section contrast.
+ */
+export interface RegisterProfile {
+  medianRegister: number | null
+  lowRegister: number | null
+  highRegister: number | null
+  confidence: number
+  method: string
+}
+
+export function registerProfile(activity: VocalActivity, frames: AnalysisFrames, fromFrame = 0, toFrame = frames.count): RegisterProfile {
+  const values: number[] = []
+  for (let i = Math.max(0, fromFrame); i < Math.min(frames.count, toFrame); i++) {
+    if (activity.active[i]) values.push(frames.centroid[i]!)
+  }
+  if (values.length < 8) return { medianRegister: null, lowRegister: null, highRegister: null, confidence: 0, method: 'voiced_centroid_percentiles' }
+  values.sort((a, b) => a - b)
+  const at = (p: number) => values[Math.min(values.length - 1, Math.floor((p / 100) * values.length))]!
+  return {
+    medianRegister: round(at(50)),
+    lowRegister: round(at(10)),
+    highRegister: round(at(90)),
+    confidence: Math.min(0.5, activity.confidence),
+    method: 'voiced_centroid_percentiles',
+  }
+}

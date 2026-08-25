@@ -14,18 +14,26 @@
     "@masterclip/audio-core": "workspace:*",
     "@masterclip/audio-domain": "workspace:*",
     "@masterclip/audio-engine": "workspace:*",
+    "@masterclip/audio-experiments": "workspace:*",
     "@masterclip/auth": "workspace:*",
     "@masterclip/cost-engine": "workspace:*",
     "@masterclip/database": "workspace:*",
     "@masterclip/domain": "workspace:*",
+    "@masterclip/lyric-analysis": "workspace:*",
     "@masterclip/media-tools": "workspace:*",
     "@masterclip/model-router": "workspace:*",
+    "@masterclip/music-benchmarking": "workspace:*",
     "@masterclip/performance-project": "workspace:*",
     "@masterclip/prompt-compiler": "workspace:*",
     "@masterclip/provider-core": "workspace:*",
     "@masterclip/queue": "workspace:*",
     "@masterclip/runtime": "workspace:*",
     "@masterclip/shared": "workspace:*",
-    "@masterclip/shot-schema": "workspace:*"
+    "@masterclip/shot-schema": "workspace:*",
+    "@masterclip/song-analysis": "workspace:*",
+    "@masterclip/song-feature-vectors": "workspace:*",
+    "@masterclip/song-lab-domain": "workspace:*",
+    "@masterclip/song-lab-engine": "workspace:*",
+    "@masterclip/song-structure": "workspace:*"
   }
 }

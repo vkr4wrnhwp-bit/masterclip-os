@@ -168,6 +168,26 @@ const EnvSchema = z.object({
    */
   LIVE_AI_PROVIDER: z.string().default('mock-audio'),
 
+  // --- Song Lab ------------------------------------------------------------
+  /** Umbrella kill switch. Off means no Song Lab route or job runs at all. */
+  SONG_LAB_ENABLED: bool(true),
+  SONG_LAB_BENCHMARKS_ENABLED: bool(true),
+  SONG_LAB_EXPERIMENTS_ENABLED: bool(true),
+  SONG_LAB_LYRICS_ENABLED: bool(true),
+  SONG_LAB_AR_VIEW_ENABLED: bool(true),
+  /**
+   * Analysis provider. `local-dsp` runs the in-process DSP engine at zero cost;
+   * `mock-song-analysis` produces deterministic placeholders and is what a
+   * deployment without ffmpeg falls back to for compressed uploads.
+   */
+  SONG_LAB_ANALYSIS_PROVIDER: z.enum(['local-dsp', 'mock-song-analysis']).default('local-dsp'),
+  /** Benchmark data provider. Swap for a licensed provider id once contracted. */
+  SONG_LAB_BENCHMARK_PROVIDER: z.string().default('reference-distribution'),
+  /** Cap on analysed audio length, so one long upload cannot occupy a worker. */
+  SONG_LAB_MAX_ANALYSIS_SECONDS: num(900),
+  /** Experiment previews are derived, not masters: they expire by default. */
+  SONG_LAB_PREVIEW_RETENTION_DAYS: num(30),
+
   // --- media ---------------------------------------------------------------
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),

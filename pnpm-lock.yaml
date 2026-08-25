@@ -38,6 +38,9 @@ importers:
       '@masterclip/audio-engine':
         specifier: workspace:*
         version: link:packages/audio-engine
+      '@masterclip/audio-experiments':
+        specifier: workspace:*
+        version: link:packages/audio-experiments
       '@masterclip/audio-providers':
         specifier: workspace:*
         version: link:packages/audio-providers
@@ -59,6 +62,9 @@ importers:
       '@masterclip/live-engine':
         specifier: workspace:*
         version: link:packages/live-engine
+      '@masterclip/lyric-analysis':
+        specifier: workspace:*
+        version: link:packages/lyric-analysis
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:packages/media-tools
@@ -68,6 +74,9 @@ importers:
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:packages/model-router
+      '@masterclip/music-benchmarking':
+        specifier: workspace:*
+        version: link:packages/music-benchmarking
       '@masterclip/performance-cache':
         specifier: workspace:*
         version: link:packages/performance-cache
@@ -119,6 +128,21 @@ importers:
       '@masterclip/shot-schema':
         specifier: workspace:*
         version: link:packages/shot-schema
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:packages/song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:packages/song-feature-vectors
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:packages/song-lab-domain
+      '@masterclip/song-lab-engine':
+        specifier: workspace:*
+        version: link:packages/song-lab-engine
+      '@masterclip/song-structure':
+        specifier: workspace:*
+        version: link:packages/song-structure
       '@masterclip/web':
         specifier: workspace:*
         version: link:apps/web
@@ -195,6 +219,9 @@ importers:
       '@masterclip/audio-engine':
         specifier: workspace:*
         version: link:../../packages/audio-engine
+      '@masterclip/audio-experiments':
+        specifier: workspace:*
+        version: link:../../packages/audio-experiments
       '@masterclip/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -207,12 +234,18 @@ importers:
       '@masterclip/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@masterclip/lyric-analysis':
+        specifier: workspace:*
+        version: link:../../packages/lyric-analysis
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:../../packages/media-tools
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:../../packages/model-router
+      '@masterclip/music-benchmarking':
+        specifier: workspace:*
+        version: link:../../packages/music-benchmarking
       '@masterclip/performance-project':
         specifier: workspace:*
         version: link:../../packages/performance-project
@@ -234,6 +267,21 @@ importers:
       '@masterclip/shot-schema':
         specifier: workspace:*
         version: link:../../packages/shot-schema
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../../packages/song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../../packages/song-feature-vectors
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../../packages/song-lab-domain
+      '@masterclip/song-lab-engine':
+        specifier: workspace:*
+        version: link:../../packages/song-lab-engine
+      '@masterclip/song-structure':
+        specifier: workspace:*
+        version: link:../../packages/song-structure
 
   apps/cli:
     dependencies:
@@ -324,6 +372,12 @@ importers:
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../../packages/song-lab-domain
+      '@masterclip/song-lab-engine':
+        specifier: workspace:*
+        version: link:../../packages/song-lab-engine
 
   packages/agents:
     dependencies:
@@ -397,6 +451,21 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/audio-experiments:
+    dependencies:
+      '@masterclip/media-tools':
+        specifier: workspace:*
+        version: link:../media-tools
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
+
   packages/audio-providers:
     dependencies:
       '@masterclip/agents':
@@ -460,6 +529,18 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/lyric-analysis:
+    dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
+
   packages/media-tools:
     dependencies:
       '@masterclip/shared':
@@ -486,6 +567,15 @@ importers:
       '@masterclip/shot-schema':
         specifier: workspace:*
         version: link:../shot-schema
+
+  packages/music-benchmarking:
+    dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
 
   packages/performance-cache:
     dependencies:
@@ -702,6 +792,12 @@ importers:
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../song-lab-domain
+      '@masterclip/song-lab-engine':
+        specifier: workspace:*
+        version: link:../song-lab-engine
 
   packages/shared: {}
 
@@ -710,6 +806,111 @@ importers:
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/song-analysis:
+    dependencies:
+      '@masterclip/media-tools':
+        specifier: workspace:*
+        version: link:../media-tools
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
+
+  packages/song-feature-vectors:
+    dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/song-lab-domain:
+    dependencies:
+      '@masterclip/audio-experiments':
+        specifier: workspace:*
+        version: link:../audio-experiments
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/music-benchmarking':
+        specifier: workspace:*
+        version: link:../music-benchmarking
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
+      '@masterclip/song-structure':
+        specifier: workspace:*
+        version: link:../song-structure
+
+  packages/song-lab-engine:
+    dependencies:
+      '@masterclip/ai-audio':
+        specifier: workspace:*
+        version: link:../ai-audio
+      '@masterclip/asset-storage':
+        specifier: workspace:*
+        version: link:../asset-storage
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../audio-core
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:../audio-domain
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:../audio-engine
+      '@masterclip/audio-experiments':
+        specifier: workspace:*
+        version: link:../audio-experiments
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@masterclip/lyric-analysis':
+        specifier: workspace:*
+        version: link:../lyric-analysis
+      '@masterclip/music-benchmarking':
+        specifier: workspace:*
+        version: link:../music-benchmarking
+      '@masterclip/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../song-lab-domain
+      '@masterclip/song-structure':
+        specifier: workspace:*
+        version: link:../song-structure
+
+  packages/song-structure:
+    dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-feature-vectors':
+        specifier: workspace:*
+        version: link:../song-feature-vectors
 
 packages:
 

@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const render = new RenderService(runtime)
   const logger = runtime.logger.child({ component: 'worker' })
 
-  const queueNames = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live]
+  const queueNames = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live, QUEUES.songLab]
   const workers = queueNames.map((queueName) => {
     const worker = new QueueWorker(runtime.queue, {
       queueName,
@@ -139,6 +139,50 @@ async function main(): Promise<void> {
     worker.register<{ eventId: string }>(JOB_TYPES.audioWebhookProcess, async ({ eventId }, ctx) => {
       await ctx.heartbeat()
       await audio.webhooks.process(eventId)
+    })
+
+    // ----- Street Banker Song Lab -------------------------------------------
+    //
+    // Analysis and rendering both read audio and can take minutes on a long
+    // master, so neither happens inside an HTTP request. Each job carries the
+    // organization it acts for and the service proves it against the record —
+    // a job payload is not a capability.
+    const songLab = runtime.songLab
+
+    worker.register<{ analysisId: string; orgId: string }>(JOB_TYPES.songLabAnalyzeAudio, async ({ analysisId, orgId }, ctx) => {
+      await ctx.heartbeat()
+      const result = await songLab.analysis.run(analysisId, orgId)
+      ctx.logger.info('song_lab.analyzed', {
+        analysis_id: analysisId,
+        sections: result.sections.length,
+        duration_ms: result.analysis.durationMs,
+      })
+    })
+
+    // Reanalysis is the same work against the same guarantees: a new row, the
+    // old result preserved, human-confirmed sections carried forward.
+    worker.register<{ analysisId: string; orgId: string }>(JOB_TYPES.songLabReanalyze, async ({ analysisId, orgId }, ctx) => {
+      await ctx.heartbeat()
+      await songLab.analysis.run(analysisId, orgId)
+    })
+
+    worker.register<{ analysisId: string; orgId: string; cohortId: string }>(
+      JOB_TYPES.songLabCompareBenchmark,
+      async ({ analysisId, orgId, cohortId }, ctx) => {
+        await ctx.heartbeat()
+        const { observations } = await songLab.benchmark.compare(orgId, analysisId, cohortId)
+        ctx.logger.info('song_lab.benchmarked', { analysis_id: analysisId, cohort_id: cohortId, observations: observations.length })
+      },
+    )
+
+    worker.register<{ experimentId: string; orgId: string }>(JOB_TYPES.songLabRenderExperiment, async ({ experimentId, orgId }, ctx) => {
+      await ctx.heartbeat()
+      const experiment = await songLab.experiments.render(experimentId, orgId)
+      ctx.logger.info('song_lab.experiment_rendered', {
+        experiment_id: experimentId,
+        renderer: experiment.renderer,
+        placeholder: experiment.placeholderPreview,
+      })
     })
 
     // Self-perpetuating maintenance ticks: each run re-arms the next time

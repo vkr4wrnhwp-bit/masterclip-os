@@ -12,6 +12,7 @@ import { registerOpsRoutes } from './routes/ops.js'
 import { registerAssetRoutes } from './routes/assets.js'
 import { registerAudioRoutes } from './routes/audio/index.js'
 import { registerLiveLabRoutes } from './routes/live-lab.js'
+import { registerSongLabRoutes } from './routes/song-lab/index.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
 import { registerCsrf } from './security/csrf.js'
 
@@ -115,6 +116,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerAssetRoutes(app, runtime)
   await registerRenderRoutes(app, runtime)
   await registerAudioRoutes(app, runtime)
+  await registerSongLabRoutes(app, runtime)
   await registerLiveLabRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
