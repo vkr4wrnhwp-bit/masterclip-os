@@ -570,6 +570,7 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     if (body.clipAssetId) {
       const asset = await runtime.liveLab.getAsset(body.clipAssetId)
       assertSameOrg(asset.organizationId, auth.orgId)
+      if (asset.liveProjectId !== projectId) throw forbidden('asset belongs to another project')
       await runtime.liveLab.createClip({
         orgId: auth.orgId,
         liveProjectId: projectId,
@@ -632,6 +633,7 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       .parse(request.body)
     const asset = await runtime.liveLab.getAsset(body.sourceAssetId)
     assertSameOrg(asset.organizationId, auth.orgId)
+    if (asset.liveProjectId !== scene.liveProjectId) throw forbidden('asset belongs to another project')
     const clip = await runtime.liveLab.createClip({
       orgId: auth.orgId,
       liveProjectId: scene.liveProjectId,
@@ -676,8 +678,10 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       .parse(request.body)
     const item = await runtime.liveLab.getItem(body.liveSetItemId)
     assertSameOrg(item.organizationId, auth.orgId)
+    if (item.liveProjectId !== projectId) throw forbidden('set item belongs to another project')
     const asset = await runtime.liveLab.getAsset(body.sourceAssetId)
     assertSameOrg(asset.organizationId, auth.orgId)
+    if (asset.liveProjectId !== projectId) throw forbidden('asset belongs to another project')
     const stem = await runtime.liveLab.createStem({
       orgId: auth.orgId,
       liveProjectId: projectId,
@@ -916,6 +920,11 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     if (!job.outputAssetIds.includes(body.assetId)) {
       throw new AppError({ kind: 'validation', code: 'live.not_an_option', message: 'assetId is not an output of this job' })
     }
+    // Validated before anything is created: a rejected request used to leave
+    // behind the scene and clip it had already made.
+    if ((body.mode === 'assign_pad' || body.padIndex !== undefined) && body.padIndex === undefined) {
+      throw new AppError({ kind: 'validation', code: 'live.pad_required', message: 'padIndex is required to assign a pad' })
+    }
     const asset = await runtime.liveLab.getAsset(body.assetId)
     await runtime.liveLab.approveAssetLineage(asset.id, auth.userId)
 
@@ -939,6 +948,9 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       if (!itemId) throw new AppError({ kind: 'validation', code: 'live.item_required', message: 'liveSetItemId is required' })
       const item = await runtime.liveLab.getItem(itemId)
       assertSameOrg(item.organizationId, auth.orgId)
+      // Same org is not enough: a set item from a *different* project would
+      // produce scenes the manifest cannot resolve to a setlist entry.
+      if (item.liveProjectId !== job.liveProjectId) throw forbidden('set item belongs to another project')
       const scene = await runtime.liveLab.createScene({
         orgId: auth.orgId,
         liveProjectId: job.liveProjectId,
@@ -957,12 +969,9 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       sceneId = scene.id
     }
 
-    if (body.mode === 'assign_pad' || body.padIndex !== undefined) {
-      if (body.padIndex === undefined) {
-        throw new AppError({ kind: 'validation', code: 'live.pad_required', message: 'padIndex is required to assign a pad' })
-      }
+    if (body.padIndex !== undefined) {
       const project = await runtime.liveLab.getProject(job.liveProjectId)
-      const padMap = project.padMap.length === 16 ? [...project.padMap] : defaultPadMap()
+      const padMap = [...project.padMap]
       padMap[body.padIndex] = {
         index: body.padIndex,
         mode: 'scene',

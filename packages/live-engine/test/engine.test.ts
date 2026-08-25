@@ -280,7 +280,103 @@ describe('emergency stop and pads', () => {
   })
 })
 
+describe('editing a project while it plays', () => {
+  function stemProject(): EngineProject {
+    return project({ stems: [stem('sA', 'song1', 'stemA'), stem('sB', 'song1', 'stemB')] })
+  }
+
+  it('picks up structural edits without stopping the show', () => {
+    const p = stemProject()
+    engine.loadProject(p)
+    engine.startSong('song1')
+    engine.triggerScene('intro')
+    const playingBefore = backend.plays.filter((pl) => pl.stoppedAt === null).length
+
+    // Rename a scene and repoint a pad — counts identical, meaning identical.
+    const edited = stemProject()
+    edited.scenes = edited.scenes.map((s) => (s.id === 'verse' ? { ...s, name: 'HOOK' } : s))
+    edited.padMap[0] = { index: 0, mode: 'scene', label: 'HOOK', targetId: 'verse', color: '' }
+    engine.updateProject(edited)
+
+    expect(engine.isPlaying).toBe(true)
+    expect(engine.currentSceneId).toBe('intro')
+    expect(backend.plays.filter((pl) => pl.stoppedAt === null).length).toBe(playingBefore)
+    // The pad now resolves to the newly assigned scene rather than the stale one.
+    engine.triggerPad(0)
+    expect(engine.queuedSceneId === 'verse' || engine.currentSceneId === 'verse').toBe(true)
+  })
+
+  it('keeps live mixer state across an edit', () => {
+    engine.loadProject(stemProject())
+    engine.startSong('song1')
+    engine.setStemMuted('sA', true)
+    engine.setStemGain('sB', 0.25)
+
+    engine.updateProject(stemProject())
+
+    expect(engine.stems.get('sA')?.muted).toBe(true)
+    expect(engine.stems.get('sB')?.gain).toBeCloseTo(0.25)
+  })
+
+  it('stops only when the playing song itself is deleted', () => {
+    const p = stemProject()
+    engine.loadProject(p)
+    engine.startSong('song1')
+    const withoutSong = { ...p, items: [], scenes: [], clips: [], stems: [] }
+    engine.updateProject(withoutSong)
+    expect(engine.isPlaying).toBe(false)
+  })
+
+  it('dequeues a scene that was deleted before it launched', () => {
+    engine.loadProject(project())
+    engine.triggerScene('intro')
+    backend.advance(0.05 + 0.75)
+    engine.triggerScene('verse')
+    expect(engine.queuedSceneId).toBe('verse')
+
+    const edited = project()
+    edited.scenes = edited.scenes.filter((s) => s.id !== 'verse')
+    edited.clips = edited.clips.filter((c) => c.liveSceneId !== 'verse')
+    engine.updateProject(edited)
+    expect(engine.queuedSceneId).toBeNull()
+  })
+})
+
+describe('stem controls addressing another song', () => {
+  it('no-op instead of throwing when the target is not in the current deck', () => {
+    // The seeded pad map and MIDI mappings point at the first song's stems;
+    // hitting them during any other song must not throw on stage.
+    const p = project({
+      items: [item('song1'), item('song2', { sortOrder: 1, title: 'SONG TWO' })],
+      stems: [stem('sA', 'song1', 'stemA'), stem('sB', 'song2', 'stemB')],
+    })
+    p.padMap[4] = { index: 4, mode: 'stem_mute', label: 'DRUMS', targetId: 'sA', color: '' }
+    engine.loadProject(p)
+    engine.startSong('song2')
+
+    expect(() => engine.triggerPad(4)).not.toThrow()
+    expect(engine.setStemMuted('sA', true)).toBe(false)
+    expect(engine.setStemSolo('sA', true)).toBe(false)
+    expect(engine.setStemGain('sA', 0.5)).toBe(false)
+    expect(engine.setStemPan('sA', 0.5)).toBe(false)
+    // The current song's own stem still responds.
+    expect(engine.setStemMuted('sB', true)).toBe(true)
+  })
+})
+
 describe('crash recovery', () => {
+  it('restored mixer state survives the next song change', () => {
+    const p = project({ stems: [stem('sA', 'song1', 'stemA', { gain: 1, muted: false })] })
+    engine.loadProject(p)
+    engine.restoreStemStates([{ id: 'sA', gain: 0.3, pan: -0.5, muted: true, solo: false }])
+    // The song loads *after* the restore — the stored defaults must not win.
+    engine.startSong('song1')
+    expect(engine.stems.get('sA')?.muted).toBe(true)
+    expect(engine.stems.get('sA')?.gain).toBeCloseTo(0.3)
+    // Restoring never starts audio on its own beyond the song's own stems.
+    engine.clearRestoredStemStates()
+  })
+
   it('persists and restores a snapshot without starting audio', async () => {
     const store = new MemorySnapshotStore()
     const snapshot = PerformanceSnapshot.parse({

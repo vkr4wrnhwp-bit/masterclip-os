@@ -165,10 +165,46 @@ export function useLiveEngine(bundle: LiveProjectBundle | null, source: 'cloud' 
     }
   }, [engine])
 
+  /**
+   * Fingerprint of everything the engine actually schedules from. Lengths
+   * alone were not enough: assigning a pad, renaming a scene, or changing
+   * quantization keeps every count identical while changing what a trigger
+   * does, which used to leave the engine running a stale project.
+   */
+  const structureKey = React.useMemo(() => {
+    if (!bundle) return ''
+    const project = bundleToEngineProject(bundle)
+    return JSON.stringify([
+      project.projectId,
+      project.masterTempo,
+      project.timeSignature,
+      project.padMap.map((p) => [p.index, p.mode, p.targetId, p.label]),
+      project.items.map((i) => [i.id, i.sortOrder, i.bpm, i.title, i.type]),
+      project.scenes.map((s) => [s.id, s.liveSetItemId, s.sortOrder, s.name, s.bars, s.quantization, s.loopEnabled, s.followAction, s.followTargetSceneId, s.bpm]),
+      project.clips.map((c) => [c.id, c.liveSceneId, c.sourceAssetId, c.startMs, c.endMs, c.loopStartMs, c.loopEndMs, c.oneShot, c.gain, c.pan, c.outputId]),
+      project.stems.map((s) => [s.id, s.liveSetItemId, s.sourceAssetId, s.stemType, s.label, s.outputId]),
+    ])
+  }, [bundle])
+
+  // Structural changes swap the engine's project in place — the show keeps
+  // playing through an edit unless what is playing was itself deleted.
+  React.useEffect(() => {
+    if (!bundle || !structureKey) return
+    engine.updateProject(bundleToEngineProject(bundle))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, structureKey])
+
+  const audioKey = React.useMemo(() => {
+    if (!bundle) return ''
+    const ids = new Set<string>()
+    for (const clip of bundle.clips) ids.add(clip.sourceAssetId)
+    for (const stem of bundle.stems) ids.add(stem.sourceAssetId)
+    return [...ids].sort().join(',')
+  }, [bundle])
+
   React.useEffect(() => {
     if (!bundle) return
     let cancelled = false
-    engine.loadProject(bundleToEngineProject(bundle))
     setLoadError(null)
 
     const assetIds = new Set<string>()
@@ -218,7 +254,10 @@ export function useLiveEngine(bundle: LiveProjectBundle | null, source: 'cloud' 
     return () => {
       cancelled = true
     }
-  }, [engine, bundle?.project.id, bundle?.assets.length, bundle?.clips.length, bundle?.stems.length, source])
+    // Keyed on the exact asset set, so swapping a clip's audio reloads it
+    // while cosmetic edits do not re-download a whole show.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, bundle?.project.id, audioKey, source])
 
   const arm = React.useCallback(async () => {
     await backend.resume()

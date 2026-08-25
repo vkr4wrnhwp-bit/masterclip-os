@@ -1,7 +1,8 @@
-import { type Db, insertRow, parseJsonColumn, toBool, toNum, toNumOrNull, toStr, toStrOrNull, updateRow } from '@masterclip/database'
+import { type Db, insertRow, parseJsonColumn, toBool, toNum, toNumOrNull, toStr, toStrOrNull, updateRow, upsertRow } from '@masterclip/database'
 import { newId, notFound, systemClock, type Clock } from '@masterclip/shared'
 import {
   defaultPadMap,
+  normalizePadMap,
   type AiJobStatus,
   type AiSceneRequest,
   type GenerationLineage,
@@ -148,7 +149,9 @@ export class LiveLabRepo {
     if (patch.timeSignature !== undefined) values.time_signature = patch.timeSignature
     if (patch.artistId !== undefined) values.artist_id = patch.artistId
     if (patch.sourceReleaseIds !== undefined) values.source_release_ids = JSON.stringify(patch.sourceReleaseIds)
-    if (patch.padMap !== undefined) values.pad_map = JSON.stringify(patch.padMap)
+    // Normalized on the way in as well as out: the grid is addressed by index
+    // everywhere, so a short or sparse map must never reach the column.
+    if (patch.padMap !== undefined) values.pad_map = JSON.stringify(normalizePadMap(patch.padMap))
     await updateRow(this.db, 'live_projects', id, values)
     return this.getProject(id)
   }
@@ -548,23 +551,36 @@ export class LiveLabRepo {
 
   // -------------------------------------------------------------- outputs ----
 
+  /**
+   * The three default buses, created idempotently.
+   *
+   * Called from GET endpoints, so two concurrent reads race — a check-then-
+   * insert produced six outputs that then flowed into the manifest and the
+   * Stage Control handoff. Deterministic ids make the insert a no-op on
+   * conflict instead, which both dialects support.
+   */
   async ensureDefaultOutputs(orgId: string, liveProjectId: string): Promise<LiveOutput[]> {
-    const existing = await this.listOutputs(liveProjectId)
-    if (existing.length > 0) return existing
+    const suffix = liveProjectId.replace(/^lproj_/, '')
     for (const [name, type] of [
       ['Master', 'master'],
       ['Cue', 'cue'],
       ['Click', 'click'],
     ] as const) {
-      await insertRow(this.db, 'live_outputs', {
-        id: newId('lout', this.clock.now()),
-        org_id: orgId,
-        live_project_id: liveProjectId,
-        name,
-        output_type: type,
-        device_id: null,
-        channel_index: null,
-      })
+      await upsertRow(
+        this.db,
+        'live_outputs',
+        {
+          id: `lout_${type}_${suffix}`,
+          org_id: orgId,
+          live_project_id: liveProjectId,
+          name,
+          output_type: type,
+          device_id: null,
+          channel_index: null,
+        },
+        ['id'],
+        [],
+      )
     }
     return this.listOutputs(liveProjectId)
   }
@@ -863,7 +879,7 @@ function mapProject(row: Record<string, unknown>): LiveProject {
     masterTempo: toNum(row.master_tempo),
     timeSignature: toStr(row.time_signature),
     sourceReleaseIds: parseJsonColumn<string[]>(row.source_release_ids, []),
-    padMap: parseJsonColumn<PadAssignment[]>(row.pad_map, defaultPadMap()),
+    padMap: normalizePadMap(parseJsonColumn<unknown>(row.pad_map, defaultPadMap())),
     createdBy: toStr(row.created_by),
     createdAt: toStr(row.created_at),
     updatedAt: toStr(row.updated_at),

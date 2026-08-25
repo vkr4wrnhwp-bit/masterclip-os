@@ -66,6 +66,8 @@ export class LiveAudioEngine {
   private queued: { sceneId: string; launchBeat: number; scheduled: boolean } | null = null
   private stemHandles = new Map<string, PlayHandle>()
   readonly stems = new StemDeck()
+  /** Mixer state recovered from a crash snapshot; applied as songs load. */
+  private readonly restoredStemStates = new Map<string, { gain: number; pan: number; muted: boolean; solo: boolean }>()
   private clickEnabled = false
   private clickGain: number
   private nextClickBeat = 0
@@ -86,6 +88,66 @@ export class LiveAudioEngine {
     this.project = project
     this.signature = parseTimeSignature(project.timeSignature)
     this.bpm = project.masterTempo
+  }
+
+  /**
+   * Swaps in an edited version of the same project without interrupting
+   * playback.
+   *
+   * Editing a scene name, assigning a pad, or reordering the setlist must
+   * never stop the show, so this preserves the transport. Playback only stops
+   * when what is currently playing no longer exists — and a queued scene that
+   * was deleted is simply dequeued rather than launching into a hole.
+   */
+  updateProject(project: EngineProject): void {
+    if (!this.project || this.project.projectId !== project.projectId) {
+      this.loadProject(project)
+      return
+    }
+    this.project = project
+    this.signature = parseTimeSignature(project.timeSignature)
+
+    if (this.queued && !project.scenes.some((s) => s.id === this.queued?.sceneId)) {
+      this.queued = null
+    }
+    const itemGone = this.currentItemId !== null && !project.items.some((i) => i.id === this.currentItemId)
+    const sceneGone = this.current !== null && !project.scenes.some((s) => s.id === this.current?.sceneId)
+    if (itemGone) {
+      this.stopAll()
+      return
+    }
+    if (sceneGone && this.current) {
+      for (const handle of this.current.handles) handle.stop(this.backend.currentTime())
+      this.emit({ type: 'scene_ended', sceneId: this.current.sceneId })
+      this.current = null
+    }
+    // Stems can be added or removed under a playing song; keep the mixer state
+    // of the ones that survived and start nothing new mid-song.
+    if (this.playing && this.currentItemId) {
+      const live = project.stems.filter((s) => s.liveSetItemId === this.currentItemId)
+      for (const [stemId, handle] of this.stemHandles) {
+        if (!live.some((s) => s.id === stemId)) {
+          handle.stop(this.backend.currentTime())
+          this.stemHandles.delete(stemId)
+        }
+      }
+      const existing = new Map(this.stems.list().map((s) => [s.id, s]))
+      this.stems.load(
+        live.map((s) => {
+          const previous = existing.get(s.id)
+          return {
+            id: s.id,
+            stemType: s.stemType,
+            label: s.label || s.stemType,
+            gain: previous?.gain ?? s.gain,
+            pan: previous?.pan ?? s.pan,
+            muted: previous?.muted ?? s.muted,
+            solo: previous?.solo ?? s.solo,
+          }
+        }),
+      )
+      this.applyStemGains()
+    }
   }
 
   async loadAudio(assetId: string, data: ArrayBuffer): Promise<void> {
@@ -160,7 +222,21 @@ export class LiveAudioEngine {
 
     const stems = project.stems.filter((s) => s.liveSetItemId === itemId)
     this.stems.load(
-      stems.map((s) => ({ id: s.id, stemType: s.stemType, label: s.label || s.stemType, gain: s.gain, pan: s.pan, muted: s.muted, solo: s.solo })),
+      stems.map((s) => {
+        // A restored performance's mixer state outlives the song change that
+        // follows it — otherwise RESTORE PERFORMANCE was undone by the first
+        // trigger, which is exactly when the performer stops watching.
+        const restored = this.restoredStemStates.get(s.id)
+        return {
+          id: s.id,
+          stemType: s.stemType,
+          label: s.label || s.stemType,
+          gain: restored?.gain ?? s.gain,
+          pan: restored?.pan ?? s.pan,
+          muted: restored?.muted ?? s.muted,
+          solo: restored?.solo ?? s.solo,
+        }
+      }),
     )
     const gains = this.stems.resolve()
     for (const stem of stems) {
@@ -446,25 +522,40 @@ export class LiveAudioEngine {
 
   // ---------------------------------------------------------------- stems ----
 
-  setStemMuted(stemId: string, muted: boolean): void {
+  /**
+   * Stem controls address the *current song's* deck.
+   *
+   * A pad or MIDI control mapped to another song's stem is an ordinary
+   * situation on stage — the same physical button is reused song to song — so
+   * these no-op instead of throwing. They return whether the target was live,
+   * and `padState()` already renders the inactive case honestly.
+   */
+  setStemMuted(stemId: string, muted: boolean): boolean {
+    if (!this.stems.get(stemId)) return false
     this.stems.setMuted(stemId, muted)
     this.applyStemGains()
+    return true
   }
 
-  setStemSolo(stemId: string, solo: boolean): void {
+  setStemSolo(stemId: string, solo: boolean): boolean {
+    if (!this.stems.get(stemId)) return false
     this.stems.setSolo(stemId, solo)
     this.applyStemGains()
+    return true
   }
 
-  setStemGain(stemId: string, gain: number): void {
+  setStemGain(stemId: string, gain: number): boolean {
+    if (!this.stems.get(stemId)) return false
     this.stems.setGain(stemId, gain)
     this.applyStemGains()
+    return true
   }
 
-  setStemPan(stemId: string, pan: number): void {
+  setStemPan(stemId: string, pan: number): boolean {
+    if (!this.stems.get(stemId)) return false
     this.stems.setPan(stemId, pan)
-    const handle = this.stemHandles.get(stemId)
-    handle?.setPan(pan)
+    this.stemHandles.get(stemId)?.setPan(pan)
+    return true
   }
 
   private applyStemGains(): void {
@@ -472,6 +563,31 @@ export class LiveAudioEngine {
     for (const [stemId, gain] of gains) {
       this.stemHandles.get(stemId)?.setGain(gain)
     }
+  }
+
+  /**
+   * Reinstates mixer state from a crash snapshot.
+   *
+   * Applies to the loaded deck immediately and to every song loaded
+   * afterwards, so restoring survives the first song change. Deliberately
+   * silent: it changes levels, it never starts audio.
+   */
+  restoreStemStates(states: Array<{ id: string; gain: number; pan: number; muted: boolean; solo: boolean }>): void {
+    for (const state of states) {
+      this.restoredStemStates.set(state.id, { gain: state.gain, pan: state.pan, muted: state.muted, solo: state.solo })
+      if (this.stems.get(state.id)) {
+        this.stems.setGain(state.id, state.gain)
+        this.stems.setPan(state.id, state.pan)
+        this.stems.setMuted(state.id, state.muted)
+        this.stems.setSolo(state.id, state.solo)
+      }
+    }
+    this.applyStemGains()
+  }
+
+  /** Drops recovered mixer state — used when the performer discards a restore. */
+  clearRestoredStemStates(): void {
+    this.restoredStemStates.clear()
   }
 
   /** Instantaneous meter level for a playing stem (0–1; 0 when idle or unmetered). */

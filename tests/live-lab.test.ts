@@ -10,6 +10,7 @@ import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { synthesizeWav } from '@masterclip/ai-audio'
 import { FLAGSHIP_CAPABILITIES } from '@masterclip/performance-project'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
+import { sniffMime } from '../apps/api/src/routes/assets.js'
 import { CSRF_COOKIE, CSRF_HEADER } from '../apps/api/src/security/csrf.js'
 
 /**
@@ -426,6 +427,45 @@ describe('AI scene builder', () => {
     expect(approvedAsset.lineage?.approvedBy).toBe(owner.userId)
   })
 
+  it('a rejected assign_pad accept leaves no orphan scene behind', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    const { item } = await seedSong(owner, projectId)
+    const created = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, {
+      liveSetItemId: item.id,
+      request: aiRequest,
+    })
+    const jobId = (created.json() as { job: { id: string } }).job.id
+    await runtime.liveLabService.runAiJob(jobId)
+    const job = await runtime.liveLab.getAiJob(jobId)
+    const scenesBefore = await runtime.liveLab.listScenes(projectId)
+    const clipsBefore = await runtime.liveLab.listClips(projectId)
+
+    // assign_pad without padIndex is refused — and refused *before* anything
+    // is created, so a retry does not accumulate scenes.
+    const refused = await call(owner, 'POST', `/api/live-lab/ai-jobs/${jobId}/accept`, {
+      assetId: job.outputAssetIds[0],
+      mode: 'assign_pad',
+      liveSetItemId: item.id,
+    })
+    expect(refused.statusCode).toBe(400)
+    expect(refused.json().error.code).toBe('live.pad_required')
+    expect(await runtime.liveLab.listScenes(projectId)).toHaveLength(scenesBefore.length)
+    expect(await runtime.liveLab.listClips(projectId)).toHaveLength(clipsBefore.length)
+
+    // With a pad index it succeeds and binds the pad.
+    const accepted = await call(owner, 'POST', `/api/live-lab/ai-jobs/${jobId}/accept`, {
+      assetId: job.outputAssetIds[0],
+      mode: 'assign_pad',
+      liveSetItemId: item.id,
+      padIndex: 3,
+    })
+    expect(accepted.statusCode).toBe(200)
+    const project = await runtime.liveLab.getProject(projectId)
+    expect(project.padMap[3]!.mode).toBe('scene')
+    expect(project.padMap[3]!.targetId).toBe((accepted.json() as { sceneId: string }).sceneId)
+  })
+
   it('a failed provider marks the job failed without touching the project', async () => {
     const owner = await signupOwner()
     const projectId = await createProject(owner)
@@ -528,6 +568,74 @@ describe('live set builder', () => {
     expect(replanIds).not.toContain(`click:${second.id}`)
     expect(replanIds).toContain('interlude')
     expect(replanIds).toContain('encore')
+  })
+})
+
+describe('data integrity guards', () => {
+  it('normalizes a short pad map to a dense 16-pad grid', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    // A client sending only the pads it changed must not persist holes: the
+    // grid is addressed by index everywhere that reads it.
+    const response = await call(owner, 'PATCH', `/api/live-lab/projects/${projectId}`, {
+      padMap: [{ index: 2, mode: 'stop', label: 'STOP', targetId: null, color: '' }],
+    })
+    expect(response.statusCode).toBe(200)
+    const padMap = (response.json() as { project: { padMap: Array<{ index: number; mode: string } | null> } }).project.padMap
+    expect(padMap).toHaveLength(16)
+    expect(padMap.every((pad) => pad !== null && pad !== undefined)).toBe(true)
+    expect(padMap[2]!.mode).toBe('stop')
+    expect(padMap[0]!.mode).toBe('empty')
+    // And the set builder can still read it without dereferencing a hole.
+    expect((await call(owner, 'POST', `/api/live-lab/projects/${projectId}/build-set`, {})).statusCode).toBe(200)
+  })
+
+  it('refuses cross-project set items and assets even within one organization', async () => {
+    const owner = await signupOwner()
+    const projectA = await createProject(owner, 'Set A')
+    const projectB = await createProject(owner, 'Set B')
+    const seeded = await seedSong(owner, projectA)
+
+    // A set item from project A cannot receive a stem in project B.
+    const stemResponse = await call(owner, 'POST', `/api/live-lab/projects/${projectB}/stems`, {
+      liveSetItemId: seeded.item.id,
+      stemType: 'drums',
+      sourceAssetId: seeded.asset.id,
+    })
+    expect(stemResponse.statusCode).toBe(403)
+
+    // Nor a scene, nor a clip built from project A's audio.
+    const itemB = await runtime.liveLab.createItem({ orgId: owner.orgId, liveProjectId: projectB, type: 'song', title: 'B ONE', bpm: 120 })
+    const sceneResponse = await call(owner, 'POST', `/api/live-lab/projects/${projectB}/scenes`, {
+      liveSetItemId: itemB.id,
+      name: 'HOOK',
+      clipAssetId: seeded.asset.id,
+    })
+    expect(sceneResponse.statusCode).toBe(403)
+  })
+
+  it('creates the default outputs exactly once under concurrent reads', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    // Two project GETs racing (StrictMode double-invokes effects) used to
+    // insert Master/Cue/Click twice, doubling them in the manifest.
+    await Promise.all([
+      call(owner, 'GET', `/api/live-lab/projects/${projectId}`),
+      call(owner, 'GET', `/api/live-lab/projects/${projectId}`),
+      call(owner, 'GET', `/api/live-lab/projects/${projectId}`),
+    ])
+    const outputs = await runtime.liveLab.listOutputs(projectId)
+    expect(outputs).toHaveLength(3)
+    expect(outputs.map((o) => o.type).sort()).toEqual(['click', 'cue', 'master'])
+  })
+
+  it('accepts a tagless MP3 frame sync, not just ID3 and FF FB', () => {
+    // A valid MPEG audio frame sets the 11 sync bits; the layer/bitrate bits
+    // that follow vary. Refusing FF FA / FF F3 rejected real MP3 exports.
+    for (const second of [0xfb, 0xfa, 0xf3, 0xe0]) {
+      expect(sniffMime(new Uint8Array([0xff, second, 0x90, 0x00]))).toBe('audio/mpeg')
+    }
+    expect(sniffMime(new Uint8Array([0xff, 0x0f, 0x00, 0x00]))).toBeNull()
   })
 })
 

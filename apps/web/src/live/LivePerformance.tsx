@@ -9,6 +9,11 @@ import { PadGrid, StemDeckPanel } from './components.jsx'
 
 const snapshotStore = new LocalStorageSnapshotStore()
 
+/** Matches the server's per-request cap (see the events route). */
+const EVENT_BATCH_LIMIT = 500
+/** Oldest events are dropped past this so a long outage cannot grow forever. */
+const EVENT_BUFFER_LIMIT = 5000
+
 /**
  * Performance Mode — the stage surface.
  *
@@ -80,11 +85,18 @@ export function LivePerformance({ projectId }: { projectId: string }) {
 
   const syncAnalytics = React.useCallback(() => {
     if (!online || eventsRef.current.length === 0) return
-    const batch = eventsRef.current.splice(0, eventsRef.current.length)
+    // The server accepts at most 500 events per request. A long offline show
+    // used to exceed that and then wedge: every retry 400ed and pushed the
+    // same oversized batch back. One capped chunk per tick drains instead.
+    const batch = eventsRef.current.splice(0, Math.min(EVENT_BATCH_LIMIT, eventsRef.current.length))
     liveApi.syncEvents(projectId, batch).catch(() => {
-      // Offline or refused: put them back for the next attempt. The show does
-      // not care either way.
+      // Offline or refused: put them back for the next attempt, bounded so a
+      // long outage cannot grow the buffer without limit. The show does not
+      // care either way — analytics never block playback.
       eventsRef.current.unshift(...batch)
+      if (eventsRef.current.length > EVENT_BUFFER_LIMIT) {
+        eventsRef.current.splice(0, eventsRef.current.length - EVENT_BUFFER_LIMIT)
+      }
     })
   }, [online, projectId])
 
@@ -97,15 +109,9 @@ export function LivePerformance({ projectId }: { projectId: string }) {
     if (!restoreOffer) return
     // Restores mixer/positional state only. Audio stays silent until the
     // performer triggers something — sound after a crash must be deliberate.
-    for (const stem of restoreOffer.stems) {
-      try {
-        live.engine.stems.setGain(stem.id, stem.gain)
-        live.engine.stems.setMuted(stem.id, stem.muted)
-        live.engine.stems.setSolo(stem.id, stem.solo)
-      } catch {
-        // stems may differ across package versions; restore what still exists
-      }
-    }
+    // The engine holds the recovered levels so they survive the first song
+    // change rather than being overwritten by the stored defaults.
+    live.engine.restoreStemStates(restoreOffer.stems)
     live.engine.setClickEnabled(restoreOffer.clickEnabled)
     eventsRef.current.push({ eventType: 'crash_recovered', payload: {}, localTimestamp: new Date().toISOString() })
     setRestoreOffer(null)
@@ -138,7 +144,15 @@ export function LivePerformance({ projectId }: { projectId: string }) {
                 <button className="primary" onClick={() => void restore()}>
                   RESTORE PERFORMANCE
                 </button>
-                <button onClick={() => (void snapshotStore.clear(projectId), setRestoreOffer(null))}>Discard</button>
+                <button
+                  onClick={() => {
+                    live.engine.clearRestoredStemStates()
+                    void snapshotStore.clear(projectId)
+                    setRestoreOffer(null)
+                  }}
+                >
+                  Discard
+                </button>
               </div>
             )}
 

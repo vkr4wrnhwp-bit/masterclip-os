@@ -99,6 +99,25 @@ export function defaultPadMap(): PadAssignment[] {
   return pads
 }
 
+/**
+ * Coerces any stored or submitted pad map into exactly 16 dense entries.
+ *
+ * The grid is addressed positionally everywhere — pads render by index, MIDI
+ * targets are `pad:<index>` — so a short or sparse array is not a smaller
+ * grid, it is holes that later reads dereference. Anything missing becomes an
+ * empty pad, and each entry's `index` is authoritative over its position.
+ */
+export function normalizePadMap(value: unknown): PadAssignment[] {
+  const pads = defaultPadMap()
+  if (!Array.isArray(value)) return pads
+  for (const entry of value) {
+    const parsed = PadAssignment.safeParse(entry)
+    if (!parsed.success) continue
+    pads[parsed.data.index] = parsed.data
+  }
+  return pads
+}
+
 // ---------------------------------------------------------------- records ----
 
 export const LiveProject = z.object({
