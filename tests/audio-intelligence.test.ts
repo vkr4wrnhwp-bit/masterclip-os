@@ -793,3 +793,78 @@ describe('demo seed', () => {
     expect((await audio.repos.agents.listConversations(orgA)).length).toBeGreaterThanOrEqual(3)
   })
 })
+
+describe('partner entitlement administration', () => {
+  it('applies a preset, toggles a grant off without losing it, and revokes', async () => {
+    // Preset grants the partner org its plan's capabilities.
+    const preset = ['audio.meeting_intelligence', 'audio.transcription', 'audio.signal_briefs'] as const
+    await audio.repos.policy.grantEntitlements(orgB, [...preset], userA)
+    let entitlements = await audio.repos.policy.listEntitlements(orgB)
+    expect(entitlements.map((e) => e.capability).sort()).toEqual([...preset].sort())
+    expect(entitlements.every((e) => e.enabled)).toBe(true)
+
+    // Switching off keeps the grant row but closes the gate.
+    await audio.repos.policy.setEntitlementEnabled(orgB, 'audio.transcription', false)
+    entitlements = await audio.repos.policy.listEntitlements(orgB)
+    expect(entitlements.find((e) => e.capability === 'audio.transcription')).toMatchObject({ enabled: false })
+    let decision = await audio.access.decide({ capability: 'audio.transcription', actor: actorB })
+    expect(decision.failed?.name).toBe('org_toggle')
+
+    // Switching back on restores access without re-granting.
+    await audio.repos.policy.setEntitlementEnabled(orgB, 'audio.transcription', true)
+    decision = await audio.access.decide({ capability: 'audio.transcription', actor: actorB })
+    expect(decision.allowed).toBe(true)
+
+    // Revoking removes the grant entirely.
+    await audio.repos.policy.revokeEntitlement(orgB, 'audio.transcription')
+    entitlements = await audio.repos.policy.listEntitlements(orgB)
+    expect(entitlements.find((e) => e.capability === 'audio.transcription')).toBeUndefined()
+    decision = await audio.access.decide({ capability: 'audio.transcription', actor: actorB })
+    expect(decision.failed?.name).toBe('org_entitlement')
+  })
+
+  it('toggling one org never affects another', async () => {
+    await audio.repos.policy.grantEntitlements(orgB, ['audio.signal_briefs'], userA)
+    await audio.repos.policy.setEntitlementEnabled(orgB, 'audio.signal_briefs', false)
+    // orgA is the flagship: implicit access, untouched by orgB's toggle.
+    const decision = await audio.access.decide({ capability: 'audio.signal_briefs', actor: actorA })
+    expect(decision.allowed).toBe(true)
+  })
+
+  it('reports per-org budgets and month spend for the admin console', async () => {
+    await audio.repos.usage.setBudget({
+      orgId: orgB,
+      scope: 'org',
+      scopeId: orgB,
+      monthlyCapMicros: usdToMicros(25),
+      perJobCapMicros: null,
+      approvalAboveMicros: null,
+      warnThresholdPct: 0.8,
+      hardStop: true,
+    })
+    await audio.repos.usage.record({
+      orgId: orgB,
+      userId: userB,
+      projectType: 'meeting',
+      projectId: null,
+      provider: 'mock-audio',
+      operation: 'transcription',
+      model: 'mock',
+      unit: 'seconds',
+      inputUnits: 120,
+      outputUnits: 0,
+      estimatedCostMicros: usdToMicros(2),
+      finalCostMicros: 0,
+      currency: 'USD',
+      providerRequestId: null,
+      jobId: null,
+    })
+    const budgets = await audio.repos.usage.listBudgets(orgB)
+    expect(budgets).toHaveLength(1)
+    expect(budgets[0]!.monthlyCapMicros).toBe(usdToMicros(25))
+    const summary = await audio.repos.usage.summary(orgB)
+    expect(summary.monthSpendMicros).toBe(usdToMicros(2))
+    // Spend is per-tenant: the flagship's ledger is untouched.
+    expect((await audio.repos.usage.summary(orgA)).monthSpendMicros).toBe(0)
+  })
+})

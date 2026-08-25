@@ -57,6 +57,7 @@ apps/web                   /audio/* views on the existing design system
 | Remix Lab Audio Engine | `/audio/remix` | [REMIX_LAB_AUDIO.md](REMIX_LAB_AUDIO.md) |
 | Artist Voice Vault | `/audio/voice-vault` | [ARTIST_VOICE_VAULT.md](ARTIST_VOICE_VAULT.md) |
 | White-label operator | org settings `whiteLabel` | [AUDIO_OPERATOR.md](AUDIO_OPERATOR.md) |
+| Partner entitlement admin (flagship) | `/audio/admin` | this document, “The layered gate” |
 
 ## The layered gate
 
@@ -67,6 +68,11 @@ rights confirmation, and retention configuration are enforced by the
 individual services with the concrete record in hand, and provider health is
 consulted at resolution time. Hiding a button in the frontend is presentation,
 not security.
+
+Flagship admins manage this at **`/audio/admin`** (Partner entitlements):
+per-organization capability grant/revoke, an enable-disable toggle that keeps
+the grant, plan presets, spend budgets, and month-to-date spend. Provider
+credentials are never shown there.
 
 Entitlements are `audio.*` capabilities (see `packages/audio-core/src/capabilities.ts`).
 The flagship organization — the oldest org on the deployment — holds all of
@@ -104,10 +110,12 @@ their core workflows with human gates enforced; see
 [AUDIO_RUNBOOK.md](AUDIO_RUNBOOK.md) for the phase-two backlog.
 
 **Repository note.** This platform assumed sibling Street Banker products
-(Operator Desk CRM, Street Banker Signal, Stage Control) that do not yet exist
-in this repository. Operator Desk exists here as a deliberate scaffold
-(leads/notes/tasks) that approved intelligence commits into; Signal briefs
-take caller-supplied structured items until a Signal data source exists; and
-Stage Control is addressed only as a security boundary
-([AUDIO_SECURITY.md](AUDIO_SECURITY.md)) — no cloud AI audio path may ever
-enter a safety-critical monitor-control loop.
+that did not exist here when it was built. Operator Desk exists as a
+deliberate scaffold (leads/notes/tasks) that approved intelligence commits
+into, and Signal briefs take caller-supplied structured items until a Signal
+data source exists. Stage Control now *does* exist, as part of Live Lab
+([LIVE_LAB_STAGE_CONTROL.md](LIVE_LAB_STAGE_CONTROL.md)) — and this layer
+deliberately does not touch it: no cloud AI audio path may enter a
+safety-critical monitor-control loop, and the absence of any code path
+between the two is verified in
+[AUDIO_SECURITY.md](AUDIO_SECURITY.md).

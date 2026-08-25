@@ -212,6 +212,32 @@ export interface AudioUsage {
   budgets: Array<{ scope: string; scopeId: string; monthlyCapMicros: number | null; hardStop: boolean }>
 }
 
+export interface AdminOrgBudget {
+  scope: string
+  scopeId: string
+  monthlyCapUsd: number | null
+  perJobCapUsd: number | null
+  hardStop: boolean
+  warnThresholdPct: number
+}
+
+export interface AdminOrg {
+  id: string
+  name: string
+  createdAt: string
+  /** The flagship holds every capability implicitly — no grant rows needed. */
+  isFlagship: boolean
+  entitlements: Array<{ capability: string; enabled: boolean }>
+  budgets: AdminOrgBudget[]
+  monthSpendUsd: number
+}
+
+export interface AdminOrgs {
+  orgs: AdminOrg[]
+  capabilities: Array<{ key: string; label: string; description: string; riskTier: 'standard' | 'elevated' | 'high' }>
+  presets: string[]
+}
+
 export const audioApi = {
   meetings: () => get<{ meetings: Meeting[] }>('/api/audio/meetings'),
   meeting: (id: string) =>
@@ -317,9 +343,12 @@ export const audioApi = {
     get<{ health: Array<{ providerId: string; status: string; latencyMs?: number; message: string }>; slots: Array<{ slot: string; providerId: string; configured: boolean; zeroRetention: boolean }>; elevenLabsEnabled: boolean }>(
       '/api/admin/audio/providers',
     ),
-  adminOrgs: () =>
-    get<{ orgs: Array<{ id: string; name: string; entitlements: Array<{ capability: string; enabled: boolean }> }>; presets: string[] }>('/api/admin/audio/orgs'),
+  adminOrgs: () => get<AdminOrgs>('/api/admin/audio/orgs'),
   adminSetEntitlements: (orgId: string, body: { preset?: string; grant?: string[]; revoke?: string[] }) =>
     post<{ ok: boolean }>(`/api/admin/audio/orgs/${orgId}/entitlements`, body),
+  adminToggleEntitlement: (orgId: string, capability: string, enabled: boolean) =>
+    post<{ ok: boolean }>(`/api/admin/audio/orgs/${orgId}/entitlements/toggle`, { capability, enabled }),
+  adminSetBudget: (orgId: string, body: { scope: string; scopeId: string; monthlyCapUsd: number | null; perJobCapUsd: number | null; hardStop: boolean }) =>
+    post<{ budget: unknown }>(`/api/admin/audio/orgs/${orgId}/budgets`, body),
   adminWebhooks: () => get<{ events: Array<{ id: string; eventType: string; status: string; signatureValid: boolean; receivedAt: string; failureReason: string | null }> }>('/api/admin/audio/webhooks'),
 }

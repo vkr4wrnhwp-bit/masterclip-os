@@ -133,3 +133,24 @@ test('audio settings show the data policy and record keyterms', async () => {
   await page.getByRole('button', { name: 'add', exact: true }).click()
   await expect(page.getByText('E2E Artist', { exact: true })).toBeVisible()
 })
+
+// Grant/revoke against a partner org is covered in the integration suite —
+// the e2e database has only the bootstrap (flagship) org, so what the browser
+// can honestly assert is the flagship presentation and budget editing.
+test('partner entitlements console shows flagship access and edits budgets', async () => {
+  await page.goto('/#/audio/admin')
+  await expect(page.getByRole('heading', { name: 'Partner OS — audio entitlements' })).toBeVisible()
+
+  // The bootstrap org is the flagship: implicit access, no grant rows, and the
+  // console must say so rather than showing it as unentitled.
+  await expect(page.getByText('flagship').first()).toBeVisible()
+  await expect(page.getByText('Holds every audio capability implicitly')).toBeVisible()
+  await expect(page.getByText('implicit').first()).toBeVisible()
+
+  // Budgets are settable for the selected org and read back.
+  await page.getByLabel('Monthly cap (USD)').fill('250')
+  await page.getByRole('button', { name: 'save budget' }).click()
+  await expect(page.getByText('budget saved')).toBeVisible()
+  await expect(page.getByText('$250.00/mo')).toBeVisible()
+  await expect(page.getByText('hard stop').first()).toBeVisible()
+})

@@ -71,5 +71,7 @@ No credentials are required for any of the above. To go live:
   now shows in flagship provider admin; per-request `final_cost_micros`
   backfill still needs a documented per-request usage feed.
 - **Email/Slack/mobile delivery** for briefs and human-transfer alerts.
-- **Partner OS UI** for entitlement management (the API and presets exist;
-  administration is currently API-first).
+- **White-label branding UI**: partner branding (display name, welcome
+  message, accent colour, support contact) is stored and applied but edited
+  through the settings API rather than a dedicated screen. Entitlement and
+  budget administration now has one at `/audio/admin`.

@@ -19,6 +19,7 @@ import { AudioCampaignsView } from './views/AudioCampaigns.jsx'
 import { AudioRemixView } from './views/AudioRemix.jsx'
 import { AudioVoiceVaultView } from './views/AudioVoiceVault.jsx'
 import { AudioSettingsView } from './views/AudioSettings.jsx'
+import { AudioAdminView } from './views/AudioAdmin.jsx'
 import { liveApi } from './live/api.js'
 import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
@@ -176,6 +177,9 @@ export function App() {
             <NavLink route={route} to="/audio/settings" name="audio-settings">
               Audio settings
             </NavLink>
+            <NavLink route={route} to="/audio/admin" name="audio-admin">
+              Partner entitlements
+            </NavLink>
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
                 <div className="group">Performance</div>
@@ -226,6 +230,7 @@ export function App() {
           {route.name === 'audio-remix' && <AudioRemixView />}
           {route.name === 'audio-voice-vault' && <AudioVoiceVaultView />}
           {route.name === 'audio-settings' && <AudioSettingsView isAdmin={user.orgRole === 'owner' || user.orgRole === 'admin'} />}
+          {route.name === 'audio-admin' && <AudioAdminView />}
           {route.name === 'live-lab' && <LiveLabHome />}
           {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}
