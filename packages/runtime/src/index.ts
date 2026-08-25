@@ -13,6 +13,8 @@ import { createLumaProvider } from '@masterclip/provider-luma'
 import { createReplicateProvider } from '@masterclip/provider-replicate'
 import { createSelfHostedProvider } from '@masterclip/provider-selfhosted'
 import { CostController, CostLedger, MetricsService, QuoteStore } from '@masterclip/cost-engine'
+import type { MusicComposer } from '@masterclip/ai-audio'
+import type { AudioProviderBase } from '@masterclip/audio-core'
 import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
 import { createAudioLayer, type AudioLayer } from '@masterclip/audio-engine'
@@ -100,7 +102,15 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
 
   const liveLabRepo = new LiveLabRepo(db, clock)
   const entitlements = new EntitlementService(db, clock)
-  const audio = createAudioLayer({ config, logger, db, storage, queue, clock, ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}) })
+  const audioLayer = createAudioLayer({
+    config,
+    logger,
+    db,
+    storage,
+    queue,
+    clock,
+    ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
+  })
 
   return {
     config,
@@ -121,7 +131,7 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     quotes: new QuoteStore(db, clock),
     metrics: new MetricsService(db, clock),
     agents: createAgentLayer(config, logger),
-    audio,
+    audio: audioLayer,
     // Song Lab borrows the audio layer's asset, consent and Operator Desk
     // services rather than re-implementing secure audio storage.
     songLab: createSongLabLayer({
@@ -133,11 +143,11 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
       clock,
       entitlements,
       audio: {
-        assets: audio.assets,
-        assetRepo: audio.repos.assets,
-        consents: audio.repos.consents,
-        operatorDesk: audio.repos.operatorDesk,
-        remix: audio.repos.remix,
+        assets: audioLayer.assets,
+        assetRepo: audioLayer.repos.assets,
+        consents: audioLayer.repos.consents,
+        operatorDesk: audioLayer.repos.operatorDesk,
+        remix: audioLayer.repos.remix,
       },
       ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
     }),
@@ -149,10 +159,32 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
       clock,
       logger: logger.child({ component: 'live-lab' }),
       aiProviderId: config.LIVE_AI_PROVIDER,
+      // Live Lab composes through the platform's music layer when this build
+      // has one, so a configured ElevenLabs key serves the scene builder too
+      // rather than Live Lab keeping a second, parallel provider stack.
+      musicComposer: resolveMusicComposer(audioLayer, logger),
     }),
     async close() {
       await db.close()
     },
+  }
+}
+
+/**
+ * The platform's music generator, if this build registered one.
+ *
+ * Resolution is deliberately forgiving: an audio layer without a music slot is
+ * a legitimate configuration, not an error, and Live Lab falls back to its own
+ * local synthesizer. Failing to start the whole runtime because a *generative*
+ * capability is absent would be the wrong trade.
+ */
+function resolveMusicComposer(audioLayer: AudioLayer, logger: Logger): MusicComposer | null {
+  try {
+    const provider = audioLayer.registry.resolve<MusicComposer & AudioProviderBase>('music')
+    return provider ?? null
+  } catch {
+    logger.debug('live.ai.no_platform_music', { detail: 'no music provider registered; Live Lab uses its local synthesizer' })
+    return null
   }
 }
 

@@ -1,0 +1,150 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createTestDb, type Db } from '@masterclip/database'
+import { LocalStorage } from '@masterclip/asset-storage'
+import { loadConfig, silentLogger } from '@masterclip/shared'
+import { createRuntime, type Runtime } from '@masterclip/runtime'
+
+/**
+ * Live Lab's AI Scene Builder composes through the platform's music layer
+ * rather than keeping a second, parallel provider stack. These assert the
+ * wiring end to end: that the runtime registers it, and that a job actually
+ * generates through it and lands as accepted-shaped assets with lineage
+ * naming the platform provider.
+ */
+let runtime: Runtime
+let db: Db
+let storageRoot: string
+
+beforeEach(async () => {
+  db = await createTestDb()
+  storageRoot = await mkdtemp(join(tmpdir(), 'livelab-platform-'))
+  const config = loadConfig(
+    {
+      NODE_ENV: 'test',
+      MASTERCLIP_MODE: 'sandbox',
+      LOG_LEVEL: 'error',
+      STORAGE_LOCAL_ROOT: storageRoot,
+      SESSION_SECRET: 'platform-test-session',
+      ASSET_SIGNING_SECRET: 'platform-test-asset',
+    },
+    true,
+  )
+  runtime = await createRuntime({
+    config,
+    db,
+    logger: silentLogger,
+    mockOnly: true,
+    storage: new LocalStorage({ root: storageRoot, signingSecret: 'platform-test-asset' }),
+  })
+})
+
+afterEach(async () => {
+  await runtime?.close()
+  await rm(storageRoot, { recursive: true, force: true })
+})
+
+function platformProviderId(): string {
+  const id = runtime.liveLabService.audioProviders.list().find((p) => p.id.startsWith('platform:'))?.id
+  expect(id, 'the runtime should register a platform music provider').toBeDefined()
+  return id!
+}
+
+describe('Live Lab composes through the platform audio layer', () => {
+  it('registers the platform music provider alongside the local synthesizer', () => {
+    const ids = runtime.liveLabService.audioProviders.list().map((p) => p.id)
+    // The local synthesizer always remains, so Live Lab still works in a build
+    // with no audio platform and no credentials at all.
+    expect(ids).toContain('mock-audio')
+    expect(ids.some((id) => id.startsWith('platform:'))).toBe(true)
+  })
+
+  it('generates a scene through the platform provider, with platform lineage', async () => {
+    const org = await runtime.projects.createOrg('Platform Org')
+    const user = await runtime.auth.createUser({
+      orgId: org.id,
+      email: 'platform@example.com',
+      password: 'a-sufficiently-long-password',
+      displayName: 'Artist',
+      orgRole: 'owner',
+    })
+    const project = await runtime.liveLab.createProject({ orgId: org.id, name: 'Platform Set', masterTempo: 120, createdBy: user.id })
+    const item = await runtime.liveLab.createItem({ orgId: org.id, liveProjectId: project.id, type: 'song', title: 'TRACK ONE', bpm: 120 })
+
+    const job = await runtime.liveLab.createAiJob({
+      orgId: org.id,
+      liveProjectId: project.id,
+      liveSetItemId: item.id,
+      provider: platformProviderId(),
+      operation: 'scene.generate',
+      configuration: {
+        prompt: 'an eight bar sparse intro that opens the show',
+        bars: 8,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'low',
+        instrumentation: ['drums', 'sub bass'],
+        intendedTransition: 'into the first hook',
+        rightsConfirmed: true,
+      } as never,
+      createdBy: user.id,
+    })
+
+    await runtime.liveLabService.runAiJob(job.id)
+
+    const done = await runtime.liveLab.getAiJob(job.id)
+    expect(done.status).toBe('ready')
+    expect(done.outputAssetIds).toHaveLength(3)
+
+    const asset = await runtime.liveLab.getAsset(done.outputAssetIds[0]!)
+    // Lineage records the platform provider, not the local synthesizer.
+    expect(asset.lineage?.provider).toMatch(/^platform:/)
+    expect(asset.lineage?.rightsConfirmed).toBe(true)
+    // Still awaiting explicit human acceptance, exactly as with the mock.
+    expect(asset.lineage?.approvedBy).toBeNull()
+    // The bytes are real and the recorded mime matches what was stored, rather
+    // than being assumed to be WAV.
+    const bytes = await runtime.storage.getBuffer(asset.storageKey)
+    expect(bytes.length).toBeGreaterThan(0)
+    expect(['audio/wav', 'audio/mpeg', 'audio/mp4']).toContain(asset.mime)
+  })
+
+  it('refuses an unsafe prompt on the platform path too', async () => {
+    const org = await runtime.projects.createOrg('Safety Org')
+    const user = await runtime.auth.createUser({
+      orgId: org.id,
+      email: 'safety@example.com',
+      password: 'a-sufficiently-long-password',
+      displayName: 'Artist',
+      orgRole: 'owner',
+    })
+    const project = await runtime.liveLab.createProject({ orgId: org.id, name: 'Safety Set', createdBy: user.id })
+    const job = await runtime.liveLab.createAiJob({
+      orgId: org.id,
+      liveProjectId: project.id,
+      provider: platformProviderId(),
+      operation: 'scene.generate',
+      configuration: {
+        prompt: 'an intro in the style of Drake',
+        bars: 8,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'low',
+        instrumentation: [],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      } as never,
+      createdBy: user.id,
+    })
+
+    await runtime.liveLabService.runAiJob(job.id)
+    const done = await runtime.liveLab.getAiJob(job.id)
+    // Screened at the provider boundary, so a job created by any future caller
+    // that skipped the route's check still cannot reach a real provider.
+    expect(done.status).toBe('failed')
+    expect(done.error).toMatch(/refused/)
+    expect(done.outputAssetIds).toHaveLength(0)
+  })
+})
