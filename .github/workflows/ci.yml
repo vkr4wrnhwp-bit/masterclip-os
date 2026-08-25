@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A manual trigger, so a maintainer can run CI against any branch from the
+  # Actions tab without pushing a commit to provoke it. Also the quickest way
+  # to confirm Actions is working at all after a settings or billing change,
+  # which is otherwise only answerable by pushing and waiting.
+  workflow_dispatch:
 
 jobs:
   masterclip:
