@@ -782,6 +782,104 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     return { mapping, replaced: duplicate?.id ?? null }
   })
 
+  /**
+   * Maps a run of consecutive notes onto a list of targets in one call — the
+   * keyboard-zone operation.
+   *
+   * Live Lab's keyboard zones (C2-B2 FX, C3-B3 loops, and so on) were data and
+   * documentation with no way to apply them: a keyboardist had to MIDI-Learn
+   * every note individually, twelve per zone. This assigns the whole run.
+   * Targets are verified to belong to this project before anything is written,
+   * so a partially-valid request maps nothing rather than half a keyboard.
+   */
+  app.post('/api/live-lab/projects/:projectId/midi-mappings/bulk', async (request) => {
+    const { projectId } = request.params as { projectId: string }
+    const { auth } = await requireLiveProject(request, projectId, 'live_lab.midi')
+    const body = z
+      .object({
+        deviceIdentifier: z.string().min(1).max(200),
+        channel: z.number().int().min(0).max(15),
+        startNote: z.number().int().min(0).max(127),
+        targetType: z.enum(['pad', 'scene']),
+        /** Assigned to startNote, startNote + 1, … in order. */
+        targetIds: z.array(z.string()).min(1).max(64),
+        replaceExisting: z.boolean().optional(),
+      })
+      .parse(request.body)
+
+    const lastNote = body.startNote + body.targetIds.length - 1
+    if (lastNote > 127) {
+      throw new AppError({
+        kind: 'validation',
+        code: 'live.zone_overflow',
+        message: `mapping ${body.targetIds.length} targets from note ${body.startNote} runs past note 127`,
+      })
+    }
+
+    // Validate every target up front. A keyboard half-mapped because the
+    // eighth scene belonged to another project is worse than a refusal.
+    if (body.targetType === 'scene') {
+      const scenes = await runtime.liveLab.listScenes(projectId)
+      const known = new Set(scenes.map((scene) => scene.id))
+      const unknown = body.targetIds.filter((id) => !known.has(id))
+      if (unknown.length > 0) {
+        throw new AppError({
+          kind: 'validation',
+          code: 'live.unknown_scene',
+          message: `these scenes are not in this project: ${unknown.join(', ')}`,
+        })
+      }
+    } else {
+      const bad = body.targetIds.filter((id) => !/^pad:(1[0-5]|[0-9])$/.test(id))
+      if (bad.length > 0) {
+        throw new AppError({
+          kind: 'validation',
+          code: 'live.unknown_pad',
+          message: `pad targets must be pad:0 … pad:15 — got ${bad.join(', ')}`,
+        })
+      }
+    }
+
+    const existing = await runtime.liveLab.listMappings(projectId)
+    const collisions = existing.filter(
+      (m) =>
+        m.deviceIdentifier === body.deviceIdentifier &&
+        m.channel === body.channel &&
+        m.messageType === 'note_on' &&
+        m.noteOrController >= body.startNote &&
+        m.noteOrController <= lastNote,
+    )
+    if (collisions.length > 0 && !body.replaceExisting) {
+      throw new AppError({
+        kind: 'conflict',
+        code: 'live.midi_duplicate',
+        message: `${collisions.length} note(s) in this range are already mapped — pass replaceExisting to overwrite`,
+        details: { notes: collisions.map((m) => m.noteOrController) },
+      })
+    }
+    for (const collision of collisions) await runtime.liveLab.deleteMapping(collision.id)
+
+    const mappings = []
+    for (const [index, targetId] of body.targetIds.entries()) {
+      mappings.push(
+        await runtime.liveLab.createMapping({
+          organizationId: auth.orgId,
+          liveProjectId: projectId,
+          deviceIdentifier: body.deviceIdentifier,
+          channel: body.channel,
+          messageType: 'note_on',
+          noteOrController: body.startNote + index,
+          targetType: body.targetType,
+          targetId,
+          minimum: 0,
+          maximum: 127,
+          inversion: false,
+        }),
+      )
+    }
+    return { mappings, replaced: collisions.map((m) => m.id) }
+  })
+
   app.patch('/api/live-lab/midi-mappings/:mappingId', async (request) => {
     const { mappingId } = request.params as { mappingId: string }
     const auth = await requireLiveLab(request, 'live_lab.midi')

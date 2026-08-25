@@ -72,5 +72,26 @@ C4–B4 (60–71)  vocal chops
 C5–B5 (72–83)  scene launches
 ```
 
+### Applying a zone
+
+`POST /api/live-lab/projects/:id/midi-mappings/bulk` maps a run of consecutive
+notes onto a list of targets in one call — a song's scenes in performance
+order, or the sixteen pads. The MIDI screen exposes it as **Keyboard zones**:
+choose device, channel, starting key and what to map, and the note→target list
+is shown before anything is written.
+
+Zones were data and documentation before this: mapping a scene-launch octave
+meant twelve separate MIDI Learns. Learn is still there for one-off controls
+and remains the only way to map faders, CCs and pitch bend.
+
+Two refusals are deliberate:
+
+- **Targets are validated up front.** If any scene in the list belongs to
+  another project, nothing is written — a keyboard half-mapped because the
+  eighth target was wrong is worse than a refusal.
+- **Occupied keys are reported, not silently overwritten.** A run that collides
+  with existing mappings returns 409 with the note numbers; `replaceExisting`
+  performs the overwrite once the user has seen what they are replacing.
+
 A chromatic sampler mode (pitching one owned/generated sample across the
 keyboard) is planned for the desktop phase and intentionally not built in V1.

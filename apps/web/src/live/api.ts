@@ -115,6 +115,8 @@ export const liveApi = {
   createMapping: (projectId: string, body: Record<string, unknown>) =>
     post<{ mapping: MidiMapping; replaced: string | null }>(`/api/live-lab/projects/${projectId}/midi-mappings`, body),
   deleteMapping: (mappingId: string) => del<{ ok: boolean }>(`/api/live-lab/midi-mappings/${mappingId}`),
+  mapKeyboardZone: (projectId: string, body: Record<string, unknown>) =>
+    post<{ mappings: MidiMapping[]; replaced: string[] }>(`/api/live-lab/projects/${projectId}/midi-mappings/bulk`, body),
 
   createAiScene: (projectId: string, body: Record<string, unknown>) => post<{ job: LiveAiJob }>(`/api/live-lab/projects/${projectId}/ai-scenes`, body),
   aiJob: (jobId: string) => get<{ job: LiveAiJob; options: Array<{ asset: LiveAssetView; url: string }> }>(`/api/live-lab/ai-jobs/${jobId}`),
