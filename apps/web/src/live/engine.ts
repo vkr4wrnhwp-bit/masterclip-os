@@ -16,7 +16,7 @@ import {
   type MidiSource,
   type ParsedMidiMessage,
 } from '@masterclip/midi-engine'
-import { IndexedDbCacheStore, sha256HexOf } from '@masterclip/performance-cache'
+import { IndexedDbCacheStore, requestPersistentStorage, sha256HexOf } from '@masterclip/performance-cache'
 import type { MidiMapping, PadState } from '@masterclip/performance-project'
 import { liveApi, type LiveProjectBundle } from './api.js'
 
@@ -398,6 +398,10 @@ export async function cacheShow(projectId: string, onProgress: (progress: CacheP
     return
   }
   const { files } = await liveApi.packageFiles(record.id)
+  // Ask for persistent storage before filling the cache: an evictable show is
+  // one the browser may reclaim under pressure, and the first anyone would
+  // know is a pad reading ERROR at the venue.
+  const persisted = await requestPersistentStorage()
   const cache = await IndexedDbCacheStore.open(projectId)
   let cached = 0
   onProgress({ phase: 'caching', cachedFiles: 0, totalFiles: files.length, message: 'Caching audio locally…' })
@@ -426,7 +430,17 @@ export async function cacheShow(projectId: string, onProgress: (progress: CacheP
   }
   const result = await liveApi.verifyPackage(record.id, verified)
   if (result.status === 'ready') {
-    onProgress({ phase: 'ready', cachedFiles: cached, totalFiles: files.length, message: 'SHOW READY — verified on this device' })
+    onProgress({
+      phase: 'ready',
+      cachedFiles: cached,
+      totalFiles: files.length,
+      // Say plainly when the cache is still evictable rather than implying a
+      // guarantee the browser did not give.
+      message:
+        persisted === false
+          ? 'SHOW READY — verified on this device. Storage is not persistent: re-verify at soundcheck.'
+          : 'SHOW READY — verified on this device',
+    })
   } else {
     onProgress({
       phase: 'error',

@@ -403,3 +403,56 @@ merging Live Lab from `main`).
 | Usage ledger + budgets | **REAL** | append-only; hard stops/warnings tested; provider **cost reconciliation** (final_cost backfill) NOT BUILT — estimates are labelled estimates |
 | White-label operator config | **PARTIAL** | tenant-isolated settings + branding fields exist and apply to conversations; no dedicated partner admin UI |
 | Realtime transcription, telephony/calendar capture | **NOT BUILT** | catalogued capabilities, no implementation |
+
+---
+
+## Street Banker Live Lab (audited 2026-08-25)
+
+Same vocabulary, same standard. Verification run at `5e8f77e`: `pnpm typecheck`
+**36/36 clean** · `pnpm lint` **clean** · `pnpm test` **419 passed / 419** ·
+`pnpm test:e2e` **22 passed / 22** (whole repo). Additionally booted through
+`scripts/serve.mjs` against the bundled `dist/` in production mode — including
+an upgrade of an existing `0001–0003` database to `0004` with its Live Lab data
+intact.
+
+The distinction that matters most here: **scheduling logic is unit-tested
+against a manual clock; the browser audio path is not testable that way.** A
+`TestAudioBackend` records what was scheduled and when, so quantization,
+transitions and follow actions are verified precisely. Whether Chromium's
+`AudioContext` actually emits the right sound on a stage rig is a different
+claim, and this build has not made it.
+
+| Area | Status | Notes |
+|---|---|---|
+| Tempo, launch quantization, queued launch, scene transitions | **REAL** | asserted against the audio timeline via `TestAudioBackend`: a queued clip lands exactly on the boundary, the outgoing scene stops at the incoming launch time |
+| Transport, setlist, scenes, clips, follow actions | **REAL** | incl. edit-during-playback (the engine swaps project data in place without stopping the show) |
+| Stem deck (mute/solo resolution, gain, pan) | **REAL** | solo/mute precedence tested; cross-song stem targets no-op rather than throw |
+| 16-pad grid + pad states | **REAL** | states derived from real engine state, incl. `error` for uncached audio |
+| Web Audio backend (buffer sources, buses, ramps, meters) | **DEV-LABELED** | no `AudioContext` in Node, so it is exercised only through the browser build; **no audio has been verified audibly, on any device, from this environment** |
+| AudioWorklet click | **DEV-LABELED** | processor source is loaded via Blob URL and falls back to scheduled oscillators; never heard |
+| MIDI parsing, Learn, mapping application, duplicate detection | **REAL** | unit-tested plus an end-to-end Playwright flow that emits real MIDI bytes through a mock device |
+| Web MIDI against physical hardware | **DEV-LABELED** | implemented against the spec; **no controller has ever been plugged into this build** |
+| Offline performance package (manifest, checksums, verification) | **REAL** | server-side and device-reported verification both tested; a missing or corrupted cached file provably prevents READY |
+| IndexedDB show cache in a browser | **DEV-LABELED** | the `CacheStore` contract is tested via the memory implementation; the IndexedDB one has not been run in a browser test |
+| Performance Mode running with the network down | **PARTIAL** | the code path reads only from cache and is structurally incapable of a network fetch during playback; **not yet demonstrated on a real device with the network actually disabled** |
+| Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio |
+| Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
+| Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
+| AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
+| A real AI audio provider for Live Lab | **NOT BUILT** | `ai-audio` has one adapter (mock). PR #2's ElevenLabs music/stems adapters are the obvious host — wiring them in is the next integration, not a rewrite |
+| Live Set Builder (suggestions + approval-gated apply) | **REAL** | approval gating, subset application, click routing, pad mapping and idempotent re-planning tested |
+| Stage Control handoff | **REAL** as an interface | export/import is versioned and tested; there is **no Stage Control system in this repo to talk to** |
+| Remix/release import | **REAL** | imports org project audio and cross-project Live Lab assets, org- and project-checked |
+| Multi-device output routing (per-stem sends, FOH) | **PARTIAL** | logical outputs, cue/click buses and whole-mix `setSinkId` selection exist; per-stem *device* routing is the desktop backend's job |
+| Keyboard sampler, custom macros | **NOT BUILT** | zones are mapping conventions only, deliberately (V1 scope) |
+| Desktop app, Ableton Link, MIDI Clock, Stage Bridge | **NOT BUILT** | `docs/LIVE_LAB_DESKTOP.md` is a migration plan, not an implementation |
+| Experimental NEXT SCENE generation | **NOT BUILT** | deliberately. Its safety constraint is already enforced: generated audio is triggerable only once cached and verified |
+
+### What would change these statuses
+
+One rehearsal on real hardware settles most of the DEV-LABELED rows at once:
+plug in a controller, build a show package, pull the network cable, and run
+Performance Mode for a few minutes. That single session would move Web Audio,
+the AudioWorklet click, Web MIDI, the IndexedDB cache and offline playback from
+"spec-correct" to "verified running" — or find the bugs that only real audio
+hardware finds.
