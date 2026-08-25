@@ -12,7 +12,7 @@ on:
 
 jobs:
   masterclip:
-    name: MASTERCLIP OS typecheck, lint, tests & build
+    name: MASTERCLIP OS typecheck, lint, tests, browser suite & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

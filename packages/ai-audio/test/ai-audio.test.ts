@@ -226,6 +226,26 @@ describe('wavDurationMs', () => {
     expect(wavDurationMs(mp3)).toBeNull()
   })
 
+  it('returns null for a fmt chunk that runs off the end of the file', () => {
+    // Long enough to pass the 44-byte floor, but with a leading LIST chunk that
+    // pushes 'fmt ' close to EOF: the chunk header fits, the fields it declares
+    // do not. Reading past the end must be an answer, not a throw.
+    const bytes = new Uint8Array(48)
+    const view = new DataView(bytes.buffer)
+    const ascii = (offset: number, text: string) => {
+      for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
+    }
+    ascii(0, 'RIFF')
+    view.setUint32(4, 40, true)
+    ascii(8, 'WAVE')
+    ascii(12, 'LIST') // 16 bytes of padding, so the next chunk starts at 36
+    view.setUint32(16, 16, true)
+    ascii(36, 'fmt ') // header fits in 48 bytes; its fields reach to 60
+    view.setUint32(40, 16, true)
+
+    expect(wavDurationMs(bytes)).toBeNull()
+  })
+
   it('trusts the bytes present over a header that overstates them', () => {
     const wav = encodeWavPcm16(new Float32Array(SAMPLE_RATE), SAMPLE_RATE)
     // Truncated in transit: the data chunk still claims the full length.

@@ -204,6 +204,16 @@ export function synthesizeWav(spec: SynthesisSpec): Uint8Array {
  * number, so a scene claimed longer than its audio runs into silence on stage.
  */
 export function wavDurationMs(bytes: Uint8Array): number | null {
+  try {
+    return readWavDurationMs(bytes)
+  } catch {
+    // Unreadable is a real answer for this function, and the only safe one:
+    // audio arrives here from a provider today and from uploads tomorrow.
+    return null
+  }
+}
+
+function readWavDurationMs(bytes: Uint8Array): number | null {
   if (bytes.length < 44) return null
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const ascii = (offset: number, text: string): boolean => {
@@ -221,6 +231,11 @@ export function wavDurationMs(bytes: Uint8Array): number | null {
   while (offset + 8 <= bytes.length) {
     const size = view.getUint32(offset + 4, true)
     if (ascii(offset, 'fmt ')) {
+      // The loop only guarantees the 8-byte chunk header is present, while a
+      // fmt chunk is read through offset + 23. A file truncated inside its own
+      // fmt chunk would otherwise throw out of a function documented to return
+      // null for anything it cannot read.
+      if (offset + 24 > bytes.length) return null
       channels = view.getUint16(offset + 10, true)
       sampleRate = view.getUint32(offset + 12, true)
       bitsPerSample = view.getUint16(offset + 22, true)
