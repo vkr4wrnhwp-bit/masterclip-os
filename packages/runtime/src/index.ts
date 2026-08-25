@@ -16,6 +16,7 @@ import { CostController, CostLedger, MetricsService, QuoteStore } from '@masterc
 import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
 import { createAudioLayer, type AudioLayer } from '@masterclip/audio-engine'
+import { createSongLabLayer, type SongLabLayer } from '@masterclip/song-lab-engine'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
 
 export * from './render.js'
@@ -49,6 +50,7 @@ export interface Runtime {
   metrics: MetricsService
   agents: AgentLayer
   audio: AudioLayer
+  songLab: SongLabLayer
   liveLab: LiveLabRepo
   entitlements: EntitlementService
   liveLabService: LiveLabService
@@ -97,6 +99,8 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
   }
 
   const liveLabRepo = new LiveLabRepo(db, clock)
+  const entitlements = new EntitlementService(db, clock)
+  const audio = createAudioLayer({ config, logger, db, storage, queue, clock, ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}) })
 
   return {
     config,
@@ -117,9 +121,28 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     quotes: new QuoteStore(db, clock),
     metrics: new MetricsService(db, clock),
     agents: createAgentLayer(config, logger),
-    audio: createAudioLayer({ config, logger, db, storage, queue, clock, ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}) }),
+    audio,
+    // Song Lab borrows the audio layer's asset, consent and Operator Desk
+    // services rather than re-implementing secure audio storage.
+    songLab: createSongLabLayer({
+      config,
+      logger,
+      db,
+      storage,
+      queue,
+      clock,
+      entitlements,
+      audio: {
+        assets: audio.assets,
+        assetRepo: audio.repos.assets,
+        consents: audio.repos.consents,
+        operatorDesk: audio.repos.operatorDesk,
+        remix: audio.repos.remix,
+      },
+      ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
+    }),
     liveLab: liveLabRepo,
-    entitlements: new EntitlementService(db, clock),
+    entitlements,
     liveLabService: new LiveLabService({
       liveLab: liveLabRepo,
       storage,

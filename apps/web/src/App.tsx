@@ -20,6 +20,9 @@ import { AudioRemixView } from './views/AudioRemix.jsx'
 import { AudioVoiceVaultView } from './views/AudioVoiceVault.jsx'
 import { AudioSettingsView } from './views/AudioSettings.jsx'
 import { AudioAdminView } from './views/AudioAdmin.jsx'
+import { songLabApi } from './song-lab/api.js'
+import { SongLabHome, SongLabNew, SongLabProjects } from './song-lab/SongLabHome.jsx'
+import { SongLabProject } from './song-lab/SongLabProject.jsx'
 import { liveApi } from './live/api.js'
 import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
@@ -39,6 +42,16 @@ function parseHash(): Route {
   const params: Record<string, string> = {}
   for (const [key, value] of new URLSearchParams(query ?? '')) params[key] = value
   if (segments.length === 0) return { name: 'dashboard', params }
+  if (segments[0] === 'song-lab') {
+    if (segments[1] === 'new') return { name: 'song-lab-new', params }
+    if (segments[1] === 'projects' && segments[2]) {
+      // The tab is part of the path so a producer can link straight to, say,
+      // the arrangement view of a specific song.
+      return { name: 'song-lab-project', params: { ...params, songProjectId: segments[2], tab: segments[3] ?? 'overview' } }
+    }
+    if (segments[1] === 'projects') return { name: 'song-lab-projects', params }
+    return { name: 'song-lab', params }
+  }
   if (segments[0] === 'live-lab') {
     if (segments[1] === 'settings') return { name: 'live-settings', params }
     if (segments[1] === 'projects' && segments[2] && segments[2] !== 'new') {
@@ -88,6 +101,12 @@ export function App() {
   // /api/auth/me carries `userId` — email is the field both shapes share.
   const liveCaps = useAsync(
     () => (user ? liveApi.capabilities().catch(() => null) : Promise.resolve(null)),
+    [user?.email],
+  )
+  // Song Lab is entitlement-gated the same way. The nav entry appearing is a
+  // courtesy; the server refuses regardless.
+  const songLabCaps = useAsync(
+    () => (user ? songLabApi.capabilities().catch(() => null) : Promise.resolve(null)),
     [user?.email],
   )
 
@@ -180,6 +199,19 @@ export function App() {
             <NavLink route={route} to="/audio/admin" name="audio-admin">
               Partner entitlements
             </NavLink>
+            {songLabCaps.data?.capabilities.includes('song_lab.access') && (
+              <>
+                {/* Song Lab comes before Remix Lab in the creative workflow:
+                    diagnose the record, then decide what to do with it. */}
+                <div className="group">Song Lab</div>
+                <NavLink route={route} to="/song-lab" name="song-lab">
+                  Drop a record
+                </NavLink>
+                <NavLink route={route} to="/song-lab/projects" name="song-lab-projects">
+                  Song projects
+                </NavLink>
+              </>
+            )}
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
                 <div className="group">Performance</div>
@@ -231,6 +263,16 @@ export function App() {
           {route.name === 'audio-voice-vault' && <AudioVoiceVaultView />}
           {route.name === 'audio-settings' && <AudioSettingsView isAdmin={user.orgRole === 'owner' || user.orgRole === 'admin'} />}
           {route.name === 'audio-admin' && <AudioAdminView />}
+          {route.name === 'song-lab' && <SongLabHome />}
+          {route.name === 'song-lab-new' && <SongLabNew />}
+          {route.name === 'song-lab-projects' && <SongLabProjects />}
+          {route.name === 'song-lab-project' && (
+            <SongLabProject
+              projectId={route.params.songProjectId ?? ''}
+              tab={route.params.tab ?? 'overview'}
+              canSeeAr={songLabCaps.data?.capabilities.includes('song_lab.ar_view') ?? false}
+            />
+          )}
           {route.name === 'live-lab' && <LiveLabHome />}
           {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}

@@ -1,0 +1,117 @@
+# Song Lab — Lyrics and Vocal Intelligence
+
+## When lyrics are analysed
+
+Only when the organization supplied them, or transcribed them from audio it
+confirmed it controls. `lyricSource` records which — `user_supplied`,
+`transcribed`, `time_coded`, `vocal_transcript` — because the rights position
+differs.
+
+A version with no lyric rows produces **no lyric analysis**. Not an empty analysis,
+not an analysis full of zeroes: the API returns `analysis: null` with
+*"No authorized lyrics are attached to this version."* Musical analysis never
+requires lyrics.
+
+Lyrics attach to a **version**, not an analysis, so an edited lyric belongs to the
+song and survives reanalysis. Accepting an experiment carries the lyric onto the new
+version.
+
+## What is measured
+
+Syllable counts · line lengths · phrase lengths · title placement · title
+repetition · hook repetition · repeated phrases · rhyme placement · vowel density ·
+consonant density · verse/chorus vocabulary overlap · question phrasing ·
+first-person and second-person frequency · per-section lyric density.
+
+Nothing here judges lyrical quality. That is not a measurable property.
+
+## Syllable counting
+
+A vowel-group heuristic with the exception rules that matter most in sung English:
+silent terminal `e` ("time" is one), sounded `-le` after a consonant ("little" is
+two), `-ed` only syllabic after `t`/`d` ("wanted" two, "walked" one), plus a table
+of words the heuristic reliably gets wrong.
+
+It is a heuristic and is labelled as one. Syllable **architecture** — whether one
+line is much denser than another — survives a small per-word error; an absolute
+claim about a single line would not. Lyric metrics are capped at 0.6 confidence in
+the feature vector for exactly this reason.
+
+## Syllable architecture
+
+```
+CHORUS
+Line 1    11 syllables
+Line 2    13 syllables
+Line 3    12 syllables
+Line 4    14 syllables
+
+SELECTED COHORT
+Median hook-line length: 7 syllables
+```
+
+> Your chorus uses substantially longer phrases than the selected comparison
+> cohort. Try reducing one primary hook phrase to roughly 5–8 syllables and
+> preserving more rhythmic space around it.
+
+Fewer syllables are **not** universally better. This is a comparison against a
+chosen group, not a rule.
+
+## Title placement
+
+```
+TITLE APPEARS
+Chorus 1:       1
+Chorus 2:       1
+Final Chorus:   1
+TOTAL:          3
+
+Selected Cohort Median: 4.1
+```
+
+A user's title mark is authoritative and outranks any detection: marking a line
+sets `title_phrase = 1` and `user_confirmed = 1`, and clears every other line's
+mark. Where the user has supplied a title phrase but marked nothing, containment
+matching fills in — and only then, because matching against a title nobody gave us
+would be guessing.
+
+## Vocal density
+
+Where vocals can be detected reliably: vocal occupancy, phrase duration, words and
+syllables per second, rest duration, average and longest phrase, a held-note proxy,
+and verse/chorus/hook/final-chorus density.
+
+```
+VERSE     8.2 syllables/sec   93% vocal occupancy
+CHORUS    7.8 syllables/sec   89% vocal occupancy
+```
+
+> The chorus creates relatively little vocal-density contrast from the verse.
+
+Options: reduce chorus syllable count · create a longer held vowel · insert space
+before the title · repeat the title · add a response vocal · shorten one line.
+
+All of these are writing and performance choices. None is generated here.
+
+## Register
+
+Reported as a normalized band from the spectral centroid of voiced frames, never as
+note names, and capped by the vocal detector's own confidence.
+
+> The chorus occupies nearly the same vocal register as Verse 1, which may
+> contribute to lower perceived section contrast.
+
+Not: "your chorus is unsingable". Pitch alone does not support that judgement.
+
+## The provider seam
+
+```ts
+interface LyricAnalysisProvider {
+  analyzeLyrics(input: LyricAnalysisInput): Promise<LyricAnalysisResult>
+}
+```
+
+The heuristic implementation is the default. A language model could be registered
+in its place for better syllable and rhyme accuracy — but the interface deliberately
+takes lyrics as **input** rather than offering to write them. No implementation of
+this interface is permitted to generate a lyric.

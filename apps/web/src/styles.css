@@ -416,3 +416,160 @@ ol.setlist li:hover .setlist-actions { opacity: 1; }
 /* stem meters */
 .stem-meter { display: block; height: 3px; background: var(--bg-input); border-radius: 2px; margin-top: 4px; overflow: hidden; }
 .stem-meter-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.1s linear; }
+
+/* =============================================================== song lab ==
+ * Analytical, musical, expensive, calm.
+ *
+ * Same near-black and restrained gold as the rest of the platform. No
+ * gradients, no glow, no decorative waveforms — a diagnostic screen an artist
+ * and a producer can sit in front of for an hour.
+ */
+.sl-headline {
+  font-size: 26px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin: 0;
+}
+
+.sl-start-options { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.sl-start-options button { width: 100%; text-align: left; }
+
+/* ------------------------------------------------------------------ tabs -- */
+.sl-tabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+.sl-tabs a {
+  padding: 8px 12px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.sl-tabs a:hover { color: var(--text-dim); text-decoration: none; }
+.sl-tabs a.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* -------------------------------------------------------------- timeline -- */
+.sl-timeline { display: flex; flex-direction: column; }
+.sl-timeline-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.sl-timeline-row:disabled { cursor: default; }
+.sl-timeline-row:hover:not(:disabled) { background: rgba(255, 255, 255, 0.02); }
+.sl-timeline-row.selected { border-left-color: var(--accent); background: var(--bg-raised); }
+.sl-timeline-time { font-family: var(--mono); font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.sl-timeline-label { letter-spacing: 0.09em; font-size: 12px; }
+.sl-timeline-meta { color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.sl-confirmed { color: var(--ok); }
+.sl-hook { color: var(--accent); }
+
+/* ---------------------------------------------------------------- energy -- */
+.sl-energy { display: flex; flex-direction: column; gap: 5px; }
+.sl-energy-row { display: grid; grid-template-columns: 130px 1fr 34px; gap: 10px; align-items: center; }
+.sl-energy-label { font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); }
+.sl-energy-track { height: 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+.sl-energy-fill { display: block; height: 100%; background: var(--accent-dim); }
+.sl-energy-value { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--text-dim); }
+
+.sl-curve { margin-bottom: 6px; }
+.sl-curve svg { width: 100%; height: 90px; display: block; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; }
+.sl-curve-axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 3px; }
+
+/* ------------------------------------------------------------- benchmark -- */
+.sl-benchmark-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sl-benchmark-row:last-child { border-bottom: none; }
+.sl-benchmark-head { display: flex; align-items: baseline; gap: 10px; }
+.sl-benchmark-head strong { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.sl-benchmark-summary { margin: 6px 0 8px; font-size: 13px; color: var(--text-dim); }
+.sl-benchmark-meta { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* p10–p90 axis with the interquartile band drawn, so "where the middle half
+   of the cohort sits" is visible rather than inferred from two numbers. */
+.sl-distribution { position: relative; height: 18px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; margin-bottom: 8px; }
+.sl-distribution-band { position: absolute; top: 0; bottom: 0; background: rgba(216, 166, 87, 0.12); }
+.sl-distribution-median { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--text-faint); }
+.sl-distribution-song { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--accent); }
+
+/* ---------------------------------------------------------- observations -- */
+.sl-observation { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.sl-observation:last-child { border-bottom: none; }
+.sl-observation-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sl-observation-index { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+.sl-observation p { font-size: 13px; color: var(--text-dim); margin: 6px 0; }
+.sl-observation-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.sl-recommendation { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; padding: 8px 10px; background: var(--bg-raised); border-left: 2px solid var(--accent-dim); margin: 6px 0; }
+.sl-recommendation strong { font-size: 12px; }
+.sl-recommendation p { margin: 3px 0 0; font-size: 12px; }
+
+/* ------------------------------------------------------------ confidence -- */
+.sl-confidence { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: 2px; color: var(--text-faint); white-space: nowrap; }
+.sl-confidence-high { color: var(--ok); border-color: rgba(111, 191, 115, 0.3); }
+.sl-confidence-moderate { color: var(--text-dim); }
+.sl-confidence-low { color: var(--warn); border-color: rgba(224, 168, 60, 0.3); }
+.sl-confidence-insufficient { color: var(--text-faint); }
+
+/* --------------------------------------------------------------- rights -- */
+.sl-rights { border: 1px solid var(--border-strong); border-left: 2px solid var(--accent); padding: 12px 14px; margin: 14px 0; background: var(--bg-raised); }
+.sl-rights-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; }
+.sl-rights-check input { width: auto; margin-top: 3px; }
+.sl-rights p { margin: 8px 0 0; font-size: 12px; }
+.sl-inline-check { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-dim); margin: 6px 0; }
+.sl-inline-check input { width: auto; }
+
+/* -------------------------------------------------------------- cohorts -- */
+.sl-cohorts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+.sl-cohort { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); border-left: 2px solid transparent; color: var(--text); cursor: pointer; }
+.sl-cohort:hover { border-color: var(--border-strong); }
+.sl-cohort.selected { border-left-color: var(--accent); background: var(--bg-panel); }
+.sl-cohort strong { font-size: 12px; }
+.sl-cohort .faint { font-size: 11px; }
+.sl-cohort-meta { font-size: 10px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- audio -- */
+.sl-ab-buttons, .sl-tempo-buttons, .sl-experiment-buttons { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sl-tempo-buttons { margin-bottom: 10px; }
+.sl-experiment-buttons { margin-top: 10px; }
+
+/* -------------------------------------------------------- chant / builds -- */
+.sl-chant, .sl-build, .sl-contrast { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sl-chant:last-child, .sl-build:last-child, .sl-contrast:last-child { border-bottom: none; }
+.sl-patterns { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-top: 8px; }
+.sl-pattern { padding: 10px 12px; background: var(--bg-raised); border: 1px solid var(--border); }
+.sl-pattern-rhythm { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 0.08em; margin-bottom: 6px; }
+.sl-pattern strong { font-size: 12px; }
+.sl-pattern p { margin: 4px 0 0; font-size: 11px; }
+.sl-ideas { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-dim); }
+.sl-ideas li { margin: 3px 0; }
+
+/* --------------------------------------------------------------- lyrics -- */
+.sl-lyric-lines { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.sl-lyric-line { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: baseline; padding: 5px 8px; background: none; border: none; border-left: 2px solid transparent; color: var(--text); text-align: left; font-size: 13px; cursor: pointer; width: 100%; }
+.sl-lyric-line:hover { background: rgba(255, 255, 255, 0.02); }
+.sl-lyric-line.selected { border-left-color: var(--accent); background: var(--bg-raised); }
+.sl-lyric-syllables { font-family: var(--mono); font-size: 11px; color: var(--text-faint); text-align: right; }
+
+/* ------------------------------------------------------------------ A&R -- */
+.sl-ar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+.sl-ar-cell { padding: 12px 14px; background: var(--bg-panel); }
+.sl-ar-label { font-size: 9px; letter-spacing: 0.14em; color: var(--text-faint); margin-bottom: 4px; }
+.sl-ar-rating { font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sl-ar-rating.accent { color: var(--accent); font-size: 18px; }
+.sl-ar-recommendation { margin-top: 14px; padding: 14px; border: 1px solid var(--border-strong); border-left: 2px solid var(--accent); background: var(--bg-raised); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

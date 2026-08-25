@@ -1,0 +1,186 @@
+import type { Measured } from '@masterclip/song-feature-vectors'
+
+/**
+ * The vocabulary the analysis providers speak.
+ *
+ * Kept free of engine internals so a future third-party provider can satisfy
+ * these interfaces without adopting this repo's DSP, and so the mock provider
+ * is a peer of the real one rather than a special case.
+ */
+
+export interface AudioAssetRef {
+  id: string
+  orgId: string
+  /** Storage key. The provider resolves bytes through the caller's storage. */
+  storageKey: string
+  mimeType: string
+  fileName: string
+  /** SHA-256 of the source bytes. Deterministic providers seed from this. */
+  checksum: string
+  fileSize: number
+  durationMs: number | null
+}
+
+/** Section vocabulary. `custom` covers anything a user renames by hand. */
+export const SECTION_TYPES = [
+  'intro',
+  'verse',
+  'pre_chorus',
+  'chorus',
+  'post_chorus',
+  'hook',
+  'bridge',
+  'break',
+  'drop',
+  'instrumental',
+  'solo',
+  'breakdown',
+  'final_chorus',
+  'outro',
+  'custom',
+] as const
+
+export type SectionType = (typeof SECTION_TYPES)[number]
+
+export function isSectionType(value: string): value is SectionType {
+  return (SECTION_TYPES as readonly string[]).includes(value)
+}
+
+/** Sections that count as the song's primary payoff for timing metrics. */
+export const HOOK_SECTION_TYPES: SectionType[] = ['chorus', 'post_chorus', 'hook', 'drop', 'final_chorus']
+
+export const SECTION_LABELS: Record<SectionType, string> = {
+  intro: 'Intro',
+  verse: 'Verse',
+  pre_chorus: 'Pre-Chorus',
+  chorus: 'Chorus',
+  post_chorus: 'Post-Chorus',
+  hook: 'Hook',
+  bridge: 'Bridge',
+  break: 'Break',
+  drop: 'Drop',
+  instrumental: 'Instrumental',
+  solo: 'Solo',
+  breakdown: 'Breakdown',
+  final_chorus: 'Final Chorus',
+  outro: 'Outro',
+  custom: 'Section',
+}
+
+export interface DetectedSection {
+  sectionType: SectionType
+  /** Display label, e.g. `Verse 2`. */
+  label: string
+  startMs: number
+  endMs: number
+  confidence: number
+  orderIndex: number
+}
+
+export interface SectionFeatures {
+  /** 0–1 composite energy. */
+  energy: number
+  vocalOccupancy: number | null
+  arrangementDensity: number
+  spectralDensity: number
+  transientDensity: number
+  lowFrequencyDensity: number
+  stereoWidth: number | null
+  rhythmicDensity: number
+  /** Fixed-length descriptor used for section-to-section similarity. */
+  similarityVector: number[]
+}
+
+export interface StructureAnalysisResult {
+  sections: DetectedSection[]
+  /** Per-section features, aligned by `orderIndex`. */
+  features: SectionFeatures[]
+  confidence: number
+  provider: string
+  modelVersion: string
+  method: string
+}
+
+export interface MusicFeatureResult {
+  durationMs: number
+  bpm: Measured<number>
+  tempoStability: Measured<number>
+  meter: Measured<number>
+  key: Measured<string>
+  loudness: Measured<number>
+  dynamicRange: Measured<number>
+  peakDbfs: Measured<number>
+  stereoWidth: Measured<number>
+  spectralDensity: Measured<number>
+  transientDensity: Measured<number>
+  lowFrequencyDensity: Measured<number>
+  /** Normalized energy value per analysis frame, for the energy curve. */
+  energyCurve: number[]
+  /** Seconds per energy-curve point. */
+  energyCurveStepSeconds: number
+  /** Detected beat times in seconds. */
+  beats: number[]
+  leadInSeconds: number
+  tailSeconds: number
+  fadeInSeconds: number | null
+  fadeOutSeconds: number | null
+  harmonicChangeRate: Measured<number>
+  provider: string
+  modelVersion: string
+}
+
+export interface VocalAnalysisResult {
+  occupancy: Measured<number>
+  firstVocalSeconds: Measured<number>
+  averagePhraseSeconds: Measured<number>
+  longestPhraseSeconds: Measured<number>
+  restRatio: Measured<number>
+  heldNoteSeconds: Measured<number>
+  register: {
+    median: number | null
+    low: number | null
+    high: number | null
+    confidence: number
+  }
+  /** Continuous vocal phrases as `[startMs, endMs]`. */
+  phrases: Array<[number, number]>
+  /** Per-frame activity flags, for the vocal-density visualization. */
+  activity: number[]
+  activityStepSeconds: number
+  provider: string
+  modelVersion: string
+}
+
+/** Everything a provider needs to resolve bytes without knowing about storage. */
+export interface AudioSource {
+  asset: AudioAssetRef
+  /** Resolves the source bytes. Providers call this at most once. */
+  read: () => Promise<Uint8Array>
+}
+
+export interface SongStructureProvider {
+  readonly providerId: string
+  readonly modelVersion: string
+  isConfigured(): boolean
+  analyzeStructure(asset: AudioSource): Promise<StructureAnalysisResult>
+}
+
+export interface MusicFeatureProvider {
+  readonly providerId: string
+  readonly modelVersion: string
+  isConfigured(): boolean
+  analyzeMusicFeatures(asset: AudioSource): Promise<MusicFeatureResult>
+}
+
+export interface VocalAnalysisProvider {
+  readonly providerId: string
+  readonly modelVersion: string
+  isConfigured(): boolean
+  analyzeVocals(asset: AudioSource): Promise<VocalAnalysisResult>
+}
+
+export interface SongAnalysisProviderSet {
+  structure: SongStructureProvider
+  features: MusicFeatureProvider
+  vocals: VocalAnalysisProvider
+}

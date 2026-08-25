@@ -9,6 +9,7 @@ export const QUEUES = {
   maintenance: 'maintenance',
   audio: 'audio',
   live: 'live',
+  songLab: 'song_lab',
 } as const
 
 /** Job types handled by apps/worker. */
@@ -37,6 +38,20 @@ export const JOB_TYPES = {
   audioScheduleTick: 'audio.schedule.tick',
   audioWebhookProcess: 'audio.webhook.process',
   liveAiGenerate: 'live.ai.generate',
+  // Street Banker Song Lab
+  songLabValidateUpload: 'song_lab.upload.validate',
+  songLabAnalyzeAudio: 'song_lab.audio.analyze',
+  songLabDetectStructure: 'song_lab.structure.detect',
+  songLabAnalyzeVocal: 'song_lab.vocal.analyze',
+  songLabTranscribeLyrics: 'song_lab.lyrics.transcribe',
+  songLabAnalyzeLyrics: 'song_lab.lyrics.analyze',
+  songLabBuildFeatures: 'song_lab.features.build',
+  songLabCompareBenchmark: 'song_lab.benchmark.compare',
+  songLabGenerateObservations: 'song_lab.observations.generate',
+  songLabRenderExperiment: 'song_lab.experiment.render',
+  songLabGenerateWaveform: 'song_lab.waveform.generate',
+  songLabUpdateOutcome: 'song_lab.outcome.update',
+  songLabReanalyze: 'song_lab.reanalyze',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]

@@ -1398,4 +1398,366 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_webhook_events ON provider_webhoo
 CREATE INDEX IF NOT EXISTS idx_provider_webhook_status ON provider_webhook_events(status, received_at);
 `,
   },
+  {
+    id: '0005_song_lab',
+    sql: `
+-- ===========================================================================
+-- Street Banker Song Lab
+--
+-- Diagnostic, benchmarking and experimentation layer. Two rules are enforced
+-- by the shape of this schema rather than by application discipline:
+--
+--   1. The original recording is never overwritten. Every rendered experiment
+--      lands on its own asset, and every accepted experiment becomes a new
+--      song_versions row with a parent pointer. Nothing UPDATEs source bytes.
+--   2. A benchmark figure is meaningless without its population. Cohorts carry
+--      their filter, their sample size and their provenance, and every stored
+--      comparison records the sample size it was computed over.
+--
+-- Tenant-owned tables carry org_id and every repository method filters on it.
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS song_lab_projects (
+  id                            TEXT PRIMARY KEY,
+  org_id                        TEXT NOT NULL REFERENCES orgs(id),
+  artist_id                     TEXT,
+  artist_name                   TEXT NOT NULL,
+  title                         TEXT NOT NULL,
+  genre                         TEXT NOT NULL,
+  status                        TEXT NOT NULL,
+  source_asset_id               TEXT,
+  current_version_id            TEXT,
+  selected_benchmark_cohort_id  TEXT,
+  rights_confirmation_id        TEXT NOT NULL,
+  -- Set by the artist/producer, and authoritative over any detected title.
+  title_phrase                  TEXT NOT NULL,
+  notes                         TEXT NOT NULL,
+  demo                          INTEGER NOT NULL,
+  review_completed_at           TEXT,
+  created_by                    TEXT NOT NULL,
+  created_at                    TEXT NOT NULL,
+  updated_at                    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_lab_projects_org ON song_lab_projects(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_song_lab_projects_artist ON song_lab_projects(org_id, artist_id);
+
+-- Version lineage. parent_version_id is what makes "compare A to B" and
+-- "where did this come from" answerable years later.
+CREATE TABLE IF NOT EXISTS song_versions (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id TEXT NOT NULL REFERENCES song_lab_projects(id),
+  parent_version_id   TEXT,
+  version_type        TEXT NOT NULL,
+  version_label       TEXT NOT NULL,
+  source_asset_id     TEXT,
+  experiment_id       TEXT,
+  notes               TEXT NOT NULL,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_versions_project ON song_versions(org_id, song_lab_project_id, created_at);
+
+-- One row per analysis run. Old runs are never deleted: REANALYZE WITH CURRENT
+-- ENGINE adds a row so results stay comparable across engine versions.
+CREATE TABLE IF NOT EXISTS song_analyses (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id TEXT NOT NULL REFERENCES song_lab_projects(id),
+  song_version_id     TEXT NOT NULL,
+  analysis_version    TEXT NOT NULL,
+  engine_version      TEXT NOT NULL,
+  status              TEXT NOT NULL,
+  duration_ms         INTEGER,
+  bpm                 REAL,
+  bpm_confidence      REAL,
+  tempo_stability     REAL,
+  song_key            TEXT,
+  key_confidence      REAL,
+  meter               INTEGER,
+  meter_confidence    REAL,
+  loudness            REAL,
+  dynamic_range       REAL,
+  peak_dbfs           REAL,
+  stereo_width        REAL,
+  first_vocal_ms      INTEGER,
+  structure_confidence REAL,
+  -- JSON: the full SongFeatureVector, the energy curve, provider provenance,
+  -- and the raw provider payloads for Producer View.
+  feature_vector      TEXT NOT NULL,
+  energy_curve        TEXT NOT NULL,
+  vocal_analysis      TEXT NOT NULL,
+  providers           TEXT NOT NULL,
+  configuration       TEXT NOT NULL,
+  source_checksum     TEXT NOT NULL,
+  failure_reason      TEXT,
+  created_at          TEXT NOT NULL,
+  completed_at        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_song_analyses_project ON song_analyses(org_id, song_lab_project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_song_analyses_version ON song_analyses(song_version_id, created_at);
+
+-- Machine-detected and human-confirmed structure live in the same table.
+-- human_confirmed marks a boundary the user owns; reanalysis must preserve it.
+CREATE TABLE IF NOT EXISTS song_sections (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  song_analysis_id  TEXT NOT NULL REFERENCES song_analyses(id),
+  section_type      TEXT NOT NULL,
+  label             TEXT NOT NULL,
+  start_ms          INTEGER NOT NULL,
+  end_ms            INTEGER NOT NULL,
+  confidence        REAL NOT NULL,
+  human_confirmed   INTEGER NOT NULL,
+  is_hook           INTEGER NOT NULL,
+  is_title_phrase   INTEGER NOT NULL,
+  order_index       INTEGER NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_sections_analysis ON song_sections(song_analysis_id, order_index);
+
+CREATE TABLE IF NOT EXISTS song_section_features (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  song_section_id     TEXT NOT NULL REFERENCES song_sections(id),
+  energy              REAL NOT NULL,
+  vocal_occupancy     REAL,
+  syllable_density    REAL,
+  arrangement_density REAL NOT NULL,
+  spectral_density    REAL NOT NULL,
+  transient_density   REAL NOT NULL,
+  low_frequency_density REAL NOT NULL,
+  stereo_width        REAL,
+  rhythmic_density    REAL NOT NULL,
+  similarity_vector   TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_song_section_features ON song_section_features(song_section_id);
+
+-- Lyrics are stored per version, not per analysis: an edited lyric belongs to
+-- the song, and survives reanalysis.
+CREATE TABLE IF NOT EXISTS song_lyric_lines (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  song_version_id TEXT NOT NULL,
+  section_id      TEXT,
+  line_index      INTEGER NOT NULL,
+  start_ms        INTEGER,
+  end_ms          INTEGER,
+  text            TEXT NOT NULL,
+  syllable_count  INTEGER NOT NULL,
+  title_phrase    INTEGER NOT NULL,
+  hook_phrase     INTEGER NOT NULL,
+  user_confirmed  INTEGER NOT NULL,
+  lyric_source    TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_lyric_lines_version ON song_lyric_lines(org_id, song_version_id, line_index);
+
+-- org_id is NULL for cohorts published by the deployment to every tenant.
+-- proprietary cohorts require an explicit entitlement to read.
+CREATE TABLE IF NOT EXISTS benchmark_cohorts (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT,
+  name              TEXT NOT NULL,
+  description       TEXT NOT NULL,
+  cohort_type       TEXT NOT NULL,
+  filter_definition TEXT NOT NULL,
+  source_definition TEXT NOT NULL,
+  sample_size       INTEGER NOT NULL,
+  status            TEXT NOT NULL,
+  proprietary       INTEGER NOT NULL,
+  provider_id       TEXT NOT NULL,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_benchmark_cohorts_org ON benchmark_cohorts(org_id, status);
+
+-- Derived features only. There is deliberately no column for audio bytes or a
+-- storage key here: the benchmark library holds metadata and measurements, not
+-- other people's masters.
+CREATE TABLE IF NOT EXISTS benchmark_song_features (
+  id                  TEXT PRIMARY KEY,
+  benchmark_cohort_id TEXT NOT NULL REFERENCES benchmark_cohorts(id),
+  benchmark_song_id   TEXT NOT NULL,
+  provenance_id       TEXT NOT NULL,
+  feature_vector      TEXT NOT NULL,
+  metadata            TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_benchmark_song_features ON benchmark_song_features(benchmark_cohort_id);
+
+CREATE TABLE IF NOT EXISTS benchmark_provenance (
+  id                  TEXT PRIMARY KEY,
+  benchmark_cohort_id TEXT NOT NULL REFERENCES benchmark_cohorts(id),
+  source_kind         TEXT NOT NULL,
+  source_name         TEXT NOT NULL,
+  basis               TEXT NOT NULL,
+  captured_at         TEXT NOT NULL,
+  stores_masters      INTEGER NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_benchmark_provenance ON benchmark_provenance(benchmark_cohort_id);
+
+CREATE TABLE IF NOT EXISTS song_benchmark_results (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  song_analysis_id      TEXT NOT NULL REFERENCES song_analyses(id),
+  benchmark_cohort_id   TEXT NOT NULL,
+  metric_key            TEXT NOT NULL,
+  song_value            REAL,
+  percentile            REAL,
+  cohort_median         REAL,
+  cohort_mean           REAL,
+  p10                   REAL,
+  p25                   REAL,
+  p75                   REAL,
+  p90                   REAL,
+  z_score               REAL,
+  sample_size           INTEGER NOT NULL,
+  confidence            REAL NOT NULL,
+  classification        TEXT NOT NULL,
+  classification_label  TEXT NOT NULL,
+  summary               TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_benchmark_results ON song_benchmark_results(song_analysis_id, benchmark_cohort_id);
+
+CREATE TABLE IF NOT EXISTS song_observations (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id   TEXT NOT NULL REFERENCES song_lab_projects(id),
+  song_version_id       TEXT NOT NULL,
+  song_analysis_id      TEXT NOT NULL,
+  benchmark_cohort_id   TEXT,
+  observation_type      TEXT NOT NULL,
+  category              TEXT NOT NULL,
+  title                 TEXT NOT NULL,
+  description           TEXT NOT NULL,
+  severity              TEXT NOT NULL,
+  confidence            REAL NOT NULL,
+  source_metric_keys    TEXT NOT NULL,
+  benchmark_result_ids  TEXT NOT NULL,
+  status                TEXT NOT NULL,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_observations_project ON song_observations(org_id, song_lab_project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS song_recommendations (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  song_observation_id   TEXT NOT NULL REFERENCES song_observations(id),
+  recommendation_type   TEXT NOT NULL,
+  title                 TEXT NOT NULL,
+  description           TEXT NOT NULL,
+  experiment_supported  INTEGER NOT NULL,
+  confidence            REAL NOT NULL,
+  -- A recommendation is a suggestion until a human says otherwise.
+  human_approved        INTEGER NOT NULL,
+  approved_by           TEXT,
+  approved_at           TEXT,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_recommendations ON song_recommendations(song_observation_id);
+
+CREATE TABLE IF NOT EXISTS song_experiments (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id   TEXT NOT NULL REFERENCES song_lab_projects(id),
+  source_version_id     TEXT NOT NULL,
+  recommendation_id     TEXT,
+  name                  TEXT NOT NULL,
+  experiment_type       TEXT NOT NULL,
+  intent                TEXT NOT NULL,
+  edit_decision_list    TEXT NOT NULL,
+  bpm_override          REAL,
+  status                TEXT NOT NULL,
+  preview_asset_id      TEXT,
+  predicted_duration_ms INTEGER,
+  rendered_duration_ms  INTEGER,
+  renderer              TEXT,
+  renderer_version      TEXT,
+  placeholder_preview   INTEGER NOT NULL,
+  accepted_version_id   TEXT,
+  failure_reason        TEXT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_experiments_project ON song_experiments(org_id, song_lab_project_id, created_at);
+
+-- Internal A&R. Ratings are traceable: every one names the evidence it rests
+-- on, and reviewed_by is never a machine.
+CREATE TABLE IF NOT EXISTS song_ar_reviews (
+  id                            TEXT PRIMARY KEY,
+  org_id                        TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id           TEXT NOT NULL REFERENCES song_lab_projects(id),
+  song_analysis_id              TEXT,
+  structure_rating              TEXT NOT NULL,
+  hook_rating                   TEXT NOT NULL,
+  early_payoff_rating           TEXT NOT NULL,
+  arrangement_contrast_rating   TEXT NOT NULL,
+  vocal_memorability_rating     TEXT NOT NULL,
+  streaming_fit_rating          TEXT NOT NULL,
+  live_potential_rating         TEXT NOT NULL,
+  sync_potential_rating         TEXT NOT NULL,
+  recommendation                TEXT NOT NULL,
+  why                           TEXT NOT NULL,
+  evidence                      TEXT NOT NULL,
+  confidence                    REAL NOT NULL,
+  status                        TEXT NOT NULL,
+  reviewed_by                   TEXT,
+  reviewed_at                   TEXT,
+  created_by                    TEXT NOT NULL,
+  created_at                    TEXT NOT NULL,
+  updated_at                    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_ar_reviews ON song_ar_reviews(org_id, song_lab_project_id, created_at);
+
+-- The closed loop. Correlation only: outcome_metrics is observed data, and
+-- nothing in this schema records a causal claim.
+CREATE TABLE IF NOT EXISTS song_outcome_links (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id     TEXT NOT NULL REFERENCES song_lab_projects(id),
+  recommendation_id       TEXT,
+  observation_id          TEXT,
+  suggested_at            TEXT NOT NULL,
+  accepted                INTEGER NOT NULL,
+  accepted_at             TEXT,
+  implemented             INTEGER NOT NULL,
+  implemented_version_id  TEXT,
+  release_id              TEXT,
+  released_at             TEXT,
+  outcome_window          TEXT NOT NULL,
+  outcome_metrics         TEXT NOT NULL,
+  correlation_notes       TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_outcome_links ON song_outcome_links(org_id, song_lab_project_id);
+
+-- Handoffs to Remix Lab, Live Lab, Release Command Center and Operator Desk.
+-- The payload is snapshotted so a downstream module reads what was approved,
+-- not whatever the project has become since.
+CREATE TABLE IF NOT EXISTS song_lab_handoffs (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id TEXT NOT NULL REFERENCES song_lab_projects(id),
+  song_version_id     TEXT NOT NULL,
+  target              TEXT NOT NULL,
+  target_record_id    TEXT,
+  status              TEXT NOT NULL,
+  payload             TEXT NOT NULL,
+  failure_reason      TEXT,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_lab_handoffs ON song_lab_handoffs(org_id, song_lab_project_id, created_at);
+`,
+  },
 ]

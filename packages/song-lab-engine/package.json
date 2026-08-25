@@ -1,0 +1,29 @@
+{
+  "name": "@masterclip/song-lab-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masterclip/ai-audio": "workspace:*",
+    "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/audio-core": "workspace:*",
+    "@masterclip/audio-domain": "workspace:*",
+    "@masterclip/audio-engine": "workspace:*",
+    "@masterclip/audio-experiments": "workspace:*",
+    "@masterclip/database": "workspace:*",
+    "@masterclip/domain": "workspace:*",
+    "@masterclip/lyric-analysis": "workspace:*",
+    "@masterclip/music-benchmarking": "workspace:*",
+    "@masterclip/queue": "workspace:*",
+    "@masterclip/shared": "workspace:*",
+    "@masterclip/song-analysis": "workspace:*",
+    "@masterclip/song-feature-vectors": "workspace:*",
+    "@masterclip/song-lab-domain": "workspace:*",
+    "@masterclip/song-structure": "workspace:*"
+  }
+}

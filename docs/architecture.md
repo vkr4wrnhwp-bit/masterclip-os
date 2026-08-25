@@ -47,6 +47,15 @@ over the network — the API is used to build and verify the show beforehand, an
 to sync analytics afterwards. AI generation still obeys the rule above: it is
 queued to the worker, never awaited, and never on the playback path.
 
+Song Lab (`docs/SONG_LAB.md`) sits on the spine unmodified — upload, queue,
+analyse in the worker, read results over HTTP — and adds one constraint of its
+own: **it only ever reads the artist's audio.** Analysis opens a source asset;
+experiment rendering opens a source asset and writes a *new* one. No Song Lab
+code path writes to a source asset, which is what makes "the original is never
+modified" a structural property rather than a promise. Its analytical packages
+carry no React, HTTP or database dependency, so Signal, Remix Lab, Live Lab and
+internal A&R tooling can reuse the engine without adopting the module.
+
 ---
 
 ## 2. Packages, and why each exists
@@ -73,6 +82,14 @@ queued to the worker, never awaited, and never on the playback path.
 | `midi-engine` | controller-agnostic MIDI parsing, Learn, mapping application, device sources |
 | `performance-cache` | the local show cache (IndexedDB / memory) and its checksum verification |
 | `ai-audio` | provider-agnostic AI audio generation, prompt safety, and a mock that synthesizes real WAVs |
+| `song-feature-vectors` | Song Lab's measurement envelope (`value` + confidence + method + provider), the metric registry, the versioned feature vector |
+| `song-analysis` | pure-TS PCM decoding and DSP: FFT, tempo, key, loudness, stereo, vocal activity — plus the analysis provider contracts and a deterministic mock |
+| `song-structure` | section detection (self-similarity → novelty → clustering), structural metrics, section contrast, Build Intelligence, Chant Finder |
+| `lyric-analysis` | syllable, phrase, title and repetition analysis of authorized lyrics. Takes lyrics as input; no implementation may generate one |
+| `music-benchmarking` | cohorts and their required provenance, percentile statistics, the comparison engine, observation generation |
+| `audio-experiments` | edit decision lists, validation, on-paper projection, bar-aware builders, ffmpeg and placeholder renderers |
+| `song-lab-domain` | Song Lab repositories, capabilities and record types |
+| `song-lab-engine` | Song Lab services and its composition root |
 
 ---
 

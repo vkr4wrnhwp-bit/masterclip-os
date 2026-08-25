@@ -128,6 +128,46 @@ official SDK v2.64.0); the mock provider renders real WAV files so the whole
 layer — including `pnpm seed`'s fictional demo data — runs with no
 credentials and no spend. Start at
 [`docs/AUDIO_INTELLIGENCE.md`](docs/AUDIO_INTELLIGENCE.md).
+## Song Lab
+
+**Drop a record. Diagnose it. Compare it intelligently. Test the possibilities.**
+
+The song-diagnostic and experimentation module. Upload a recording the artist owns
+or is authorized to use; Song Lab works out its structure, tempo, key, energy shape,
+arrangement contrast and vocal density, compares those against a **comparison cohort
+the user chooses**, and lets them hear alternative versions — an earlier chorus, a
+shorter intro, +4 BPM — built non-destructively from their own audio.
+
+Three rules are enforced in code, not in a style guide:
+
+- **Nothing is fabricated.** Every derived feature carries its provider, method and
+  confidence; a feature that could not be determined is `null` and renders as *"not
+  enough information"*, never as a zero, and produces no comparison.
+- **No universal formula.** Every percentile names its cohort, that cohort's sample
+  size, and where its numbers came from. A cohort with no provenance cannot be
+  published; one under 30 songs is flagged `LOW SAMPLE SIZE`.
+- **Nothing is overwritten.** An experiment is a stored *edit decision list*; the
+  renderer reads the source and writes a new asset; accepting one creates a new
+  version with a parent pointer. The original stays playable forever.
+
+Suggestions are framed as *worth testing*, never as predictions. Internal A&R is a
+separate, permission-controlled view, and its draft cannot become a decision without
+a named human approving it.
+
+`pnpm seed` creates a fictional **Example Artist — "Signal Fire"** demo (3:47,
+92 BPM, first chorus 0:56) with locally synthesized audio, benchmarked through the
+real comparison engine, with three experiments ready to hear. Open **Song Lab** in
+the nav; entitlement-gated per organization and enforced server-side.
+
+Docs: [SONG_LAB.md](docs/SONG_LAB.md) · [analysis](docs/SONG_LAB_ANALYSIS.md) ·
+[structure](docs/SONG_LAB_STRUCTURE.md) · [benchmarks](docs/SONG_LAB_BENCHMARKS.md) ·
+[experiments](docs/SONG_LAB_EXPERIMENTS.md) · [lyrics](docs/SONG_LAB_LYRICS.md) ·
+[producer view](docs/SONG_LAB_PRODUCER_VIEW.md) · [A&R](docs/SONG_LAB_AR.md) ·
+[Signal](docs/SONG_LAB_SIGNAL.md) · [data rights](docs/SONG_LAB_DATA_RIGHTS.md) ·
+[runbook](docs/SONG_LAB_RUNBOOK.md)
+
+---
+
 ## Live Lab
 
 The live-performance module: turn releases, stems, and authorized AI-generated
@@ -256,6 +296,9 @@ packages/   shared · shot-schema · domain · database · queue · asset-storag
             audio-core · audio-providers · audio-domain · audio-engine
             live-engine · midi-engine · performance-project · performance-cache
             ai-audio                          (Live Lab — docs/LIVE_LAB.md)
+            song-feature-vectors · song-analysis · song-structure
+            lyric-analysis · music-benchmarking · audio-experiments
+            song-lab-domain · song-lab-engine  (Song Lab — docs/SONG_LAB.md)
 docs/       architecture · provider-matrix · current-pricing-snapshot
             model-capabilities · licensing-inventory · security-model
             cost-strategy · cinematic-standard · risk-register · build-audit
@@ -281,6 +324,12 @@ docs/       architecture · provider-matrix · current-pricing-snapshot
 | [AUDIO_PROVIDERS](docs/AUDIO_PROVIDERS.md) | ElevenLabs/mocks, verification status, adding a provider |
 | [AUDIO_SECURITY](docs/AUDIO_SECURITY.md) · [AUDIO_CONSENT](docs/AUDIO_CONSENT.md) · [AUDIO_RIGHTS_POLICY](docs/AUDIO_RIGHTS_POLICY.md) | before exposing audio features to anyone |
 | [AUDIO_RETENTION](docs/AUDIO_RETENTION.md) · [AUDIO_WEBHOOKS](docs/AUDIO_WEBHOOKS.md) · [AUDIO_RUNBOOK](docs/AUDIO_RUNBOOK.md) | operating it |
+| [SONG_LAB](docs/SONG_LAB.md) | the song-diagnostic module's map — start here for Song Lab |
+| [SONG_LAB_ANALYSIS](docs/SONG_LAB_ANALYSIS.md) · [SONG_LAB_STRUCTURE](docs/SONG_LAB_STRUCTURE.md) | what is measured, how, and what it refuses to claim |
+| [SONG_LAB_BENCHMARKS](docs/SONG_LAB_BENCHMARKS.md) | before presenting any percentile as market data |
+| [SONG_LAB_EXPERIMENTS](docs/SONG_LAB_EXPERIMENTS.md) · [SONG_LAB_LYRICS](docs/SONG_LAB_LYRICS.md) · [SONG_LAB_PRODUCER_VIEW](docs/SONG_LAB_PRODUCER_VIEW.md) | the artist-facing surfaces |
+| [SONG_LAB_AR](docs/SONG_LAB_AR.md) · [SONG_LAB_SIGNAL](docs/SONG_LAB_SIGNAL.md) | internal A&R and the closed loop |
+| [SONG_LAB_DATA_RIGHTS](docs/SONG_LAB_DATA_RIGHTS.md) · [SONG_LAB_RUNBOOK](docs/SONG_LAB_RUNBOOK.md) | before exposing it to anyone, and operating it |
 
 ---
 

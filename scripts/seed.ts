@@ -8,6 +8,7 @@
  */
 import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { seedAudioDemo } from '@masterclip/audio-engine'
+import { seedSongLabDemo } from '@masterclip/song-lab-engine'
 import { applyEnvFile, sha256Hex } from '@masterclip/shared'
 import { CharacterRecord, EnvironmentRecord, emptyShot } from '@masterclip/shot-schema'
 import { objectKey } from '@masterclip/asset-storage'
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
     const existingProjects = await runtime.projects.list(orgId)
     if (existingProjects.length > 0) {
       await seedLiveLab(runtime, orgId, userId)
+      await seedSongLab(runtime, orgId, userId)
       console.log(`org already seeded (${existingProjects.length} project(s)) — nothing to do`)
       console.log(`sign in as ${EMAIL}`)
       await runtime.close()
@@ -235,6 +237,7 @@ async function main(): Promise<void> {
   const audioSeed = await seedAudioDemo(runtime.audio, { orgId, userId })
   console.log(audioSeed.seeded ? 'audio intelligence demo data seeded' : 'audio intelligence demo data already present')
   await seedLiveLab(runtime, orgId, userId)
+  await seedSongLab(runtime, orgId, userId)
 
   console.log('')
   console.log(`sign in as ${credentials}`)
@@ -242,6 +245,17 @@ async function main(): Promise<void> {
   console.log('next: pnpm masterclip render submit --shot <shotId> --count 4   (mock provider, no spend)')
 
   await runtime.close()
+}
+
+/**
+ * The Song Lab demo: the fictional "Example Artist — Signal Fire", analysed,
+ * benchmarked against a published cohort, with three experiments ready to hear.
+ * The audio is synthesized locally — no real recording is involved anywhere in
+ * this seed.
+ */
+async function seedSongLab(runtime: Runtime, orgId: string, userId: string): Promise<void> {
+  const result = await seedSongLabDemo(runtime.songLab, { orgId, userId, entitlements: runtime.entitlements })
+  console.log(result.seeded ? `song lab demo seeded (Example Artist — Signal Fire): ${result.projectId}` : 'song lab demo already present')
 }
 
 /**

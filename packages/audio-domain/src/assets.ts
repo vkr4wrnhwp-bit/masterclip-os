@@ -11,6 +11,10 @@ export type AudioProjectType =
   | 'remix'
   | 'voice_vault'
   | 'library'
+  // Song Lab sources and rendered experiment previews. Stored by the same
+  // asset service as every other audio file, so tenant prefixes, retention and
+  // signed-URL serving are one implementation rather than two.
+  | 'song_lab'
 
 export interface AudioAssetRecord {
   id: string

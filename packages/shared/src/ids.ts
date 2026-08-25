@@ -108,6 +108,23 @@ export type IdPrefix =
   | 'lpev'
   | 'last'
   | 'ent'
+  // Street Banker Song Lab
+  | 'slp' // song lab project
+  | 'sv' // song version
+  | 'sa' // song analysis
+  | 'ssec' // song section
+  | 'ssf' // song section feature
+  | 'sll' // song lyric line
+  | 'bcoh' // benchmark cohort
+  | 'bsf' // benchmark song feature
+  | 'bprov' // benchmark provenance
+  | 'sbr' // song benchmark result
+  | 'sobs' // song observation
+  | 'srec' // song recommendation
+  | 'sexp' // song experiment
+  | 'sar' // song A&R review
+  | 'sout' // song outcome link
+  | 'shof' // song lab handoff
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`

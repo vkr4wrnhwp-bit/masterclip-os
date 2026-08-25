@@ -36,6 +36,8 @@
     "@masterclip/provider-selfhosted": "workspace:*",
     "@masterclip/qc-engine": "workspace:*",
     "@masterclip/queue": "workspace:*",
-    "@masterclip/shared": "workspace:*"
+    "@masterclip/shared": "workspace:*",
+    "@masterclip/song-lab-domain": "workspace:*",
+    "@masterclip/song-lab-engine": "workspace:*"
   }
 }
