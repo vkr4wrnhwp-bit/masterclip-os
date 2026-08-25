@@ -101,6 +101,12 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     dialect: runtime.db.dialect,
     storage: runtime.storage.name,
     agents: runtime.agents.available,
+    // Which build is actually serving. Without this, confirming a deploy meant
+    // inferring the version from which routes happened to 404. Empty when the
+    // host injects no commit variable — an honest blank, never a guess.
+    commit: runtime.config.commit,
+    commitShort: runtime.config.commit.slice(0, 7),
+    branch: runtime.config.branch,
     time: runtime.clock.isoNow(),
   }))
 

@@ -561,3 +561,39 @@ describe('money-path regressions', () => {
     expect(Number(rows?.n ?? 0)).toBe(1)
   })
 })
+
+describe('build identity on /api/health', () => {
+  it('reports the commit a deployment is running', async () => {
+    // Confirming a deploy previously meant inferring the version from which
+    // routes happened to 404. The health payload now answers it directly.
+    await app.close()
+    await boot({ GIT_COMMIT: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678' })
+    const body = (await app.inject({ method: 'GET', url: '/api/health' })).json()
+    expect(body.commit).toBe('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678')
+    expect(body.commitShort).toBe('a1b2c3d')
+  })
+
+  it('inherits the host’s variable when no explicit commit is set', async () => {
+    await app.close()
+    await boot({ RENDER_GIT_COMMIT: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', RENDER_GIT_BRANCH: 'main' })
+    const body = (await app.inject({ method: 'GET', url: '/api/health' })).json()
+    expect(body.commit).toBe('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')
+    expect(body.branch).toBe('main')
+  })
+
+  it('an explicit commit overrides the host’s', async () => {
+    await app.close()
+    await boot({ GIT_COMMIT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', RENDER_GIT_COMMIT: 'bbbbbbbb' })
+    expect((await app.inject({ method: 'GET', url: '/api/health' })).json().commit).toBe(
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    )
+  })
+
+  it('reports an honest blank rather than inventing a version', async () => {
+    // A deployment whose host provides nothing must not claim a commit.
+    const body = (await app.inject({ method: 'GET', url: '/api/health' })).json()
+    expect(body.commit).toBe('')
+    expect(body.commitShort).toBe('')
+    expect(body.ok).toBe(true)
+  })
+})
