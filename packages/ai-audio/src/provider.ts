@@ -12,6 +12,8 @@ import { checkPromptSafety } from './safety.js'
  */
 
 export interface SceneGenerationInput {
+  /** Owning organization — the platform audio layer meters and gates per tenant. */
+  orgId: string
   request: AiSceneRequest
   /** Effective tempo after tempoBehavior is applied. */
   bpm: number
