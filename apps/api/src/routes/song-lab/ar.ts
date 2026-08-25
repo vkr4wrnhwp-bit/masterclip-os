@@ -103,6 +103,10 @@ export async function registerSongLabArRoutes(app: FastifyInstance, runtime: Run
 
   app.post('/api/song-lab/projects/:id/attach-operator-desk', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.access')
+    // Operator Desk has its own entitlement, like every other handoff target.
+    // Writing a note into the CRM is an Operator Desk action that happens to
+    // start in Song Lab; holding Song Lab is not a licence to write there.
+    await runtime.audio.access.authorize({ capability: 'audio.operator_agent', actor })
     const { id } = request.params as { id: string }
     const body = z.object({ leadId: z.string().min(1), note: z.string().max(2000).optional() }).parse(request.body)
     return { handoff: await songLab.integrations.attachToOperatorDesk(actor, id, body.leadId, body.note) }

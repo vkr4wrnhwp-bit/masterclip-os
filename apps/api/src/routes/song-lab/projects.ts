@@ -7,6 +7,18 @@ import { SECTION_TYPES } from '@masterclip/song-analysis'
 import { readUpload, parseBool } from '../audio/helpers.js'
 import { requireSongLab } from './helpers.js'
 
+/**
+ * Which of an organization's audio Song Lab will offer for import.
+ *
+ * Songs, not everything the tenant owns. A meeting recording or a voice sample
+ * is not a record to diagnose, and listing it here would hand a user holding
+ * only `song_lab.analysis` a route to signed URLs for audio that belongs to
+ * modules they may not be entitled to. Same tenant either way — this is a
+ * cross-module seam, not a tenant boundary — but the narrow list is both the
+ * safer and the more sensible product behaviour.
+ */
+const IMPORTABLE_PROJECT_TYPES = new Set(['song_lab', 'remix', 'library'])
+
 /** Projects, audio intake, analysis, structure and versions. */
 export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
   const songLab = runtime.songLab
@@ -139,9 +151,10 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
   /** Audio the caller could import — their organization's, and only theirs. */
   app.get('/api/song-lab/importable', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
-    const assets = await runtime.audio.repos.assets.list(actor.orgId, {}, 100)
+    const assets = await runtime.audio.repos.assets.list(actor.orgId, {}, 200)
     return {
       assets: assets
+        .filter((asset) => IMPORTABLE_PROJECT_TYPES.has(asset.projectType))
         .filter((asset) => asset.assetType !== 'song_lab_experiment_preview')
         .map((asset) => ({
           id: asset.id,

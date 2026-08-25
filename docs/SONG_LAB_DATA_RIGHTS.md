@@ -88,6 +88,21 @@ the actor, the target and the relevant metadata. The rights confirmation id trav
 with the audio-attachment entry, so the basis on which a master was processed is
 answerable years later.
 
+## Cross-module seams
+
+A handoff gates on its **destination** module as well as on Song Lab. Holding
+Song Lab is not a licence to write into Remix Lab (`audio.remix_lab`), Live Lab
+(`live_lab.access`) or the Operator Desk CRM (`audio.operator_agent`) — Song Lab
+cannot grant access to a module it hands off to.
+
+For the same reason, the import picker offers only song-shaped audio
+(`song_lab`, `remix`, `library`). A meeting recording or a voice sample is not a
+record to diagnose, and listing it would hand a user holding only
+`song_lab.analysis` a route to signed URLs for audio belonging to modules they
+may not be entitled to. Same tenant either way — this is a capability seam, not
+a tenant boundary — but the narrow list is both safer and the more sensible
+product behaviour.
+
 ## Entitlements
 
 Enforced server-side on every route and job:

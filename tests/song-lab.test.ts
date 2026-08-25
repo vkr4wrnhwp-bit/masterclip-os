@@ -366,6 +366,33 @@ describe('tenant isolation', () => {
     expect(response.statusCode).toBe(404)
   })
 
+  it('offers only song-shaped audio for import, not everything the tenant owns', async () => {
+    const session = await signup('importable@example.com', 'Importable Org')
+    await grantSongLab(session.orgId)
+    await seedProject(session)
+
+    // A meeting recording is the tenant's audio, but it is not a record to
+    // diagnose — and it belongs to a module this caller may not hold.
+    await runtime.audio.assets.storeUpload({
+      actor: { userId: session.userId, orgId: session.orgId, orgRole: 'owner' },
+      bytes: demoWav(31),
+      filename: 'private-meeting.wav',
+      area: 'source',
+      projectType: 'meeting',
+      projectId: null,
+      assetType: 'meeting_source',
+      retentionKind: 'source',
+      rightsStatus: 'authorized_upload',
+      consentRecordId: null,
+    })
+
+    const response = await call(session, 'GET', '/api/song-lab/importable')
+    const assets = (response.json() as { assets: Array<{ fileName: string; projectType: string }> }).assets
+    expect(assets.some((asset) => asset.projectType === 'song_lab')).toBe(true)
+    expect(assets.some((asset) => asset.fileName.includes('private-meeting'))).toBe(false)
+    expect(assets.every((asset) => ['song_lab', 'remix', 'library'].includes(asset.projectType))).toBe(true)
+  })
+
   it("does not list another organization's audio as importable", async () => {
     const a = await bootstrapFlagship()
     const b = await provisionOrg('b4@example.com', 'Org B4')
@@ -1094,6 +1121,33 @@ describe('integrations', () => {
     // The module does not exist yet, so the snapshot waits rather than vanishing.
     expect(handoff.status).toBe('pending')
     expect(handoff.payload.contractVersion).toBeTruthy()
+  })
+
+  it('refuses the Operator Desk handoff without the Operator Desk entitlement', async () => {
+    // Every handoff gates on its destination module: holding Song Lab is not a
+    // licence to write into the CRM. A partner org, since the flagship holds
+    // every audio capability by construction.
+    await bootstrapFlagship()
+    const session = await provisionOrg('noopdesk@example.com', 'No Operator Desk Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const lead = await runtime.audio.repos.operatorDesk.createLead({
+      orgId: session.orgId,
+      name: 'Example Artist',
+      contactName: '',
+      email: '',
+      phone: '',
+      artistName: 'Example Artist',
+      stage: 'qualifying',
+      source: 'test',
+      createdBy: session.userId,
+    })
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/attach-operator-desk`, { leadId: lead.id })
+    expect(response.statusCode).toBe(403)
+    // And nothing was written to the CRM.
+    expect(await runtime.audio.repos.operatorDesk.notesForLead(session.orgId, lead.id)).toHaveLength(0)
   })
 
   it('attaches a project to an Operator Desk lead with a note', async () => {
