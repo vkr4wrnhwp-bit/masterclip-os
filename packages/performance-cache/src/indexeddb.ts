@@ -104,3 +104,25 @@ export async function estimateAvailableStorageBytes(): Promise<number | undefine
   }
   return undefined
 }
+
+/**
+ * Asks the browser to stop treating this origin's storage as evictable.
+ *
+ * Without it, a verified show cache is best-effort: the browser may reclaim it
+ * under storage pressure, and the first anyone would know is a pad reading
+ * ERROR at the venue. Granting is the browser's call — Chromium generally says
+ * yes to an installed or engaged origin, Safari applies its own rules — so this
+ * reports what happened rather than pretending the cache is now safe.
+ *
+ * Returns the resulting persisted state, or undefined where the API is absent.
+ */
+export async function requestPersistentStorage(): Promise<boolean | undefined> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.persist) return undefined
+    // Already granted: asking again would prompt some browsers for nothing.
+    if (navigator.storage.persisted && (await navigator.storage.persisted())) return true
+    return await navigator.storage.persist()
+  } catch {
+    return undefined
+  }
+}

@@ -39,6 +39,14 @@ The load-bearing rule: **generation never happens inside an HTTP request.** The
 API queues work and returns; the worker performs it. That is what makes a render
 survive the browser closing, the API restarting, and the worker crashing.
 
+Live Lab (`docs/LIVE_LAB.md`) hangs off the same spine but inverts one thing
+deliberately. Everything above assumes the server is reachable; a live show
+cannot. So its performance engine runs entirely in the browser against a
+checksum-verified local cache, and during a performance it reads **nothing**
+over the network — the API is used to build and verify the show beforehand, and
+to sync analytics afterwards. AI generation still obeys the rule above: it is
+queued to the worker, never awaited, and never on the playback path.
+
 ---
 
 ## 2. Packages, and why each exists
@@ -60,6 +68,11 @@ survive the browser closing, the API restarting, and the worker crashing.
 | `prompt-compiler` | provider-aware compilation that cannot lose a locked fact |
 | `agents` | the Claude producer layer |
 | `runtime` | the composition root, the render pipeline, master finishing |
+| `performance-project` | Live Lab's shared vocabulary: records, offline package manifest + verification, capabilities, Stage Control contracts |
+| `live-engine` | the performance core: tempo clock, launch quantization, transport, stems, click, crash recovery. No React, HTTP or database — portable to a desktop shell |
+| `midi-engine` | controller-agnostic MIDI parsing, Learn, mapping application, device sources |
+| `performance-cache` | the local show cache (IndexedDB / memory) and its checksum verification |
+| `ai-audio` | provider-agnostic AI audio generation, prompt safety, and a mock that synthesizes real WAVs |
 
 ---
 

@@ -271,6 +271,34 @@ a photo in a folder. Rights changes are written to the audit log.
 
 ---
 
+### Live performance data
+
+Live Lab moves audio out of the server and onto a performer's device, which is
+the point — a show cannot depend on the network — and it changes what has to be
+true.
+
+- **Every Live Lab table is organization scoped**, and reads filter on `org_id`
+  in SQL rather than trusting the caller. Writes additionally check that a set
+  item, scene or asset belongs to the *project* being written to, not merely to
+  the same organization: same-org cross-project writes are refused, because a
+  manifest that references a set item absent from its own setlist is a broken
+  show, not a permissions curiosity.
+- **Entitlements are enforced server-side on every route**, before the body
+  runs, with numeric limits checked where the limited resource is created.
+  Hiding a nav item is a courtesy, not a control.
+- **Rights confirmation gates AI processing** at the API boundary *and* again at
+  the provider boundary, so a future caller cannot skip it. Generated audio
+  carries lineage — source, provider, model, prompt, settings, and the human who
+  approved it — and nothing enters a set without that explicit acceptance.
+- **Cached shows are unencrypted on the device.** A performance package is
+  plain audio in IndexedDB, readable by anything with access to that browser
+  profile. That is the correct trade for playback that cannot fail, but it means
+  a shared or borrowed laptop should not hold an unreleased record. Clearing
+  site data removes it.
+- **Package downloads use the same signed, expiring asset URLs** as the rest of
+  the system; a raw storage key is never enough, and the manifest records
+  checksums so a tampered cache fails verification rather than plays.
+
 ## Known gaps in this release
 
 Stated plainly rather than left to be discovered:
@@ -282,6 +310,8 @@ Stated plainly rather than left to be discovered:
 | S3 driver unexercised against a live bucket | signing is unit-tested against AWS's published vector, but no end-to-end run | run `masterclip doctor` with `STORAGE_DRIVER=s3` before relying on it |
 | No per-user MFA or invite flow | first account bootstraps, others are created by an owner | keep the deployment private |
 | Session revocation is per-session | no "sign out everywhere" | delete rows from `sessions` |
+| Cached performance packages are unencrypted on the device | plain audio in IndexedDB, by design, so playback never depends on a key or a network | do not cache unreleased material on a shared machine; clear site data after a show |
+| Live Lab prompt safety is pattern matching | blocks imitation/cloning/protected-song phrasing at two layers, but is not a classifier | a real audio provider must add its own policy check behind it |
 
 ## Reporting
 
