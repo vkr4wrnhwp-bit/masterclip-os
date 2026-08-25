@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod/v4'
-import { usdToMicros } from '@masterclip/shared'
+import { AppError, microsToUsd, usdToMicros } from '@masterclip/shared'
 import { toStr } from '@masterclip/database'
 import { AUDIO_CAPABILITIES, AUDIO_PLAN_PRESETS, isAudioCapability } from '@masterclip/audio-core'
 import { fetchElevenLabsAccountUsage } from '@masterclip/audio-providers'
 import type { Runtime } from '@masterclip/runtime'
+import { flagshipOrgId } from '@masterclip/audio-engine'
 import { requireFlagshipAdmin } from './helpers.js'
 
 /**
@@ -40,12 +41,50 @@ export async function registerAudioAdminRoutes(app: FastifyInstance, runtime: Ru
   app.get('/api/admin/audio/orgs', async (request) => {
     await requireFlagshipAdmin(runtime, request)
     const orgs = await runtime.db.query('SELECT id, name, created_at FROM orgs ORDER BY created_at')
+    const flagship = await flagshipOrgId(runtime.db)
     const out = []
     for (const org of orgs) {
-      const entitlements = await audio.repos.policy.listEntitlements(toStr(org.id))
-      out.push({ id: toStr(org.id), name: toStr(org.name), createdAt: toStr(org.created_at), entitlements })
+      const orgId = toStr(org.id)
+      const [entitlements, budgets, usage] = await Promise.all([
+        audio.repos.policy.listEntitlements(orgId),
+        audio.repos.usage.listBudgets(orgId),
+        audio.repos.usage.summary(orgId),
+      ])
+      out.push({
+        id: orgId,
+        name: toStr(org.name),
+        createdAt: toStr(org.created_at),
+        // The flagship holds every capability implicitly; the UI must say so
+        // rather than showing an empty grant list as "no access".
+        isFlagship: orgId === flagship,
+        entitlements,
+        budgets: budgets.map((budget) => ({
+          scope: budget.scope,
+          scopeId: budget.scopeId,
+          monthlyCapUsd: budget.monthlyCapMicros === null ? null : microsToUsd(budget.monthlyCapMicros),
+          perJobCapUsd: budget.perJobCapMicros === null ? null : microsToUsd(budget.perJobCapMicros),
+          hardStop: budget.hardStop,
+          warnThresholdPct: budget.warnThresholdPct,
+        })),
+        monthSpendUsd: microsToUsd(usage.monthSpendMicros),
+      })
     }
     return { orgs: out, capabilities: AUDIO_CAPABILITIES, presets: Object.keys(AUDIO_PLAN_PRESETS) }
+  })
+
+  /**
+   * Switches a granted capability on or off without losing the grant — the
+   * reversible control, distinct from revoking entitlement entirely.
+   */
+  app.post('/api/admin/audio/orgs/:orgId/entitlements/toggle', async (request) => {
+    await requireFlagshipAdmin(runtime, request)
+    const { orgId } = request.params as { orgId: string }
+    const body = z.object({ capability: z.string(), enabled: z.boolean() }).parse(request.body)
+    if (!isAudioCapability(body.capability)) {
+      throw new AppError({ kind: 'validation', code: 'audio.unknown_capability', message: `unknown capability ${body.capability}` })
+    }
+    await audio.repos.policy.setEntitlementEnabled(orgId, body.capability, body.enabled)
+    return { ok: true, entitlements: await audio.repos.policy.listEntitlements(orgId) }
   })
 
   app.post('/api/admin/audio/orgs/:orgId/entitlements', async (request: FastifyRequest) => {

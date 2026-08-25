@@ -383,7 +383,7 @@ further building, and it is the only way to close risk #3.
 
 Same vocabulary, same standard. The audio layer's own verification run:
 `pnpm typecheck` **36/36 clean** · `pnpm lint` **clean** · `pnpm test`
-**415 passed / 415** · `pnpm test:e2e` **22 passed / 22** (whole repo, after
+**418 passed / 418** · `pnpm test:e2e` **23 passed / 23** (whole repo, after
 merging Live Lab from `main`).
 
 | Area | Status | Notes |
@@ -401,7 +401,8 @@ merging Live Lab from `main`).
 | Webhooks (signature, replay, idempotency, routing) | **REAL** | HMAC scheme matches the SDK's own implementation; tested incl. stale/tampered/duplicate deliveries |
 | Retention sweeps + zero-retention gate | **REAL** | content deleted, audit metadata kept (tested); zero-retention refusal before upload (tested) |
 | Usage ledger + budgets | **REAL** | append-only; hard stops/warnings tested; provider **cost reconciliation** (final_cost backfill) NOT BUILT — estimates are labelled estimates |
-| White-label operator config | **PARTIAL** | tenant-isolated settings + branding fields exist and apply to conversations; no dedicated partner admin UI |
+| Partner OS entitlement administration | **REAL** | flagship console at `/audio/admin`: per-org capability grant/revoke, enable-disable toggle, plan presets, budgets and month spend; grant/toggle/revoke covered by integration tests, flagship presentation + budget editing by a browser test |
+| White-label operator config | **PARTIAL** | tenant-isolated settings + branding fields exist and apply to conversations; branding is edited via the settings API, not a dedicated screen |
 | Realtime transcription, telephony/calendar capture | **NOT BUILT** | catalogued capabilities, no implementation |
 
 ---
