@@ -77,7 +77,34 @@ crash recoveries) are collected locally and synced to
 show, in batches, and only what the client chooses to send. Reliability data,
 not surveillance.
 
+## What is stored on the device
+
+Two things, and both are needed:
+
+- **The audio**, in IndexedDB, keyed by manifest path.
+- **The show itself** — setlist, scenes, pad map, MIDI mappings and the
+  manifest — in `localStorage` under `masterclip.live.show.<projectId>`,
+  written when the package is built.
+
+The second used to be missing, and the omission defeated the first. Performance
+Mode loaded its bundle over the network on every entry, so at a venue with no
+connection it rendered **Request failed** and the verified audio cache was never
+reached. Caching a show's audio while leaving the show itself in the cloud is
+not local-first; it only looks like it from inside an already-running session.
+
+`loadShowBundle` prefers the network and falls back to the stored copy. That
+order is deliberate: a set edited since the last package should be picked up
+when there is a connection to pick it up from, so the stored bundle is the
+floor rather than the default. With no connection and no stored bundle there is
+genuinely no show to run, and the error stands.
+
 ## How the cache is verified
+
+The offline show is demonstrated end to end by
+`tests/e2e/live-lab-offline.spec.ts`: a set is built, owned audio uploaded and
+attached, the package built and cached, and then the browser is taken offline
+with `context.setOffline(true)` — checked unreachable inside the test — before
+Performance Mode is entered and driven.
 
 `IndexedDbCacheStore` is exercised in real Chromium by
 `tests/e2e/live-lab-browser.spec.ts`, not only through the in-memory

@@ -411,7 +411,7 @@ merging Live Lab from `main`).
 
 Same vocabulary, same standard. Verification run at `b03cc17`: `pnpm typecheck`
 **44/44 clean** · `pnpm lint` **clean** · `pnpm test` **591 passed / 591** ·
-`pnpm test:e2e` **41 passed / 41** (whole repo).
+`pnpm test:e2e` **44 passed / 44** (whole repo).
 
 Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in
 production mode, on a database built by the *previous* release rather than a
@@ -448,7 +448,7 @@ claim, and this build has not made it.
 | Web MIDI against physical hardware | **DEV-LABELED** | implemented against the spec; **no controller has ever been plugged into this build** |
 | Offline performance package (manifest, checksums, verification) | **REAL** | server-side and device-reported verification both tested; a missing or corrupted cached file provably prevents READY |
 | IndexedDB show cache in a browser | **REAL** | run in real Chromium against real IndexedDB and real WebCrypto: byte-identical round-trip, store digest agreeing with a digest of the source bytes, a single flipped byte changing that digest, a non-WAV refused as undecodable, and **a cached show surviving a page reload** — the property the offline package actually depends on |
-| Performance Mode running with the network down | **PARTIAL** | the code path reads only from cache and is structurally incapable of a network fetch during playback; **not yet demonstrated on a real device with the network actually disabled** |
+| Performance Mode running with the network down | **REAL** | demonstrated in Chromium with `context.setOffline(true)` — the network genuinely off, verified unreachable inside the test before the show is started. The demonstration found a real defect: audio was cached but the *show* was not, so Performance Mode fetched its setlist, scenes and manifest over the network and rendered "Request failed" at a venue with no connection. The bundle is now stored on the device when the package is built, and the offline start is regression-tested |
 | Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio |
 | Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
@@ -472,9 +472,13 @@ fixture rather than exposing anything on `window` in production, and its
 assertions were checked by mutation — ignoring `opts.gain` and making the
 digest content-blind each turn a test red.
 
-What a browser cannot settle, and a rehearsal on real hardware can: plug in a
-controller, build a show package, pull the network cable, and run Performance
-Mode for a few minutes. That session is what remains for Web MIDI against
-physical hardware, offline playback on a device, and — the one no test can
-make — that the show is *audible*. Rendering the right samples and driving a
-loudspeaker are different claims, and only the second one matters on stage.
+Pulling the network cable turned out to be one a browser *can* settle, and
+doing it found a defect no amount of reading the code had: the offline path
+was never reachable offline. That is the argument for running these rather
+than reasoning about them.
+
+What a browser still cannot settle, and a rehearsal on real hardware can:
+plug in a controller and listen. That session is what remains for Web MIDI
+against physical hardware and — the one no test can make — that the show is
+*audible*. Rendering the right samples and driving a loudspeaker are
+different claims, and only the second one matters on stage.

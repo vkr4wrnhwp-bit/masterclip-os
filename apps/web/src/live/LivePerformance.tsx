@@ -4,7 +4,7 @@ import type { MidiMapping } from '@masterclip/performance-project'
 import { navigate } from '../App.jsx'
 import { AsyncBlock, useAsync } from '../ui.jsx'
 import { liveApi } from './api.js'
-import { useLiveEngine, useMidi } from './engine.js'
+import { loadShowBundle, useLiveEngine, useMidi } from './engine.js'
 import { PadGrid, StemDeckPanel } from './components.jsx'
 
 const snapshotStore = new LocalStorageSnapshotStore()
@@ -23,7 +23,7 @@ const EVENT_BUFFER_LIMIT = 5000
  * accidental edits and navigation mid-show.
  */
 export function LivePerformance({ projectId }: { projectId: string }) {
-  const bundle = useAsync(() => liveApi.project(projectId), [projectId])
+  const bundle = useAsync(() => loadShowBundle(projectId), [projectId])
   const live = useLiveEngine(bundle.data, 'cache')
   const [locked, setLocked] = React.useState(false)
   const [online, setOnline] = React.useState(typeof navigator === 'undefined' ? true : navigator.onLine)
