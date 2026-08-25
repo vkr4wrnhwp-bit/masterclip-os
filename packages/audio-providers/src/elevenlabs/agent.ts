@@ -46,7 +46,7 @@ export class ElevenLabsAgentAdapter implements ConversationalAgentProvider {
     return false
   }
 
-  private agentBody(input: CreateAgentRequest): Record<string, unknown> {
+  private agentBody(input: CreateAgentRequest, knowledgeBase: Array<{ id: string; name: string }>): Record<string, unknown> {
     return {
       name: input.name,
       conversation_config: {
@@ -61,6 +61,9 @@ export class ElevenLabsAgentAdapter implements ConversationalAgentProvider {
               description: tool.description,
               parameters: tool.parameters,
             })),
+            ...(knowledgeBase.length > 0
+              ? { knowledge_base: knowledgeBase.map((doc) => ({ type: 'text', id: doc.id, name: doc.name })) }
+              : {}),
           },
         },
         ...(input.voiceRef ? { tts: { voice_id: input.voiceRef } } : {}),
@@ -68,18 +71,38 @@ export class ElevenLabsAgentAdapter implements ConversationalAgentProvider {
     }
   }
 
+  /**
+   * Pushes tenant knowledge documents to the provider KB — `POST
+   * v1/convai/knowledge-base/text` — and returns locators to attach to the
+   * agent prompt. Documents were curated tenant-side; nothing here decides
+   * what the agent may know.
+   */
+  private async pushKnowledge(input: CreateAgentRequest): Promise<Array<{ id: string; name: string }>> {
+    const locators: Array<{ id: string; name: string }> = []
+    for (const doc of input.knowledge) {
+      const { body } = await this.client.json<{ id: string; name?: string }>('v1/convai/knowledge-base/text', {
+        method: 'POST',
+        body: { text: doc.content, name: doc.name },
+      })
+      locators.push({ id: body.id, name: body.name ?? doc.name })
+    }
+    return locators
+  }
+
   async createAgent(input: CreateAgentRequest): Promise<ProviderAgentDefinition> {
+    const knowledgeBase = await this.pushKnowledge(input)
     const { body } = await this.client.json<ConvaiAgentResponse>('v1/convai/agents/create', {
       method: 'POST',
-      body: this.agentBody(input),
+      body: this.agentBody(input, knowledgeBase),
     })
     return { providerAgentId: body.agent_id, raw: body }
   }
 
   async updateAgent(input: UpdateAgentRequest): Promise<ProviderAgentDefinition> {
+    const knowledgeBase = await this.pushKnowledge(input)
     const { body } = await this.client.json<ConvaiAgentResponse>(`v1/convai/agents/${encodeURIComponent(input.providerAgentId)}`, {
       method: 'PATCH',
-      body: this.agentBody(input),
+      body: this.agentBody(input, knowledgeBase),
     })
     return { providerAgentId: body.agent_id ?? input.providerAgentId, raw: body }
   }

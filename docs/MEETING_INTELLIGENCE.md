@@ -22,7 +22,10 @@ output is a **draft**; a human approves items; only approved items commit.
 5. The worker transcribes via the configured provider: diarization, word
    timestamps, audio-event tags, entity detection, and the org's keyterm
    dictionary (shareable terms only — private terms never leave the platform).
-6. Speakers can be renamed; renames are marked manually confirmed.
+6. Speakers can be renamed (marked manually confirmed), and any transcript
+   line can be corrected — the edit lands in the segment and the transcript's
+   full text is rebuilt, so extraction, captions and search all see the
+   corrected version.
 7. Structured intelligence is extracted (Claude-backed when configured,
    deterministic heuristic otherwise — the pipeline never depends on a model
    being available).
@@ -59,10 +62,13 @@ documented limits (≤1000 terms, ≤50 chars, ≤5 words, no `<>{}[]\`).
 GET/POST  /api/audio/meetings
 GET       /api/audio/meetings/:id
 PATCH     /api/audio/meetings/:id/speakers
+GET       /api/audio/transcriptions/:id
+PATCH     /api/audio/transcriptions/:id/segments   (human correction)
 POST      /api/audio/meetings/:id/extract
 POST      /api/audio/meetings/:id/approve
 POST      /api/audio/meetings/:id/commit
-GET/POST  /api/audio/leads · GET /api/audio/leads/:id
+GET/POST  /api/audio/leads · GET/PATCH /api/audio/leads/:id
+POST      /api/audio/tasks/:id/status
 ```
 
 All gate-checked (`audio.meeting_intelligence` / `audio.meeting_upload`),

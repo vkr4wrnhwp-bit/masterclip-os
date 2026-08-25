@@ -86,7 +86,19 @@ export function AudioMeetingDetailView({ meetingId }: { meetingId: string }) {
                           {clock(segment.startMs)}
                         </span>
                         <strong style={{ color: 'var(--accent)' }}>{speaker?.displayName ?? segment.speakerKey ?? '·'}</strong>{' '}
-                        {segment.text}
+                        <span
+                          title="Click to correct this line"
+                          style={{ cursor: 'text' }}
+                          onClick={() => {
+                            if (!meeting.transcriptId) return
+                            const text = window.prompt('Correct this line', segment.text)
+                            if (text && text !== segment.text) {
+                              void act(() => audioApi.correctSegment(meeting.transcriptId!, segment.id, text))
+                            }
+                          }}
+                        >
+                          {segment.text}
+                        </span>
                       </div>
                     )
                   })

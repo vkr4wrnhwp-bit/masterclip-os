@@ -54,18 +54,22 @@ No credentials are required for any of the above. To go live:
 - **Realtime transcription** (`audio.realtime_transcription` is catalogued
   but unimplemented) and in-browser meeting recording with live consent
   capture.
-- **Operator voice channel**: wire the ElevenLabs agent web widget + phone
-  numbers to the existing session/post-call plumbing; calendar-recording and
+- **Operator voice channel**: the agent definition, tools, and knowledge base
+  now sync to the provider (`POST /api/audio/agents/:id/sync` → the
+  `audio.agent.sync` job); remaining work is embedding the web widget /
+  phone numbers against the synced agent, plus calendar-recording and
   telephony integrations behind their own approval flows.
-- **Dubbing depth**: per-segment transcript editing UI, human QA checklists,
-  lip-sync review, translated caption tracks per language.
+- **Dubbing depth**: per-segment correction exists (click a line in
+  transcript review); remaining: a rich editor, human QA checklists,
+  lip-sync review, translated caption tracks per language (captions are
+  currently source-language SRT + VTT).
 - **Stems unpacking**: expand the provider's stem archive into individual
   per-stem assets server-side.
 - **Voice Vault**: person-level identity linkage, provider verification
   status webhooks, contractual takedown workflow automation.
-- **Cost reconciliation**: pull provider usage reports to fill
-  `final_cost_micros` (the ledger and reconcile job type exist; the fetcher
-  needs a documented usage API).
+- **Cost reconciliation**: account-level usage (character count/limit, tier)
+  now shows in flagship provider admin; per-request `final_cost_micros`
+  backfill still needs a documented per-request usage feed.
 - **Email/Slack/mobile delivery** for briefs and human-transfer alerts.
 - **Partner OS UI** for entitlement management (the API and presets exist;
   administration is currently API-first).

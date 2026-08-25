@@ -226,6 +226,11 @@ export const audioApi = {
   createMeeting: (form: FormData) => upload<{ meeting: Meeting; warning: string | null }>('/api/audio/meetings', form),
   renameSpeaker: (id: string, providerSpeakerKey: string, displayName: string) =>
     patch<{ ok: boolean }>(`/api/audio/meetings/${id}/speakers`, { providerSpeakerKey, displayName }),
+  correctSegment: (transcriptId: string, segmentId: string, text: string) =>
+    patch<{ ok: boolean }>(`/api/audio/transcriptions/${transcriptId}/segments`, { segmentId, text }),
+  syncAgent: (agentId: string) => post<{ queued: boolean }>(`/api/audio/agents/${agentId}/sync`),
+  updateLead: (id: string, body: Record<string, string>) => patch<{ lead: Lead }>(`/api/audio/leads/${id}`, body),
+  setTaskStatus: (id: string, status: 'open' | 'done' | 'cancelled') => post<{ ok: boolean }>(`/api/audio/tasks/${id}/status`, { status }),
   extractMeeting: (id: string) => post<{ ok: boolean }>(`/api/audio/meetings/${id}/extract`),
   approveItems: (id: string, items: Array<{ kind: 'action' | 'deal'; itemId: string; status: string; editedValue?: string }>) =>
     post<{ ok: boolean }>(`/api/audio/meetings/${id}/approve`, { items }),

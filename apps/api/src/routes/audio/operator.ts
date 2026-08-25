@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
+import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import type { Runtime } from '@masterclip/runtime'
 import { requireAudio } from './helpers.js'
 import { requireAuth } from '../../server.js'
@@ -62,6 +63,20 @@ export async function registerAudioOperatorRoutes(app: FastifyInstance, runtime:
       createdBy: actor.userId,
     })
     return { doc }
+  })
+
+  /** Queues a provider sync: knowledge docs pushed, tools declared, id recorded. */
+  app.post('/api/audio/agents/:id/sync', async (request) => {
+    const { actor } = await requireAudio(runtime, request, 'audio.operator_agent', { minimumRole: 'admin', slot: 'agent' })
+    const { id } = request.params as { id: string }
+    const agent = await audio.repos.agents.get(actor.orgId, id)
+    await runtime.queue.enqueue({
+      queue: QUEUES.audio,
+      type: JOB_TYPES.audioAgentSync,
+      payload: { orgId: actor.orgId, agentId: id },
+      dedupeKey: `audio-agent-sync:${id}:${agent.knowledgeBaseVersion}`,
+    })
+    return { queued: true }
   })
 
   app.post('/api/audio/agents/:id/session', async (request) => {

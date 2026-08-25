@@ -109,10 +109,23 @@ export function AudioGlobalReleaseView() {
 
                       {data.project.status === 'transcript_review' && (
                         <>
-                          <div className="stat-label">Transcript — correct names and terminology before dubbing</div>
+                          <div className="stat-label">Transcript — click a line to correct names and terminology before dubbing</div>
                           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                             {data.segments.map((segment) => (
-                              <div key={segment.id}>{segment.text}</div>
+                              <div
+                                key={segment.id}
+                                style={{ cursor: 'text' }}
+                                title="Click to correct this line"
+                                onClick={() => {
+                                  if (!data.project.transcriptId) return
+                                  const text = window.prompt('Correct this line', segment.text)
+                                  if (text && text !== segment.text) {
+                                    void act(() => audioApi.correctSegment(data.project.transcriptId!, segment.id, text))
+                                  }
+                                }}
+                              >
+                                {segment.text}
+                              </div>
                             ))}
                           </div>
                           <button onClick={() => void act(() => audioApi.approveDubbingTranscript(data.project.id))}>

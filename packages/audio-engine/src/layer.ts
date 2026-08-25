@@ -7,6 +7,7 @@ import { systemClock, type AppConfig, type Clock, type Logger } from '@mastercli
 import { AudioProviderRegistry, type StructuredReasoningProvider } from '@masterclip/audio-core'
 import {
   ClaudeReasoningProvider,
+  ElevenLabsClient,
   HeuristicReasoningProvider,
   createElevenLabsAudioProviders,
   createMockAudioProviders,
@@ -45,6 +46,8 @@ import { AudioWebhookService } from './webhooks.js'
 export interface AudioLayer {
   registry: AudioProviderRegistry
   reasoning: StructuredReasoningProvider
+  /** Present when ElevenLabs is registered; used for admin account-usage probes. */
+  elevenLabsClient: ElevenLabsClient | null
   repos: AudioRepos
   access: AudioAccessControl
   assets: AudioAssetService
@@ -82,20 +85,20 @@ export function createAudioLayer(opts: CreateAudioLayerOptions): AudioLayer {
   // The mock is always registered — it is what keeps every workflow
   // exercisable with zero credentials and zero spend.
   registry.register(createMockAudioProviders())
+  let elevenLabsClient: ElevenLabsClient | null = null
   if (!opts.mockOnly && opts.config.ELEVENLABS_ENABLED) {
-    registry.register(
-      createElevenLabsAudioProviders({
-        apiKey: opts.config.ELEVENLABS_API_KEY,
-        baseUrl: opts.config.ELEVENLABS_BASE_URL,
-        sttModelId: opts.config.ELEVENLABS_STT_MODEL,
-        ttsModelId: opts.config.ELEVENLABS_TTS_MODEL,
-        ttsDefaultVoiceId: opts.config.ELEVENLABS_TTS_VOICE_ID,
-        musicModelId: opts.config.ELEVENLABS_MUSIC_MODEL,
-        sfxModelId: opts.config.ELEVENLABS_SFX_MODEL,
-        zeroRetentionCapable: opts.config.ELEVENLABS_ZERO_RETENTION_CAPABLE,
-        logger: opts.logger,
-      }),
-    )
+    elevenLabsClient = new ElevenLabsClient({
+      apiKey: opts.config.ELEVENLABS_API_KEY,
+      baseUrl: opts.config.ELEVENLABS_BASE_URL,
+      sttModelId: opts.config.ELEVENLABS_STT_MODEL,
+      ttsModelId: opts.config.ELEVENLABS_TTS_MODEL,
+      ttsDefaultVoiceId: opts.config.ELEVENLABS_TTS_VOICE_ID,
+      musicModelId: opts.config.ELEVENLABS_MUSIC_MODEL,
+      sfxModelId: opts.config.ELEVENLABS_SFX_MODEL,
+      zeroRetentionCapable: opts.config.ELEVENLABS_ZERO_RETENTION_CAPABLE,
+      logger: opts.logger,
+    })
+    registry.register(createElevenLabsAudioProviders(elevenLabsClient.opts, elevenLabsClient))
     if (opts.config.ELEVENLABS_API_KEY) {
       registry.configureDefaults(
         {
@@ -166,8 +169,9 @@ export function createAudioLayer(opts: CreateAudioLayerOptions): AudioLayer {
   return {
     registry,
     reasoning,
+    elevenLabsClient,
     repos,
-    access: new AudioAccessControl(opts.config, repos.policy, repos.usage, registry),
+    access: new AudioAccessControl(opts.config, opts.db, repos.policy, repos.usage, registry),
     assets,
     transcription,
     meetings: new MeetingService(deps, assets, transcription),

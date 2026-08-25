@@ -70,9 +70,11 @@ not security.
 
 Entitlements are `audio.*` capabilities (see `packages/audio-core/src/capabilities.ts`).
 The flagship organization — the oldest org on the deployment — holds all of
-them, including provider administration; partner orgs receive only what a
-flagship admin grants (`/api/admin/audio/orgs/:orgId/entitlements`, presets
-`partner_core` / `partner_full`).
+them **implicitly** (root-level access; feature toggles and budgets still
+apply to it), including provider administration. Partner orgs receive only
+what a flagship admin grants
+(`/api/admin/audio/orgs/:orgId/entitlements`, presets `partner_core` /
+`partner_full`).
 
 ## Jobs and the worker
 

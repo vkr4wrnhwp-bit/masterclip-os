@@ -166,6 +166,33 @@ export class ElevenLabsClient {
   }
 }
 
+export interface ElevenLabsAccountUsage {
+  tier: string
+  characterCount: number
+  characterLimit: number
+  status: string
+}
+
+/**
+ * Account-level usage as the provider reports it — `GET v1/user` carries the
+ * subscription's character count/limit and tier. Shown to flagship admins;
+ * never used to invent prices.
+ */
+export async function fetchElevenLabsAccountUsage(client: ElevenLabsClient): Promise<ElevenLabsAccountUsage | null> {
+  if (!client.isConfigured()) return null
+  const { body } = await client.json<{ subscription?: { tier?: string; character_count?: number; character_limit?: number; status?: string } }>(
+    'v1/user',
+  )
+  const subscription = body.subscription
+  if (!subscription) return null
+  return {
+    tier: subscription.tier ?? 'unknown',
+    characterCount: subscription.character_count ?? 0,
+    characterLimit: subscription.character_limit ?? 0,
+    status: subscription.status ?? 'unknown',
+  }
+}
+
 export function requestIdFrom(headers: Headers): string | undefined {
   return headers.get('request-id') ?? headers.get('x-request-id') ?? undefined
 }

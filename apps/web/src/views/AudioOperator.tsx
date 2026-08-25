@@ -93,6 +93,15 @@ export function AudioOperatorView() {
                               <button className="small" onClick={() => void start(agent.id)}>
                                 test conversation
                               </button>
+                            )}{' '}
+                            {agent.status === 'active' && (
+                              <button
+                                className="small"
+                                title="Push knowledge base and tools to the configured voice provider"
+                                onClick={() => void audioApi.syncAgent(agent.id).then(() => agents.reload()).catch((err) => setError((err as Error).message))}
+                              >
+                                sync provider
+                              </button>
                             )}
                           </td>
                         </tr>

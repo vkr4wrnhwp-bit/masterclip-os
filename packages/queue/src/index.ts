@@ -31,6 +31,7 @@ export const JOB_TYPES = {
   audioCampaignGenerate: 'audio.campaign.generate',
   audioRemixGenerate: 'audio.remix.generate',
   audioAgentPostCall: 'audio.agent.post_call',
+  audioAgentSync: 'audio.agent.sync',
   audioRetentionSweep: 'audio.retention.sweep',
   audioScheduleTick: 'audio.schedule.tick',
   audioWebhookProcess: 'audio.webhook.process',

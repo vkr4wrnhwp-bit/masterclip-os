@@ -57,6 +57,28 @@ export async function registerAudioMeetingRoutes(app: FastifyInstance, runtime: 
     return { ok: true }
   })
 
+  // ----- Transcripts (shared by meetings and Global Release review) --------
+
+  app.get('/api/audio/transcriptions/:id', async (request) => {
+    const { actor } = await requireAudio(runtime, request, 'audio.transcription')
+    const { id } = request.params as { id: string }
+    const transcript = await audio.repos.transcripts.get(actor.orgId, id)
+    return {
+      transcript,
+      segments: await audio.repos.transcripts.segments(actor.orgId, id),
+      speakers: await audio.repos.transcripts.speakers(actor.orgId, id),
+    }
+  })
+
+  /** Human transcript correction — names, terminology, mishears. */
+  app.patch('/api/audio/transcriptions/:id/segments', async (request) => {
+    const { actor } = await requireAudio(runtime, request, 'audio.transcription')
+    const { id } = request.params as { id: string }
+    const body = z.object({ segmentId: z.string().min(1), text: z.string().min(1).max(5000) }).parse(request.body)
+    await audio.repos.transcripts.updateSegmentText(actor.orgId, id, body.segmentId, body.text)
+    return { ok: true }
+  })
+
   app.post('/api/audio/meetings/:id/extract', async (request) => {
     const { actor } = await requireAudio(runtime, request, 'audio.meeting_intelligence')
     const { id } = request.params as { id: string }
@@ -132,5 +154,29 @@ export async function registerAudioMeetingRoutes(app: FastifyInstance, runtime: 
       notes: await audio.repos.operatorDesk.notesForLead(actor.orgId, id),
       tasks: await audio.repos.operatorDesk.tasksForLead(actor.orgId, id),
     }
+  })
+
+  app.patch('/api/audio/leads/:id', async (request) => {
+    const { actor } = await requireAudio(runtime, request, 'audio.meeting_intelligence')
+    const { id } = request.params as { id: string }
+    const body = z
+      .object({
+        contactName: z.string().max(200).optional(),
+        email: z.string().max(200).optional(),
+        phone: z.string().max(60).optional(),
+        artistName: z.string().max(200).optional(),
+        stage: z.string().max(60).optional(),
+      })
+      .parse(request.body)
+    await audio.repos.operatorDesk.updateLeadContact(actor.orgId, id, body)
+    return { lead: await audio.repos.operatorDesk.getLead(actor.orgId, id) }
+  })
+
+  app.post('/api/audio/tasks/:id/status', async (request) => {
+    const { actor } = await requireAudio(runtime, request, 'audio.meeting_intelligence')
+    const { id } = request.params as { id: string }
+    const body = z.object({ status: z.enum(['open', 'done', 'cancelled']) }).parse(request.body)
+    await audio.repos.operatorDesk.setTaskStatus(actor.orgId, id, body.status)
+    return { ok: true }
   })
 }

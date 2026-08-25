@@ -648,38 +648,137 @@ describe('provider webhooks', () => {
 })
 
 describe('access gate', () => {
-  it('walks the layers in order: flag, entitlement, toggle, permission, budget', async () => {
-    // No entitlements yet.
+  it('gives the flagship org root access while partner orgs need explicit grants', async () => {
+    // orgA is the oldest org on this deployment — the flagship — and holds
+    // every capability without a grant row.
     let decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorA })
-    expect(decision.failed?.name).toBe('org_entitlement')
+    expect(decision.allowed).toBe(true)
 
-    await audio.repos.policy.grantEntitlements(orgA, ['audio.meeting_intelligence'], userA)
-    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorA })
+    // A partner org with no grant is refused at the entitlement layer.
+    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorB })
+    expect(decision.failed?.name).toBe('org_entitlement')
+  })
+
+  it('walks the layers in order: flag, entitlement, toggle, permission, budget', async () => {
+    await audio.repos.policy.grantEntitlements(orgB, ['audio.meeting_intelligence'], userA)
+    let decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorB })
     expect(decision.allowed).toBe(true)
 
     // Org admin switches the granted capability off.
-    await audio.repos.policy.setEntitlementEnabled(orgA, 'audio.meeting_intelligence', false)
+    await audio.repos.policy.setEntitlementEnabled(orgB, 'audio.meeting_intelligence', false)
+    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorB })
+    expect(decision.failed?.name).toBe('org_toggle')
+    await audio.repos.policy.setEntitlementEnabled(orgB, 'audio.meeting_intelligence', true)
+
+    // Feature toggles apply to the flagship too — root access, not immunity.
+    await audio.repos.policy.updateSettings(orgA, { featureToggles: { 'audio.meeting_intelligence': false } })
     decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorA })
     expect(decision.failed?.name).toBe('org_toggle')
-    await audio.repos.policy.setEntitlementEnabled(orgA, 'audio.meeting_intelligence', true)
+    await audio.repos.policy.updateSettings(orgA, { featureToggles: {} })
 
     // Role floor.
-    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: { ...actorA, orgRole: 'member' }, minimumRole: 'admin' })
+    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: { ...actorB, orgRole: 'member' }, minimumRole: 'admin' })
     expect(decision.failed?.name).toBe('user_permission')
 
     // Budget hard stop surfaces as the usage_limit layer.
     await audio.repos.usage.setBudget({
-      orgId: orgA,
+      orgId: orgB,
       scope: 'org',
-      scopeId: orgA,
+      scopeId: orgB,
       monthlyCapMicros: 0,
       perJobCapMicros: null,
       approvalAboveMicros: null,
       warnThresholdPct: 0.8,
       hardStop: true,
     })
-    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorA, estimatedCostMicros: 1 })
+    decision = await audio.access.decide({ capability: 'audio.meeting_intelligence', actor: actorB, estimatedCostMicros: 1 })
     expect(decision.failed?.name).toBe('usage_limit')
+  })
+})
+
+describe('transcript correction', () => {
+  it('applies a human edit to the segment and rebuilds the full text', async () => {
+    const meeting = await createMeetingA()
+    await drainAudioQueue()
+    const refreshed = await audio.repos.meetings.get(orgA, meeting.id)
+    const segments = await audio.repos.transcripts.segments(orgA, refreshed.transcriptId!)
+    await audio.repos.transcripts.updateSegmentText(orgA, refreshed.transcriptId!, segments[0]!.id, 'Corrected opening line.')
+    const transcript = await audio.repos.transcripts.get(orgA, refreshed.transcriptId!)
+    expect(transcript.fullText.startsWith('Corrected opening line.')).toBe(true)
+    // Cross-tenant correction attempts fail like any other access.
+    await expect(
+      audio.repos.transcripts.updateSegmentText(orgB, refreshed.transcriptId!, segments[1]!.id, 'nope'),
+    ).rejects.toMatchObject({ kind: 'not_found' })
+  })
+})
+
+describe('operator desk updates', () => {
+  it('updates lead contact details and completes tasks', async () => {
+    const lead = await audio.repos.operatorDesk.createLead({ orgId: orgA, name: 'Nova Verge', source: 'manual', createdBy: userA })
+    await audio.repos.operatorDesk.updateLeadContact(orgA, lead.id, { email: 'rio@novaverge.example', stage: 'qualified' })
+    const updated = await audio.repos.operatorDesk.getLead(orgA, lead.id)
+    expect(updated.email).toBe('rio@novaverge.example')
+    expect(updated.stage).toBe('qualified')
+
+    const task = await audio.repos.operatorDesk.createTask({
+      orgId: orgA,
+      leadId: lead.id,
+      description: 'Send split sheet',
+      sourceType: 'manual',
+      sourceId: 'test',
+      createdBy: userA,
+    })
+    await audio.repos.operatorDesk.setTaskStatus(orgA, task.id, 'done')
+    const tasks = await audio.repos.operatorDesk.tasksForLead(orgA, lead.id)
+    expect(tasks[0]!.status).toBe('done')
+    expect(tasks[0]!.completedAt).toBeTruthy()
+    // Other tenants cannot flip this org's tasks.
+    await expect(audio.repos.operatorDesk.setTaskStatus(orgB, task.id, 'cancelled')).rejects.toMatchObject({ kind: 'not_found' })
+  })
+})
+
+describe('agent provider sync', () => {
+  it('pushes the definition to the provider and records the provider agent id', async () => {
+    const agents = await audio.operatorAgent.ensureDefaultAgents(orgA, userA)
+    const intake = agents.find((agent) => agent.agentType === 'intake_orchestrator')!
+    await audio.repos.agents.addKnowledgeDoc({
+      orgId: orgA,
+      agentId: intake.id,
+      name: 'Distribution FAQ',
+      content: 'Street Banker distributes to major platforms. Decisions are made by the human team.',
+      createdBy: userA,
+    })
+    const synced = await audio.operatorAgent.syncToProvider(orgA, intake.id)
+    expect(synced.providerAgentId).toBeTruthy()
+    expect(synced.provider).toBe('mock-audio')
+    // Re-sync updates in place rather than creating a second provider agent.
+    const resynced = await audio.operatorAgent.syncToProvider(orgA, intake.id)
+    expect(resynced.providerAgentId).toBe(synced.providerAgentId)
+  })
+})
+
+describe('caption assets', () => {
+  it('stores separate SRT and VTT caption files per dubbed language', async () => {
+    const project = await audio.globalRelease.create({
+      actor: actorA,
+      name: 'Trailer',
+      bytes: wavBytes(),
+      filename: 'trailer.wav',
+      sourceLanguage: 'en',
+      targetLanguages: ['es'],
+      voiceStrategy: 'approved_narrator',
+      rightsConfirmed: true,
+    })
+    await drainAudioQueue()
+    await audio.globalRelease.approveTranscript(actorA, project.id)
+    await drainAudioQueue()
+    const refreshed = await audio.repos.dubbing.get(orgA, project.id)
+    expect(refreshed.status).toBe('quality_review')
+    expect(refreshed.targets[0]!.status).toBe('ready')
+    const assets = await audio.repos.assets.list(orgA, { projectType: 'global_release', projectId: project.id })
+    expect(assets.some((asset) => asset.assetType === 'captions_srt')).toBe(true)
+    expect(assets.some((asset) => asset.assetType === 'captions_vtt')).toBe(true)
+    expect(assets.some((asset) => asset.assetType === 'dubbed_audio')).toBe(true)
   })
 })
 

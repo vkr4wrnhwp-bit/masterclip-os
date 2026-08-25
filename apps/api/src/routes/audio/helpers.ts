@@ -1,8 +1,7 @@
 import type { FastifyRequest } from 'fastify'
 import { AppError, forbidden } from '@masterclip/shared'
-import { toStr } from '@masterclip/database'
 import type { Runtime } from '@masterclip/runtime'
-import type { Actor } from '@masterclip/audio-engine'
+import { flagshipOrgId, type Actor } from '@masterclip/audio-engine'
 import type { AudioCapability, AudioCapabilitySlot } from '@masterclip/audio-core'
 import { requireAuth } from '../../server.js'
 
@@ -35,8 +34,7 @@ export async function requireAudio(
 export async function requireFlagshipAdmin(runtime: Runtime, request: FastifyRequest): Promise<Actor> {
   const auth = await requireAuth(runtime, request)
   if (auth.orgRole !== 'owner' && auth.orgRole !== 'admin') throw forbidden('flagship administration requires an org admin')
-  const flagship = await runtime.db.get('SELECT id FROM orgs ORDER BY created_at ASC LIMIT 1')
-  if (!flagship || toStr(flagship.id) !== auth.orgId) {
+  if ((await flagshipOrgId(runtime.db)) !== auth.orgId) {
     throw forbidden('provider administration is restricted to the flagship organization')
   }
   return actorFrom(auth)

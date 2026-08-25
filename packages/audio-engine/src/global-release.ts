@@ -219,22 +219,23 @@ export class GlobalReleaseService {
     if (!project.transcriptId) return null
     const segments = await this.deps.repos.transcripts.segments(project.orgId, project.transcriptId)
     if (segments.length === 0) return null
-    const srt = buildSrt(segments)
-    const vtt = buildVtt(segments)
-    const asset = await this.audioAssets.storeGenerated({
-      orgId: project.orgId,
-      ownerUserId: project.createdBy,
-      bytes: new TextEncoder().encode(`${srt}\n\n--VTT--\n\n${vtt}`),
-      contentType: 'text/plain',
-      filename: `captions-${language}.srt`,
-      area: 'dubbing',
-      projectType: 'global_release',
-      projectId: project.id,
-      assetType: 'captions',
-      retentionKind: 'generated',
-      rightsStatus: 'derived_from_confirmed_rights',
-    })
-    return asset.id
+    const store = (content: string, extension: 'srt' | 'vtt') =>
+      this.audioAssets.storeGenerated({
+        orgId: project.orgId,
+        ownerUserId: project.createdBy,
+        bytes: new TextEncoder().encode(content),
+        contentType: extension === 'srt' ? 'application/x-subrip' : 'text/vtt',
+        filename: `captions-${language}.${extension}`,
+        area: 'dubbing',
+        projectType: 'global_release',
+        projectId: project.id,
+        assetType: `captions_${extension}`,
+        retentionKind: 'generated',
+        rightsStatus: 'derived_from_confirmed_rights',
+      })
+    const srtAsset = await store(buildSrt(segments), 'srt')
+    await store(buildVtt(segments), 'vtt')
+    return srtAsset.id
   }
 
   async approve(actor: Actor, projectId: string, note: string): Promise<void> {

@@ -16,8 +16,8 @@ export * from './music.js'
 export * from './voice-identity.js'
 export * from './webhook.js'
 
-export function createElevenLabsAudioProviders(opts: ElevenLabsOptions): AudioProviderSet {
-  const client = new ElevenLabsClient(opts)
+export function createElevenLabsAudioProviders(opts: ElevenLabsOptions, existingClient?: ElevenLabsClient): AudioProviderSet {
+  const client = existingClient ?? new ElevenLabsClient(opts)
   return {
     transcription: new ElevenLabsTranscriptionAdapter(client),
     speech: new ElevenLabsSpeechSynthesisAdapter(client),

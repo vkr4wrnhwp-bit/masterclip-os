@@ -56,6 +56,13 @@ onboarding guides). Never: private deals, unapproved contracts, cross-tenant
 data, private artist files, or flagship strategy. Versioned; version recorded
 on the agent.
 
+`POST /api/audio/agents/:id/sync` (admin) queues `audio.agent.sync`, which
+pushes the definition to the configured conversational-agent provider: each
+knowledge doc becomes a provider KB text document attached to the agent's
+prompt, the disclosure travels in the system prompt, tools are declared as
+client tools, and the resulting provider agent id is recorded. Re-syncing
+updates the same provider agent in place.
+
 ## Post-call processing
 
 Provider-hosted conversations complete via the verified post-call webhook:

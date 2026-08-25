@@ -12,8 +12,19 @@ import {
   type GateDecision,
 } from '@masterclip/audio-core'
 import type { AppConfig } from '@masterclip/shared'
+import { toStr, type Db } from '@masterclip/database'
 import type { AudioPolicyRepo, AudioUsageRepo } from '@masterclip/audio-domain'
 import type { Actor } from './deps.js'
+
+/**
+ * The flagship organization is the oldest org on the deployment — the Street
+ * Banker org by construction of the bootstrap flow. The id tiebreaker keeps
+ * the answer deterministic when timestamps collide.
+ */
+export async function flagshipOrgId(db: Db): Promise<string | null> {
+  const row = await db.get('SELECT id FROM orgs ORDER BY created_at ASC, id ASC LIMIT 1')
+  return row ? toStr(row.id) : null
+}
 
 export function flagStateFromConfig(config: AppConfig): AudioFlagState {
   const state = {} as AudioFlagState
@@ -44,6 +55,7 @@ const ROLE_RANK: Record<string, number> = { member: 1, admin: 2, owner: 3 }
 export class AudioAccessControl {
   constructor(
     private readonly config: AppConfig,
+    private readonly db: Db,
     private readonly policyRepo: AudioPolicyRepo,
     private readonly usageRepo: AudioUsageRepo,
     private readonly registry: AudioProviderRegistry,
@@ -61,15 +73,21 @@ export class AudioAccessControl {
       message: offFlag ? `${offFlag} is disabled on this deployment` : 'ok',
     })
 
+    // The flagship org holds root-level access to every capability; partner
+    // orgs need an explicit grant from a flagship admin.
+    const isFlagship = opts.actor.orgId === (await flagshipOrgId(this.db))
     const entitlement = await this.policyRepo.hasEntitlement(opts.actor.orgId, opts.capability)
+    const granted = isFlagship || entitlement.granted
     checks.push({
       name: 'org_entitlement',
-      pass: entitlement.granted,
-      message: entitlement.granted ? 'ok' : `this organization's plan does not include ${opts.capability}`,
+      pass: granted,
+      message: granted ? 'ok' : `this organization's plan does not include ${opts.capability}`,
     })
 
     const settings = await this.policyRepo.getSettings(opts.actor.orgId)
-    const toggledOff = entitlement.granted && (!entitlement.enabled || settings.featureToggles[opts.capability] === false)
+    // An org admin can switch a capability off — on the grant row for partner
+    // orgs, and via feature toggles everywhere, flagship included.
+    const toggledOff = (entitlement.granted && !entitlement.enabled) || settings.featureToggles[opts.capability] === false
     checks.push({
       name: 'org_toggle',
       pass: !toggledOff,

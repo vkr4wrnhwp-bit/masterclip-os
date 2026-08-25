@@ -3,6 +3,7 @@ import { z } from 'zod/v4'
 import { usdToMicros } from '@masterclip/shared'
 import { toStr } from '@masterclip/database'
 import { AUDIO_CAPABILITIES, AUDIO_PLAN_PRESETS, isAudioCapability } from '@masterclip/audio-core'
+import { fetchElevenLabsAccountUsage } from '@masterclip/audio-providers'
 import type { Runtime } from '@masterclip/runtime'
 import { requireFlagshipAdmin } from './helpers.js'
 
@@ -23,7 +24,17 @@ export async function registerAudioAdminRoutes(app: FastifyInstance, runtime: Ru
       configured: provider.isConfigured(),
       zeroRetention: provider.supportsZeroRetention(slot),
     }))
-    return { health, slots, elevenLabsEnabled: runtime.config.ELEVENLABS_ENABLED }
+    // Account-level usage as the provider reports it — never invented from a
+    // price table, never fatal to the page when the probe fails.
+    let accountUsage: unknown = null
+    if (audio.elevenLabsClient?.isConfigured()) {
+      try {
+        accountUsage = await fetchElevenLabsAccountUsage(audio.elevenLabsClient)
+      } catch (err) {
+        runtime.logger.warn('audio.account_usage_failed', { err })
+      }
+    }
+    return { health, slots, elevenLabsEnabled: runtime.config.ELEVENLABS_ENABLED, accountUsage }
   })
 
   app.get('/api/admin/audio/orgs', async (request) => {

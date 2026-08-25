@@ -122,6 +122,11 @@ async function main(): Promise<void> {
       await audio.operatorAgent.runPostCall(conversationId)
     })
 
+    worker.register<{ orgId: string; agentId: string }>(JOB_TYPES.audioAgentSync, async ({ orgId, agentId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.operatorAgent.syncToProvider(orgId, agentId)
+    })
+
     worker.register<{ eventId: string }>(JOB_TYPES.audioWebhookProcess, async ({ eventId }, ctx) => {
       await ctx.heartbeat()
       await audio.webhooks.process(eventId)

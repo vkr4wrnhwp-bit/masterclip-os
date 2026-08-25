@@ -141,6 +141,25 @@ export class TranscriptRepo {
     }))
   }
 
+  /**
+   * Human transcript correction. The edit lands in the segment, and the
+   * transcript's full text is rebuilt from segments so extraction, captions
+   * and search all see the corrected version — never a stale provider copy.
+   */
+  async updateSegmentText(orgId: string, transcriptId: string, segmentId: string, text: string): Promise<void> {
+    const result = await this.db.run(
+      'UPDATE audio_transcript_segments SET seg_text = ? WHERE id = ? AND transcript_id = ? AND org_id = ?',
+      [text, segmentId, transcriptId, orgId],
+    )
+    if (result.changes === 0) throw notFound('transcript segment', segmentId)
+    const segments = await this.segments(orgId, transcriptId)
+    await this.db.run('UPDATE audio_transcripts SET full_text = ? WHERE id = ? AND org_id = ?', [
+      segments.map((segment) => segment.text).join(' '),
+      transcriptId,
+      orgId,
+    ])
+  }
+
   async renameSpeaker(orgId: string, transcriptId: string, providerSpeakerKey: string, displayName: string): Promise<void> {
     const result = await this.db.run(
       `UPDATE audio_transcript_speakers SET display_name = ?, manually_confirmed = 1

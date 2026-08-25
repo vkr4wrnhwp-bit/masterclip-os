@@ -7,6 +7,7 @@ import {
   detectEscalation,
   retentionExpiresAt,
   screenAgentReply,
+  type AgentToolDefinition,
   type ConversationTurn,
   type ConversationalAgentProvider,
 } from '@masterclip/audio-core'
@@ -40,6 +41,53 @@ const INTAKE_QUESTIONS: Array<{ key: string; question: string }> = [
 
 /** Requests for commitments get a boundary statement, never an answer. */
 const BOUNDARY_PATTERN = /\b(guarantee|am i (approved|accepted)|will (i|we|you) (be |get )?(approved|accepted|funded)|promise me)\b/i
+
+/**
+ * The tool surface a provider-hosted agent may call. Declared as client
+ * tools: the provider relays the call to our server, which authenticates,
+ * validates, executes, and audits — the provider never touches the database.
+ */
+export const OPERATOR_AGENT_TOOLS = [
+  {
+    name: 'create_operator_desk_lead',
+    description: 'Create a Street Banker Operator Desk lead from details the caller volunteered.',
+    parameters: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string', description: 'Lead name (artist or project name)' },
+        contactName: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        artistName: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'create_follow_up_task',
+    description: 'File a follow-up task for a Street Banker operator.',
+    parameters: {
+      type: 'object',
+      required: ['description'],
+      properties: { description: { type: 'string' }, dueAt: { type: 'string', description: 'ISO date, optional' } },
+    },
+  },
+  {
+    name: 'request_human_callback',
+    description: 'Schedule a priority callback from a human Street Banker operator.',
+    parameters: { type: 'object', properties: { reason: { type: 'string' } } },
+  },
+  {
+    name: 'transfer_to_human',
+    description: 'Transfer this conversation to a human operator now.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'end_conversation',
+    description: 'End the conversation politely once the caller is done.',
+    parameters: { type: 'object', properties: {} },
+  },
+] satisfies AgentToolDefinition[]
 
 export class OperatorAgentService {
   constructor(private readonly deps: AudioEngineDeps) {}
@@ -242,6 +290,52 @@ export class OperatorAgentService {
       targetId: conversationId,
       data: { reason, leadId, humanTransfer: conversation.humanTransferStatus },
     })
+  }
+
+  /**
+   * Syncs an agent definition to the configured conversational-agent
+   * provider: tenant knowledge docs are pushed provider-side and attached,
+   * the system prompt carries the disclosure, and every tool stays a
+   * server-side client tool. Records the provider agent id on success.
+   */
+  async syncToProvider(orgId: string, agentId: string): Promise<AudioAgentRecord> {
+    const agent = await this.deps.repos.agents.get(orgId, agentId)
+    const settings = await this.deps.repos.policy.getSettings(orgId)
+    const provider = this.deps.registry.resolve<ConversationalAgentProvider>('agent', settings.defaultProviders.agent)
+    const docs = await this.deps.repos.agents.knowledgeDocs(orgId, agentId)
+    const disclosure = defaultDisclosure('agent_disclosure')
+    const request = {
+      orgId,
+      name: (settings.whiteLabel.agentDisplayName || agent.name).slice(0, 100),
+      systemPrompt:
+        `You are the ${agent.name} for Street Banker, a music distribution and artist-services company. ` +
+        'You qualify and route; humans decide. Never promise acceptance or funding, never approve or negotiate deals, ' +
+        'never give legal interpretations, never guarantee streams, playlists, press, or royalty recovery, and never ' +
+        'reveal internal scoring or another artist’s information. Offer a human operator whenever asked or when a ' +
+        'question is outside your scope.',
+      firstMessage: settings.whiteLabel.welcomeMessage || `Hi — this is ${agent.name}. How can I help today?`,
+      language: settings.whiteLabel.languages?.[0] ?? 'en',
+      knowledge: docs.map((doc) => ({ id: doc.id, name: doc.name, content: doc.content })),
+      tools: OPERATOR_AGENT_TOOLS,
+      disclosureText: disclosure.text,
+    }
+    const remote = agent.providerAgentId
+      ? await provider.updateAgent({ ...request, providerAgentId: agent.providerAgentId })
+      : await provider.createAgent(request)
+    const updated = await this.deps.repos.agents.update(orgId, agentId, {
+      providerAgentId: remote.providerAgentId,
+      configuration: { ...agent.configuration, provider: provider.providerId, syncedKnowledgeVersion: agent.knowledgeBaseVersion },
+    })
+    await this.deps.db.run('UPDATE audio_agents SET provider = ? WHERE id = ? AND org_id = ?', [provider.providerId, agentId, orgId])
+    await this.deps.audit.record({
+      orgId,
+      actor: 'agent-sync',
+      action: 'audio.agent_synced',
+      targetType: 'audio_agent',
+      targetId: agentId,
+      data: { provider: provider.providerId, providerAgentId: remote.providerAgentId, knowledgeDocs: docs.length },
+    })
+    return { ...updated, provider: provider.providerId }
   }
 
   /** Marks a live conversation for human transfer and queues the callback task. */
