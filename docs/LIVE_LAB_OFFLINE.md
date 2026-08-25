@@ -99,6 +99,15 @@ Two more things had to hold before any of that was reachable after a crash:
   `ERR_INTERNET_DISCONNECTED`. It never caches `/api/` — the app already knows
   how to be offline, and a worker answering an API call from a stale cache
   would make a performer trust data that is no longer true.
+
+  The shell is cached **at install**, document and scripts together, not merely
+  as it is used. On a first visit the page's own scripts are fetched before the
+  worker controls anything, so runtime caching alone never sees them: load the
+  app, build a show, go offline without reloading — what a performer actually
+  does — and the reload at the venue would find no application to load. The
+  browser's own HTTP cache hides this on a warm machine, which is why the
+  offline spec asserts the bundle is in the worker's cache rather than trusting
+  that the reload succeeded.
 - **The signed-in identity.** `/api/auth/me` fails when the server is
   unreachable, and that used to read as *signed out* — a sign-in form nobody at
   a venue can complete. A server that answers "no" still signs you out; a

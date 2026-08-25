@@ -21,10 +21,43 @@
 const CACHE = 'masterclip-shell-v1'
 
 self.addEventListener('install', (event) => {
-  // The document itself is worth having before anything goes wrong.
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/')).catch(() => undefined))
+  event.waitUntil(precacheShell())
   self.skipWaiting()
 })
+
+/**
+ * Cache the document *and the assets it names*, at install.
+ *
+ * Runtime caching alone is not enough, and the gap is not theoretical: on a
+ * first visit the page's own scripts are fetched before this worker controls
+ * anything, so they never pass through the fetch handler and never reach the
+ * cache. Load the app, build a show, go offline without ever reloading — the
+ * exact thing a performer does — and the reload at the venue would find no
+ * application to load.
+ *
+ * The asset names are hashed at build time, so they are read out of the served
+ * document rather than baked into this file.
+ */
+async function precacheShell() {
+  try {
+    const cache = await caches.open(CACHE)
+    const response = await fetch('/', { cache: 'reload' })
+    if (!response.ok) return
+    const html = await response.clone().text()
+    await cache.put('/', response)
+
+    const urls = new Set()
+    for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+      const url = match[1]
+      // Same-origin, non-API only — the same boundary the fetch handler keeps.
+      if (url.startsWith('/') && !url.startsWith('/api/')) urls.add(url)
+    }
+    await Promise.all([...urls].map((url) => cache.add(url).catch(() => undefined)))
+  } catch {
+    // Installed with no network: nothing to precache now, and the fetch
+    // handler still fills the cache on the next successful load.
+  }
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(

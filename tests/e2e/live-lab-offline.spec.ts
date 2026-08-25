@@ -97,6 +97,32 @@ test('a show is built, packaged and cached on the device', async () => {
   // Build and cache the show. This is the last moment the network is needed.
   await page.getByRole('button', { name: 'Build show package' }).click()
   await expect(page.getByText(/SHOW READY/)).toBeVisible({ timeout: 60_000 })
+
+  // The app shell has to be cached too, or the reload later has no application
+  // to load. Waiting for the worker to be active is a precondition, not a
+  // workaround: a performer has the app open for minutes before going on, and
+  // this resolves in milliseconds.
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined))
+
+  // Assert the shell is genuinely cached rather than trusting that it is. The
+  // reload below can otherwise be served by the browser's own HTTP cache, which
+  // passes locally and fails on a cold runner — exactly how this was missed.
+  const cachedShell = await page.evaluate(async () => {
+    const names = await caches.keys()
+    const shell = names.find((name) => name.startsWith('masterclip-shell'))
+    if (!shell) return { shell: null, document: false, scripts: 0 }
+    const cache = await caches.open(shell)
+    const keys = await cache.keys()
+    const paths = keys.map((request) => new URL(request.url).pathname)
+    return {
+      shell,
+      document: paths.some((path) => path === '/' || path.endsWith('/index.html')),
+      scripts: paths.filter((path) => path.endsWith('.js')).length,
+    }
+  })
+  expect(cachedShell.shell, 'the service worker should have opened its cache').not.toBeNull()
+  expect(cachedShell.document, 'the document must be cached to reload offline').toBe(true)
+  expect(cachedShell.scripts, 'the app bundle must be cached, not just the document').toBeGreaterThan(0)
 })
 
 test('performance mode runs with the network actually disabled', async () => {
