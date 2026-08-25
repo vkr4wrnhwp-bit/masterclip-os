@@ -147,6 +147,19 @@ const EnvSchema = z.object({
   /** Cheaper model used for first-pass visual QC over extracted frames. */
   ANTHROPIC_QC_MODEL: z.string().default('claude-haiku-4-5'),
 
+  // --- build identity ------------------------------------------------------
+  /**
+   * The commit this build was produced from, surfaced on /api/health so
+   * "which version is deployed?" is answerable without guessing from which
+   * routes happen to exist. Set explicitly, or inherited from whichever
+   * variable the host injects (Render, Vercel, Fly, Heroku, generic CI).
+   */
+  GIT_COMMIT: z.string().default(''),
+  RENDER_GIT_COMMIT: z.string().default(''),
+  RENDER_GIT_BRANCH: z.string().default(''),
+  VERCEL_GIT_COMMIT_SHA: z.string().default(''),
+  SOURCE_VERSION: z.string().default(''),
+
   // --- Live Lab ------------------------------------------------------------
   /**
    * AI audio provider for the Live Lab scene builder. `mock-audio` synthesizes
@@ -216,6 +229,10 @@ export interface AppConfig extends RawEnv {
   liveSpendCapMicros: MicroUsd
   isSandbox: boolean
   isTest: boolean
+  /** Resolved commit SHA for this build, or '' when the host provides none. */
+  commit: string
+  /** Resolved branch name, or '' when unknown. */
+  branch: string
 }
 
 let cached: AppConfig | null = null
@@ -253,8 +270,20 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
     liveSpendCapMicros: usdToMicros(env.LIVE_SPEND_CAP_USD),
     isSandbox: env.MASTERCLIP_MODE === 'sandbox',
     isTest: env.NODE_ENV === 'test',
+    // First non-empty wins: an explicit GIT_COMMIT overrides the host's, and
+    // a deployment that reports nothing says so rather than inventing a value.
+    commit: firstNonEmpty(env.GIT_COMMIT, env.RENDER_GIT_COMMIT, env.VERCEL_GIT_COMMIT_SHA, env.SOURCE_VERSION),
+    branch: firstNonEmpty(env.RENDER_GIT_BRANCH),
   }
   return cached
+}
+
+function firstNonEmpty(...values: string[]): string {
+  for (const value of values) {
+    const trimmed = value.trim()
+    if (trimmed.length > 0) return trimmed
+  }
+  return ''
 }
 
 export function resetConfigCache(): void {
