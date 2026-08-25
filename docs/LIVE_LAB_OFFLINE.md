@@ -76,3 +76,18 @@ crash recoveries) are collected locally and synced to
 `POST /api/live-lab/projects/:id/events` when the device is online — after the
 show, in batches, and only what the client chooses to send. Reliability data,
 not surveillance.
+
+## How the cache is verified
+
+`IndexedDbCacheStore` is exercised in real Chromium by
+`tests/e2e/live-lab-browser.spec.ts`, not only through the in-memory
+implementation. It asserts a byte-identical round-trip, that the store's digest
+agrees with a digest of the source bytes, that flipping a single byte changes
+that digest, that a non-WAV is refused as undecodable, and that a cached show
+**survives a page reload** — the property everything above depends on, and the
+one an in-memory store can never demonstrate.
+
+Storage headroom (`estimateAvailableStorageBytes`) and the persistence request
+(`requestPersistentStorage`) are checked against the real `navigator.storage`,
+which exists only in a secure context; localhost qualifies, as does production
+over HTTPS.
