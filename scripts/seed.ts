@@ -7,6 +7,7 @@
  * Builder does that, against the mock provider by default.
  */
 import { createRuntime, type Runtime } from '@masterclip/runtime'
+import { seedAudioDemo } from '@masterclip/audio-engine'
 import { applyEnvFile, sha256Hex } from '@masterclip/shared'
 import { CharacterRecord, EnvironmentRecord, emptyShot } from '@masterclip/shot-schema'
 import { objectKey } from '@masterclip/asset-storage'
@@ -228,6 +229,11 @@ async function main(): Promise<void> {
     console.log(`  shot ${created.shot.shotKey} → ${created.shot.id}`)
   }
 
+  // Street Banker Audio Intelligence demo data: fictional meetings, briefs,
+  // agent conversations, a release pack, a remix project and a verified
+  // fictional voice — all rendered by the mock provider, no credentials used.
+  const audioSeed = await seedAudioDemo(runtime.audio, { orgId, userId })
+  console.log(audioSeed.seeded ? 'audio intelligence demo data seeded' : 'audio intelligence demo data already present')
   await seedLiveLab(runtime, orgId, userId)
 
   console.log('')

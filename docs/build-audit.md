@@ -376,3 +376,30 @@ authorizes it — it prints the exact figure and declines until you confirm.
 Then confirm the charge the ledger records matches Google's own reported cost. That single
 run converts six adapters from DEV-LABELED toward REAL faster than any amount of
 further building, and it is the only way to close risk #3.
+
+---
+
+## Street Banker Audio Intelligence (audited 2026-08-25)
+
+Same vocabulary, same standard. The audio layer's own verification run:
+`pnpm typecheck` **36/36 clean** · `pnpm lint` **clean** · `pnpm test`
+**415 passed / 415** · `pnpm test:e2e` **22 passed / 22** (whole repo, after
+merging Live Lab from `main`).
+
+| Area | Status | Notes |
+|---|---|---|
+| Provider-independent interfaces, registry, capability gate | **REAL** | every route and job passes the layered gate; flagship implicit entitlement + partner grants tested |
+| Mock audio providers (all nine slots) | **REAL** | real seeded WAV output; deterministic transcripts; demo + tests run on it end to end |
+| ElevenLabs adapters (STT, TTS, agents, dubbing, music, stems, isolation, SFX, voices) | **DEV-LABELED** | endpoints/params verified against official SDK v2.64.0; **no live call made from this environment** — run the `GET v1/user` health probe with a real key first |
+| Meeting Intelligence (upload → transcript → draft → approval → Operator Desk commit) | **REAL** | consent gate, speaker rename, transcript correction, inferred-vs-explicit labelling all tested |
+| Signal Audio Briefs + scheduling | **REAL** | confidence language preserved into audio (tested); schedule tick runs in the worker; Signal *data source* is NOT BUILT — items are caller-supplied |
+| Operator agent (web channel, guardrails, escalation, post-call) | **REAL** | server-side orchestration tested incl. commitment refusal and human transfer; provider voice channel is DEV-LABELED (agent + KB sync implemented, never run live) |
+| Global Release Pack (transcript review → dub fan-out → QA gate → export) | **REAL** on mock | per-language SRT+VTT caption assets from the reviewed transcript; per-segment QA UI is PARTIAL (prompt-based edit, no rich editor) |
+| Campaign Audio Toolkit | **REAL** on mock | voiceover/SFX/isolation with lineage; vault-permission gate tested |
+| Remix Lab (rights gates, moderation, stems, concepts, release gate) | **REAL** on mock | imitation prompts blocked pre-provider (tested); ElevenLabs stems arrive as one archive — per-stem unpacking NOT BUILT |
+| Artist Voice Vault (owner-verified registration, scopes, revocation) | **REAL** on mock | proxy registration refused at the adapter; revocation cascade tested; provider verification webhooks NOT BUILT |
+| Webhooks (signature, replay, idempotency, routing) | **REAL** | HMAC scheme matches the SDK's own implementation; tested incl. stale/tampered/duplicate deliveries |
+| Retention sweeps + zero-retention gate | **REAL** | content deleted, audit metadata kept (tested); zero-retention refusal before upload (tested) |
+| Usage ledger + budgets | **REAL** | append-only; hard stops/warnings tested; provider **cost reconciliation** (final_cost backfill) NOT BUILT — estimates are labelled estimates |
+| White-label operator config | **PARTIAL** | tenant-isolated settings + branding fields exist and apply to conversations; no dedicated partner admin UI |
+| Realtime transcription, telephony/calendar capture | **NOT BUILT** | catalogued capabilities, no implementation |

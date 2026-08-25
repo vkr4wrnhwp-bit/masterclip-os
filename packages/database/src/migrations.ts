@@ -840,4 +840,562 @@ CREATE TABLE IF NOT EXISTS live_performance_events (
 CREATE INDEX IF NOT EXISTS idx_live_events_project ON live_performance_events(live_project_id, created_at);
 `,
   },
+  {
+    id: '0004_audio_intelligence',
+    sql: `
+-- ===========================================================================
+-- Street Banker Audio Intelligence
+--
+-- Every tenant-owned table carries org_id and every repository method filters
+-- by it. Provider names appear only in data columns, never in table names —
+-- the provider is replaceable infrastructure.
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS audio_data_policies (
+  id                              TEXT PRIMARY KEY,
+  org_id                          TEXT NOT NULL REFERENCES orgs(id),
+  allow_audio_upload              INTEGER NOT NULL,
+  allow_meeting_recording         INTEGER NOT NULL,
+  allow_call_recording            INTEGER NOT NULL,
+  allow_transcription             INTEGER NOT NULL,
+  allow_voice_generation          INTEGER NOT NULL,
+  allow_dubbing                   INTEGER NOT NULL,
+  allow_music_generation          INTEGER NOT NULL,
+  allow_voice_cloning             INTEGER NOT NULL,
+  require_zero_retention          INTEGER NOT NULL,
+  allow_provider_storage          INTEGER NOT NULL,
+  allow_internal_storage          INTEGER NOT NULL,
+  source_audio_retention_days     INTEGER,
+  transcript_retention_days       INTEGER,
+  generated_audio_retention_days  INTEGER,
+  agent_conversation_retention_days INTEGER,
+  voice_sample_retention_days     INTEGER,
+  allow_human_review              INTEGER NOT NULL,
+  allow_ai_extraction             INTEGER NOT NULL,
+  allow_download                  INTEGER NOT NULL,
+  allow_export                    INTEGER NOT NULL,
+  require_recording_consent       INTEGER NOT NULL,
+  require_agent_disclosure        INTEGER NOT NULL,
+  require_rights_confirmation     INTEGER NOT NULL,
+  created_at                      TEXT NOT NULL,
+  updated_at                      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audio_policy_org ON audio_data_policies(org_id);
+
+-- Org-level audio settings: default providers, protected names for prompt
+-- moderation, white-label operator branding. JSON columns parsed in the repo.
+CREATE TABLE IF NOT EXISTS org_audio_settings (
+  org_id            TEXT PRIMARY KEY REFERENCES orgs(id),
+  default_providers TEXT NOT NULL,
+  protected_names   TEXT NOT NULL,
+  white_label       TEXT NOT NULL,
+  feature_toggles   TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+
+-- Partner OS entitlements: which audio.* capabilities an org holds. The
+-- flagship org administers these; enabled lets an org admin switch a granted
+-- capability off without losing the grant.
+CREATE TABLE IF NOT EXISTS org_audio_entitlements (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL REFERENCES orgs(id),
+  capability  TEXT NOT NULL,
+  enabled     INTEGER NOT NULL,
+  granted_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audio_entitlements ON org_audio_entitlements(org_id, capability);
+
+CREATE TABLE IF NOT EXISTS audio_keyterms (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL REFERENCES orgs(id),
+  term        TEXT NOT NULL,
+  category    TEXT NOT NULL,
+  sensitivity TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audio_keyterms ON audio_keyterms(org_id, term);
+
+CREATE TABLE IF NOT EXISTS consent_records (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  subject_type    TEXT NOT NULL,
+  subject_id      TEXT NOT NULL,
+  consent_type    TEXT NOT NULL,
+  policy_version  TEXT NOT NULL,
+  disclosure_text TEXT NOT NULL,
+  accepted        INTEGER NOT NULL,
+  accepted_by     TEXT NOT NULL,
+  accepted_at     TEXT NOT NULL,
+  revoked_at      TEXT,
+  evidence        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_consent_subject ON consent_records(org_id, subject_type, subject_id);
+
+CREATE TABLE IF NOT EXISTS audio_assets (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  owner_user_id         TEXT NOT NULL,
+  project_type          TEXT NOT NULL,
+  project_id            TEXT,
+  asset_type            TEXT NOT NULL,
+  storage_key           TEXT NOT NULL,
+  file_name             TEXT NOT NULL,
+  mime_type             TEXT NOT NULL,
+  file_size             BIGINT NOT NULL,
+  duration_ms           INTEGER,
+  checksum              TEXT NOT NULL,
+  rights_status         TEXT NOT NULL,
+  consent_record_id     TEXT,
+  retention_kind        TEXT NOT NULL,
+  retention_expires_at  TEXT,
+  deleted_at            TEXT,
+  delete_reason         TEXT,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_org ON audio_assets(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_project ON audio_assets(org_id, project_type, project_id);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_checksum ON audio_assets(org_id, checksum);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_retention ON audio_assets(retention_expires_at);
+
+-- Generation lineage: which provider/model/voice/prompt produced an asset,
+-- under which rights basis, derived from which parent.
+CREATE TABLE IF NOT EXISTS audio_generations (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  project_type          TEXT NOT NULL,
+  project_id            TEXT,
+  output_asset_id       TEXT NOT NULL REFERENCES audio_assets(id),
+  provider              TEXT NOT NULL,
+  model                 TEXT NOT NULL,
+  operation             TEXT NOT NULL,
+  voice_profile_id      TEXT,
+  prompt                TEXT NOT NULL,
+  configuration         TEXT NOT NULL,
+  rights_basis          TEXT NOT NULL,
+  consent_record_id     TEXT,
+  parent_generation_id  TEXT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_generations_project ON audio_generations(org_id, project_type, project_id);
+CREATE INDEX IF NOT EXISTS idx_audio_generations_asset ON audio_generations(output_asset_id);
+
+CREATE TABLE IF NOT EXISTS audio_jobs (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  user_id               TEXT NOT NULL,
+  feature_key           TEXT NOT NULL,
+  provider              TEXT NOT NULL,
+  operation             TEXT NOT NULL,
+  provider_job_id       TEXT,
+  status                TEXT NOT NULL,
+  input_asset_ids       TEXT NOT NULL,
+  output_asset_ids      TEXT NOT NULL,
+  configuration         TEXT NOT NULL,
+  estimated_cost_micros BIGINT NOT NULL,
+  final_cost_micros     BIGINT NOT NULL,
+  error_code            TEXT,
+  error_message         TEXT,
+  created_at            TEXT NOT NULL,
+  started_at            TEXT,
+  completed_at          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_audio_jobs_org ON audio_jobs(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_jobs_status ON audio_jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_jobs_provider ON audio_jobs(provider, provider_job_id);
+
+CREATE TABLE IF NOT EXISTS audio_transcripts (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  audio_asset_id        TEXT NOT NULL REFERENCES audio_assets(id),
+  provider              TEXT NOT NULL,
+  language              TEXT NOT NULL,
+  language_confidence   REAL,
+  full_text             TEXT NOT NULL,
+  confidence            REAL,
+  status                TEXT NOT NULL,
+  raw                   TEXT NOT NULL,
+  retention_expires_at  TEXT,
+  deleted_at            TEXT,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_transcripts_org ON audio_transcripts(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_transcripts_asset ON audio_transcripts(audio_asset_id);
+CREATE INDEX IF NOT EXISTS idx_audio_transcripts_retention ON audio_transcripts(retention_expires_at);
+
+CREATE TABLE IF NOT EXISTS audio_transcript_segments (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL,
+  transcript_id TEXT NOT NULL REFERENCES audio_transcripts(id),
+  speaker_key   TEXT,
+  start_ms      INTEGER NOT NULL,
+  end_ms        INTEGER NOT NULL,
+  seg_text      TEXT NOT NULL,
+  confidence    REAL,
+  entities      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_segments ON audio_transcript_segments(transcript_id, start_ms);
+
+CREATE TABLE IF NOT EXISTS audio_transcript_speakers (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL,
+  transcript_id         TEXT NOT NULL REFERENCES audio_transcripts(id),
+  provider_speaker_key  TEXT NOT NULL,
+  display_name          TEXT NOT NULL,
+  person_id             TEXT,
+  manually_confirmed    INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transcript_speakers ON audio_transcript_speakers(transcript_id, provider_speaker_key);
+
+-- ===========================================================================
+-- Operator Desk scaffold: leads, notes, tasks that approved intelligence
+-- commits into. Nothing commits here without a human approval step.
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS operator_leads (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL REFERENCES orgs(id),
+  name          TEXT NOT NULL,
+  contact_name  TEXT NOT NULL,
+  email         TEXT NOT NULL,
+  phone         TEXT NOT NULL,
+  artist_name   TEXT NOT NULL,
+  stage         TEXT NOT NULL,
+  source        TEXT NOT NULL,
+  created_by    TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_operator_leads_org ON operator_leads(org_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS operator_notes (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL,
+  lead_id     TEXT NOT NULL REFERENCES operator_leads(id),
+  body        TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id   TEXT NOT NULL,
+  pinned      INTEGER NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_operator_notes_lead ON operator_notes(lead_id, created_at);
+
+CREATE TABLE IF NOT EXISTS operator_tasks (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL,
+  lead_id           TEXT NOT NULL REFERENCES operator_leads(id),
+  description       TEXT NOT NULL,
+  status            TEXT NOT NULL,
+  due_at            TEXT,
+  assigned_user_id  TEXT,
+  source_type       TEXT NOT NULL,
+  source_id         TEXT NOT NULL,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  completed_at      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_operator_tasks_lead ON operator_tasks(lead_id, status);
+CREATE INDEX IF NOT EXISTS idx_operator_tasks_org ON operator_tasks(org_id, status);
+
+CREATE TABLE IF NOT EXISTS meeting_intelligence (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  transcript_id     TEXT REFERENCES audio_transcripts(id),
+  audio_asset_id    TEXT REFERENCES audio_assets(id),
+  operator_lead_id  TEXT REFERENCES operator_leads(id),
+  meeting_type      TEXT NOT NULL,
+  title             TEXT NOT NULL,
+  status            TEXT NOT NULL,
+  summary           TEXT NOT NULL,
+  extraction        TEXT NOT NULL,
+  engine            TEXT NOT NULL,
+  consent_record_id TEXT,
+  reviewed_by       TEXT,
+  reviewed_at       TEXT,
+  committed_at      TEXT,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_meetings_org ON meeting_intelligence(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_meetings_lead ON meeting_intelligence(operator_lead_id);
+
+CREATE TABLE IF NOT EXISTS meeting_action_items (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL,
+  meeting_id        TEXT NOT NULL REFERENCES meeting_intelligence(id),
+  description       TEXT NOT NULL,
+  assigned_user_id  TEXT,
+  due_at            TEXT,
+  source_start_ms   INTEGER,
+  source_end_ms     INTEGER,
+  confidence        REAL NOT NULL,
+  approval_status   TEXT NOT NULL,
+  operator_task_id  TEXT,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_action_items_meeting ON meeting_action_items(meeting_id);
+
+CREATE TABLE IF NOT EXISTS meeting_deal_variables (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL,
+  meeting_id      TEXT NOT NULL REFERENCES meeting_intelligence(id),
+  variable_type   TEXT NOT NULL,
+  value           TEXT NOT NULL,
+  extraction_type TEXT NOT NULL,
+  source_start_ms INTEGER,
+  source_end_ms   INTEGER,
+  confidence      REAL NOT NULL,
+  approval_status TEXT NOT NULL,
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deal_vars_meeting ON meeting_deal_variables(meeting_id);
+
+CREATE TABLE IF NOT EXISTS signal_briefs (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  brief_type        TEXT NOT NULL,
+  title             TEXT NOT NULL,
+  script            TEXT NOT NULL,
+  items             TEXT NOT NULL,
+  status            TEXT NOT NULL,
+  audio_asset_id    TEXT,
+  voice_ref         TEXT NOT NULL,
+  engine            TEXT NOT NULL,
+  error_message     TEXT,
+  requested_by      TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  rendered_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_briefs_org ON signal_briefs(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS signal_brief_schedules (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  brief_type          TEXT NOT NULL,
+  cadence             TEXT NOT NULL,
+  hour_utc            INTEGER NOT NULL,
+  timezone            TEXT NOT NULL,
+  subscriber_user_id  TEXT NOT NULL,
+  enabled             INTEGER NOT NULL,
+  last_run_at         TEXT,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brief_schedules_org ON signal_brief_schedules(org_id);
+
+CREATE TABLE IF NOT EXISTS audio_agents (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  provider                TEXT NOT NULL,
+  provider_agent_id       TEXT,
+  name                    TEXT NOT NULL,
+  agent_type              TEXT NOT NULL,
+  status                  TEXT NOT NULL,
+  configuration           TEXT NOT NULL,
+  knowledge_base_version  INTEGER NOT NULL,
+  disclosure_version      TEXT NOT NULL,
+  created_by              TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_agents_org ON audio_agents(org_id);
+
+CREATE TABLE IF NOT EXISTS agent_knowledge_docs (
+  id          TEXT PRIMARY KEY,
+  org_id      TEXT NOT NULL,
+  agent_id    TEXT NOT NULL REFERENCES audio_agents(id),
+  name        TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  version     INTEGER NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_agent ON agent_knowledge_docs(agent_id);
+
+CREATE TABLE IF NOT EXISTS agent_conversations (
+  id                        TEXT PRIMARY KEY,
+  org_id                    TEXT NOT NULL REFERENCES orgs(id),
+  agent_id                  TEXT NOT NULL REFERENCES audio_agents(id),
+  provider_conversation_id  TEXT,
+  user_id                   TEXT,
+  guest_contact             TEXT NOT NULL,
+  operator_lead_id          TEXT,
+  channel                   TEXT NOT NULL,
+  status                    TEXT NOT NULL,
+  disclosure_version        TEXT NOT NULL,
+  disclosure_shown_at       TEXT NOT NULL,
+  started_at                TEXT NOT NULL,
+  ended_at                  TEXT,
+  duration_seconds          INTEGER,
+  transcript                TEXT NOT NULL,
+  recording_asset_id        TEXT,
+  human_transfer_status     TEXT NOT NULL,
+  summary                   TEXT NOT NULL,
+  classification            TEXT NOT NULL,
+  retention_expires_at      TEXT,
+  deleted_at                TEXT,
+  created_at                TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_org ON agent_conversations(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_provider ON agent_conversations(provider_conversation_id);
+CREATE INDEX IF NOT EXISTS idx_agent_conversations_retention ON agent_conversations(retention_expires_at);
+
+CREATE TABLE IF NOT EXISTS voice_profiles (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  voice_owner_name      TEXT NOT NULL,
+  voice_owner_person_id TEXT,
+  provider              TEXT NOT NULL,
+  provider_voice_id     TEXT NOT NULL,
+  name                  TEXT NOT NULL,
+  status                TEXT NOT NULL,
+  verification_status   TEXT NOT NULL,
+  consent_record_id     TEXT NOT NULL,
+  permitted_uses        TEXT NOT NULL,
+  valid_from            TEXT NOT NULL,
+  valid_until           TEXT,
+  revoked_at            TEXT,
+  revoked_by            TEXT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_voice_profiles_org ON voice_profiles(org_id);
+
+CREATE TABLE IF NOT EXISTS dubbing_projects (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  name                    TEXT NOT NULL,
+  source_asset_id         TEXT NOT NULL REFERENCES audio_assets(id),
+  source_language         TEXT NOT NULL,
+  targets                 TEXT NOT NULL,
+  status                  TEXT NOT NULL,
+  voice_strategy          TEXT NOT NULL,
+  transcript_id           TEXT,
+  rights_confirmation_id  TEXT NOT NULL,
+  human_review_required   INTEGER NOT NULL,
+  review_note             TEXT NOT NULL,
+  approved_by             TEXT,
+  approved_at             TEXT,
+  exported_at             TEXT,
+  created_by              TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dubbing_org ON dubbing_projects(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS campaign_audio_projects (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  name                    TEXT NOT NULL,
+  template_type           TEXT NOT NULL,
+  source_asset_ids        TEXT NOT NULL,
+  voice_profile_id        TEXT,
+  status                  TEXT NOT NULL,
+  usage_context           TEXT NOT NULL,
+  rights_basis            TEXT NOT NULL,
+  rights_confirmation_id  TEXT,
+  created_by              TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_audio_org ON campaign_audio_projects(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS remix_projects (
+  id                          TEXT PRIMARY KEY,
+  org_id                      TEXT NOT NULL REFERENCES orgs(id),
+  name                        TEXT NOT NULL,
+  source_audio_asset_id       TEXT NOT NULL REFERENCES audio_assets(id),
+  rights_confirmation_id      TEXT NOT NULL,
+  no_imitation_confirmation_id TEXT NOT NULL,
+  remix_lane                  TEXT NOT NULL,
+  target_use                  TEXT NOT NULL,
+  status                      TEXT NOT NULL,
+  provider_song_id            TEXT,
+  provider_screening          TEXT NOT NULL,
+  composition_plan            TEXT,
+  human_review_required       INTEGER NOT NULL,
+  final_approval_status       TEXT NOT NULL,
+  approved_by                 TEXT,
+  approved_at                 TEXT,
+  created_by                  TEXT NOT NULL,
+  created_at                  TEXT NOT NULL,
+  updated_at                  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_remix_org ON remix_projects(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS remix_versions (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL,
+  remix_project_id      TEXT NOT NULL REFERENCES remix_projects(id),
+  parent_version_id     TEXT,
+  version_type          TEXT NOT NULL,
+  prompt                TEXT NOT NULL,
+  model                 TEXT NOT NULL,
+  seed                  TEXT,
+  output_asset_id       TEXT REFERENCES audio_assets(id),
+  generation_metadata   TEXT NOT NULL,
+  review_status         TEXT NOT NULL,
+  reviewed_by           TEXT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_remix_versions_project ON remix_versions(remix_project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS audio_usage_ledger (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL,
+  user_id               TEXT NOT NULL,
+  project_type          TEXT NOT NULL,
+  project_id            TEXT,
+  provider              TEXT NOT NULL,
+  operation             TEXT NOT NULL,
+  model                 TEXT NOT NULL,
+  unit                  TEXT NOT NULL,
+  input_units           REAL NOT NULL,
+  output_units          REAL NOT NULL,
+  estimated_cost_micros BIGINT NOT NULL,
+  final_cost_micros     BIGINT NOT NULL,
+  currency              TEXT NOT NULL,
+  provider_request_id   TEXT,
+  job_id                TEXT,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audio_usage_org ON audio_usage_ledger(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_usage_user ON audio_usage_ledger(org_id, user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS audio_budgets (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  scope                 TEXT NOT NULL,
+  scope_id              TEXT NOT NULL,
+  monthly_cap_micros    BIGINT,
+  per_job_cap_micros    BIGINT,
+  approval_above_micros BIGINT,
+  warn_threshold_pct    REAL NOT NULL,
+  hard_stop             INTEGER NOT NULL,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_audio_budgets ON audio_budgets(org_id, scope, scope_id);
+
+CREATE TABLE IF NOT EXISTS provider_webhook_events (
+  id                TEXT PRIMARY KEY,
+  provider          TEXT NOT NULL,
+  external_event_id TEXT NOT NULL,
+  event_type        TEXT NOT NULL,
+  signature_valid   INTEGER NOT NULL,
+  org_id            TEXT,
+  payload           TEXT NOT NULL,
+  status            TEXT NOT NULL,
+  attempts          INTEGER NOT NULL,
+  received_at       TEXT NOT NULL,
+  processed_at      TEXT,
+  failure_reason    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_webhook_events ON provider_webhook_events(provider, external_event_id);
+CREATE INDEX IF NOT EXISTS idx_provider_webhook_status ON provider_webhook_events(status, received_at);
+`,
+  },
 ]

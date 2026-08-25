@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const render = new RenderService(runtime)
   const logger = runtime.logger.child({ component: 'worker' })
 
-  const workers = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.live].map((queueName) => {
+  const workers = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live].map((queueName) => {
     const worker = new QueueWorker(runtime.queue, {
       queueName,
       concurrency: config.WORKER_CONCURRENCY,
@@ -86,12 +86,96 @@ async function main(): Promise<void> {
       await runtime.registry.models({ refresh: true })
     })
 
+    // ----- Street Banker Audio Intelligence ---------------------------------
+    const audio = runtime.audio
+
+    worker.register<{ jobId: string }>(JOB_TYPES.audioTranscribe, async ({ jobId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.transcription.run(jobId)
+    })
+
+    worker.register<{ meetingId: string }>(JOB_TYPES.audioExtractMeeting, async ({ meetingId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.meetings.runExtraction(meetingId)
+    })
+
+    worker.register<{ briefId: string }>(JOB_TYPES.audioRenderBrief, async ({ briefId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.briefs.runRender(briefId)
+    })
+
+    worker.register<{ projectId: string }>(JOB_TYPES.audioDubbingSubmit, async ({ projectId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.globalRelease.runSubmit(projectId)
+    })
+
+    worker.register<{ projectId: string }>(JOB_TYPES.audioDubbingPoll, async ({ projectId }, ctx) => {
+      await ctx.heartbeat()
+      const result = await audio.globalRelease.runPoll(projectId)
+      if (!result.done) ctx.defer(config.PROVIDER_POLL_INTERVAL_MS)
+    })
+
+    worker.register<{ jobId: string }>(JOB_TYPES.audioCampaignGenerate, async ({ jobId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.campaigns.runGenerate(jobId)
+    })
+
+    worker.register<{ jobId: string }>(JOB_TYPES.audioRemixGenerate, async ({ jobId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.remix.runOperation(jobId)
+    })
+
+    worker.register<{ conversationId: string }>(JOB_TYPES.audioAgentPostCall, async ({ conversationId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.operatorAgent.runPostCall(conversationId)
+    })
+
+    worker.register<{ orgId: string; agentId: string }>(JOB_TYPES.audioAgentSync, async ({ orgId, agentId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.operatorAgent.syncToProvider(orgId, agentId)
+    })
+
+    worker.register<{ eventId: string }>(JOB_TYPES.audioWebhookProcess, async ({ eventId }, ctx) => {
+      await ctx.heartbeat()
+      await audio.webhooks.process(eventId)
+    })
+
+    // Self-perpetuating maintenance ticks: each run re-arms the next time
+    // bucket, and the bucketed dedupe key stops restarts from stacking them.
+    worker.register(JOB_TYPES.audioRetentionSweep, async (_payload, ctx) => {
+      await ctx.heartbeat()
+      await audio.retention.sweep()
+      await enqueueAudioTick(JOB_TYPES.audioRetentionSweep, RETENTION_TICK_MS)
+    })
+
+    worker.register(JOB_TYPES.audioScheduleTick, async (_payload, ctx) => {
+      await ctx.heartbeat()
+      const generated = await audio.briefs.runScheduleTick()
+      if (generated > 0) ctx.logger.info('audio.scheduled_briefs', { generated })
+      await enqueueAudioTick(JOB_TYPES.audioScheduleTick, SCHEDULE_TICK_MS)
+    })
+
     return worker
   })
 
+  const RETENTION_TICK_MS = 15 * 60_000
+  const SCHEDULE_TICK_MS = 60 * 60_000
+  async function enqueueAudioTick(type: string, delayMs: number): Promise<void> {
+    const bucket = Math.floor((Date.now() + delayMs) / delayMs)
+    await runtime.queue.enqueue({
+      queue: QUEUES.audio,
+      type,
+      payload: {},
+      delayMs,
+      dedupeKey: `${type}:${bucket}`,
+    })
+  }
+  await enqueueAudioTick(JOB_TYPES.audioRetentionSweep, 5_000)
+  await enqueueAudioTick(JOB_TYPES.audioScheduleTick, 10_000)
+
   for (const worker of workers) worker.start()
   logger.info('worker.started', {
-    queues: [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance],
+    queues: [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live],
     concurrency: config.WORKER_CONCURRENCY,
     mode: config.MASTERCLIP_MODE,
     providers: runtime.registry.list().map((p) => `${p.providerId}${p.isConfigured() ? '' : ' (unconfigured)'}`),

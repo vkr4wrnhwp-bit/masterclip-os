@@ -95,6 +95,51 @@ const EnvSchema = z.object({
   COMFYUI_BASE_URL: z.string().default(''),
   COMFYUI_API_KEY: z.string().default(''),
 
+  // --- Street Banker Audio Intelligence -----------------------------------
+  /** Umbrella switch for the whole audio layer. */
+  AUDIO_INTELLIGENCE_ENABLED: bool(true),
+  ELEVENLABS_ENABLED: bool(true),
+  MEETING_INTELLIGENCE_ENABLED: bool(true),
+  SIGNAL_AUDIO_BRIEFS_ENABLED: bool(true),
+  AUDIO_OPERATOR_ENABLED: bool(true),
+  GLOBAL_RELEASE_PACK_ENABLED: bool(true),
+  CAMPAIGN_AUDIO_TOOLKIT_ENABLED: bool(true),
+  REMIX_LAB_AUDIO_ENGINE_ENABLED: bool(true),
+  ARTIST_VOICE_VAULT_ENABLED: bool(true),
+  WHITE_LABEL_AUDIO_OPERATOR_ENABLED: bool(true),
+  DUBBING_ENABLED: bool(true),
+  /** Generation-heavy, rights-sensitive features default OFF; enable deliberately. */
+  MUSIC_GENERATION_ENABLED: bool(false),
+  MUSIC_INPAINTING_ENABLED: bool(false),
+  STEM_SEPARATION_ENABLED: bool(true),
+  VOICE_ISOLATION_ENABLED: bool(true),
+  SOUND_EFFECTS_ENABLED: bool(true),
+  VOICE_CLONING_ENABLED: bool(false),
+  /** Deployment-wide floor: force every org's policy to require zero retention. */
+  ZERO_RETENTION_REQUIRED: bool(false),
+
+  ELEVENLABS_API_KEY: z.string().default(''),
+  ELEVENLABS_BASE_URL: z.string().default('https://api.elevenlabs.io'),
+  ELEVENLABS_STT_MODEL: z.string().default('scribe_v2'),
+  ELEVENLABS_TTS_MODEL: z.string().default('eleven_multilingual_v2'),
+  /** No default voice on purpose: a voice is an account decision, never guessed. */
+  ELEVENLABS_TTS_VOICE_ID: z.string().default(''),
+  ELEVENLABS_MUSIC_MODEL: z.string().default(''),
+  ELEVENLABS_SFX_MODEL: z.string().default(''),
+  ELEVENLABS_WEBHOOK_SECRET: z.string().default(''),
+  /**
+   * Operator attestation that the ElevenLabs account tier supports
+   * enable_logging=false (zero-retention). Never inferred.
+   */
+  ELEVENLABS_ZERO_RETENTION_CAPABLE: bool(false),
+  /**
+   * Operator-maintained estimate rates as JSON, e.g.
+   * {"transcription_per_minute_usd":0.006,"tts_per_1k_chars_usd":0.05}.
+   * Estimates only — final cost comes from provider usage reconciliation.
+   * Empty means "no estimate", never a guessed price.
+   */
+  AUDIO_RATE_CARD: z.string().default(''),
+
   ANTHROPIC_API_KEY: z.string().default(''),
   ANTHROPIC_BASE_URL: z.string().default('https://api.anthropic.com'),
   /** Model used for reasoning-heavy producer agents. */
@@ -192,6 +237,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
     'LUMA_API_KEY',
     'REPLICATE_API_TOKEN',
     'ANTHROPIC_API_KEY',
+    'ELEVENLABS_API_KEY',
+    'ELEVENLABS_WEBHOOK_SECRET',
     'S3_SECRET_ACCESS_KEY',
     'SESSION_SECRET',
     'ASSET_SIGNING_SECRET',
