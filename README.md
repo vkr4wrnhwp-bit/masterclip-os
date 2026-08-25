@@ -99,6 +99,38 @@ add detail, and nothing upscales or interpolates by default.
 
 ---
 
+## Street Banker Audio Intelligence
+
+The platform also carries a full audio intelligence and voice-services layer
+— **Street Banker Audio Intelligence** — built on the same doctrine as the
+render factory: provider-agnostic adapters with a real mock underneath,
+budgets and an append-only usage ledger, org-scoped everything, and humans
+approving what machines draft.
+
+- **Meeting Intelligence** — authorized recordings in; diarized, timestamped
+  transcripts; structured *draft* extraction (deal variables labelled
+  explicit / inferred / needs-verification); human approval; commit to
+  Operator Desk leads and tasks.
+- **Signal Audio Briefs** — structured intelligence read aloud, confidence
+  language intact, on a schedule.
+- **Street Banker Operator** — a narrow intake agent with server-side
+  guardrails (it cannot approve deals or promise outcomes), escalation to
+  humans, and tenant-isolated white-label configuration.
+- **Global Release Pack** — localization with transcript review and a human
+  QA gate before export.
+- **Campaign Audio Toolkit / Remix Lab / Artist Voice Vault** — approved
+  voices only, imitation prompts blocked before the provider, owned-audio
+  workflows with full lineage, ordered human release gates, and verified,
+  revocable voice permissions.
+
+ElevenLabs is the implemented live provider (endpoints verified against the
+official SDK v2.64.0); the mock provider renders real WAV files so the whole
+layer — including `pnpm seed`'s fictional demo data — runs with no
+credentials and no spend. Start at
+[`docs/AUDIO_INTELLIGENCE.md`](docs/AUDIO_INTELLIGENCE.md).
+
+---
+
 ## Providers
 
 Implemented adapters: **mock** (local ffmpeg), **MuAPI**, **Google Gemini (Veo)**,
@@ -203,6 +235,7 @@ packages/   shared · shot-schema · domain · database · queue · asset-storag
             auth · provider-core · provider-{mock,muapi,google,fal,runway,
             luma,replicate,selfhosted} · media-tools · qc-engine · cost-engine
             model-router · prompt-compiler · agents · runtime
+            audio-core · audio-providers · audio-domain · audio-engine
 docs/       architecture · provider-matrix · current-pricing-snapshot
             model-capabilities · licensing-inventory · security-model
             cost-strategy · cinematic-standard · risk-register · build-audit
@@ -224,6 +257,10 @@ docs/       architecture · provider-matrix · current-pricing-snapshot
 | [licensing-inventory](docs/licensing-inventory.md) | before shipping commercially |
 | [risk-register](docs/risk-register.md) | before production |
 | [build-audit](docs/build-audit.md) | what is real, what is not |
+| [AUDIO_INTELLIGENCE](docs/AUDIO_INTELLIGENCE.md) | the audio layer's map — start here for audio |
+| [AUDIO_PROVIDERS](docs/AUDIO_PROVIDERS.md) | ElevenLabs/mocks, verification status, adding a provider |
+| [AUDIO_SECURITY](docs/AUDIO_SECURITY.md) · [AUDIO_CONSENT](docs/AUDIO_CONSENT.md) · [AUDIO_RIGHTS_POLICY](docs/AUDIO_RIGHTS_POLICY.md) | before exposing audio features to anyone |
+| [AUDIO_RETENTION](docs/AUDIO_RETENTION.md) · [AUDIO_WEBHOOKS](docs/AUDIO_WEBHOOKS.md) · [AUDIO_RUNBOOK](docs/AUDIO_RUNBOOK.md) | operating it |
 
 ---
 

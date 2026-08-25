@@ -26,6 +26,18 @@ importers:
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:packages/asset-storage
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:packages/audio-core
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:packages/audio-domain
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:packages/audio-engine
+      '@masterclip/audio-providers':
+        specifier: workspace:*
+        version: link:packages/audio-providers
       '@masterclip/auth':
         specifier: workspace:*
         version: link:packages/auth
@@ -156,6 +168,15 @@ importers:
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:../../packages/asset-storage
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../../packages/audio-core
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:../../packages/audio-domain
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:../../packages/audio-engine
       '@masterclip/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -240,6 +261,9 @@ importers:
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:../../packages/asset-storage
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:../../packages/audio-engine
       '@masterclip/cost-engine':
         specifier: workspace:*
         version: link:../../packages/cost-engine
@@ -282,6 +306,66 @@ importers:
 
   packages/asset-storage:
     dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/audio-core:
+    dependencies:
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/audio-domain:
+    dependencies:
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../audio-core
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/audio-engine:
+    dependencies:
+      '@masterclip/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@masterclip/asset-storage':
+        specifier: workspace:*
+        version: link:../asset-storage
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../audio-core
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:../audio-domain
+      '@masterclip/audio-providers':
+        specifier: workspace:*
+        version: link:../audio-providers
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@masterclip/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/audio-providers:
+    dependencies:
+      '@masterclip/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../audio-core
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -468,6 +552,18 @@ importers:
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:../asset-storage
+      '@masterclip/audio-core':
+        specifier: workspace:*
+        version: link:../audio-core
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:../audio-domain
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:../audio-engine
+      '@masterclip/audio-providers':
+        specifier: workspace:*
+        version: link:../audio-providers
       '@masterclip/auth':
         specifier: workspace:*
         version: link:../auth

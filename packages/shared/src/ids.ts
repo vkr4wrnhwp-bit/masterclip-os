@@ -65,6 +65,36 @@ export type IdPrefix =
   | 'model'
   | 'run'
   | 'key'
+  // Street Banker Audio Intelligence
+  | 'apol' // audio data policy
+  | 'aent' // audio entitlement
+  | 'akey' // keyterm
+  | 'acon' // consent record
+  | 'aast' // audio asset
+  | 'agen' // audio generation lineage
+  | 'ajob' // audio job
+  | 'atrs' // transcript
+  | 'aseg' // transcript segment
+  | 'aspk' // transcript speaker
+  | 'lead' // operator lead
+  | 'note' // operator note
+  | 'task' // operator task
+  | 'meet' // meeting intelligence
+  | 'mai' // meeting action item
+  | 'mdv' // meeting deal variable
+  | 'brf' // signal brief
+  | 'bsch' // brief schedule
+  | 'aagt' // audio agent
+  | 'akdc' // agent knowledge doc
+  | 'acnv' // agent conversation
+  | 'voice' // voice profile
+  | 'dub' // dubbing project
+  | 'camp' // campaign audio project
+  | 'rmx' // remix project
+  | 'rver' // remix version
+  | 'ause' // audio usage ledger entry
+  | 'abud' // audio budget
+  | 'pwh' // provider webhook event
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`

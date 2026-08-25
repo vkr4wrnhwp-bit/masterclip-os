@@ -7,6 +7,7 @@ export const QUEUES = {
   media: 'media',
   qc: 'qc',
   maintenance: 'maintenance',
+  audio: 'audio',
 } as const
 
 /** Job types handled by apps/worker. */
@@ -21,6 +22,18 @@ export const JOB_TYPES = {
   refreshCatalog: 'maintenance.refresh_catalog',
   providerHealth: 'maintenance.provider_health',
   recomputeStats: 'maintenance.recompute_stats',
+  // Street Banker Audio Intelligence
+  audioTranscribe: 'audio.transcribe',
+  audioExtractMeeting: 'audio.meeting.extract',
+  audioRenderBrief: 'audio.brief.render',
+  audioDubbingSubmit: 'audio.dubbing.submit',
+  audioDubbingPoll: 'audio.dubbing.poll',
+  audioCampaignGenerate: 'audio.campaign.generate',
+  audioRemixGenerate: 'audio.remix.generate',
+  audioAgentPostCall: 'audio.agent.post_call',
+  audioRetentionSweep: 'audio.retention.sweep',
+  audioScheduleTick: 'audio.schedule.tick',
+  audioWebhookProcess: 'audio.webhook.process',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]
