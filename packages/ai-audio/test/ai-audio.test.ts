@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AiSceneRequest } from '@masterclip/performance-project'
 import { checkPromptSafety } from '../src/safety.js'
-import { durationMsOf, encodeWavPcm16, synthesize, synthesizeWav, SAMPLE_RATE } from '../src/wav.js'
+import { durationMsOf, encodeWavPcm16, synthesize, synthesizeWav, wavDurationMs, SAMPLE_RATE } from '../src/wav.js'
 import { MockAudioProvider } from '../src/mock-provider.js'
 import { PlatformMusicProvider } from '../src/platform-provider.js'
 import { assertGenerationAllowed } from '../src/provider.js'
@@ -198,5 +198,40 @@ describe('platform music bridge', () => {
       seed: 2,
     })
     for (const option of result.options) expect(option.description).toMatch(/check against the click/)
+  })
+})
+
+describe('wavDurationMs', () => {
+  it('reads the length of a WAV from its own header', () => {
+    const seconds = 2.5
+    const wav = encodeWavPcm16(new Float32Array(Math.round(SAMPLE_RATE * seconds)), SAMPLE_RATE)
+    expect(wavDurationMs(wav)).toBe(2500)
+  })
+
+  it('agrees with the requested length for audio rendered to order', () => {
+    const spec = { bpm: 128, bars: 4, energy: 0.5, layers: { kick: true }, seed: 3 }
+    const wav = synthesizeWav(spec)
+    // Within a millisecond of the arithmetic: the same audio, measured instead
+    // of assumed.
+    expect(Math.abs((wavDurationMs(wav) ?? 0) - durationMsOf(spec))).toBeLessThanOrEqual(1)
+  })
+
+  it('returns null rather than guessing for anything it cannot read', () => {
+    expect(wavDurationMs(new Uint8Array([1, 2, 3]))).toBeNull()
+    expect(wavDurationMs(new Uint8Array(64))).toBeNull()
+    // An mp3 frame header — what a hosted music model actually returns.
+    const mp3 = new Uint8Array(64)
+    mp3[0] = 0xff
+    mp3[1] = 0xfb
+    expect(wavDurationMs(mp3)).toBeNull()
+  })
+
+  it('trusts the bytes present over a header that overstates them', () => {
+    const wav = encodeWavPcm16(new Float32Array(SAMPLE_RATE), SAMPLE_RATE)
+    // Truncated in transit: the data chunk still claims the full length.
+    const truncated = wav.slice(0, 44 + (wav.length - 44) / 2)
+    const measured = wavDurationMs(truncated) ?? 0
+    expect(measured).toBeGreaterThan(0)
+    expect(measured).toBeLessThan(1000)
   })
 })

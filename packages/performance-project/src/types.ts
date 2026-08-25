@@ -118,6 +118,36 @@ export function normalizePadMap(value: unknown): PadAssignment[] {
   return pads
 }
 
+/**
+ * Rewrites a pad map onto duplicated records.
+ *
+ * Duplicating a set re-creates every scene, clip and stem under a new id, so a
+ * pad map copied verbatim points at the *source* project and every such pad is
+ * dead the first time it is pressed. Pads whose target did not survive the
+ * duplication are cleared to `empty` rather than left dangling: an empty pad is
+ * honest on the grid, a dangling one reads as loaded and fails on stage.
+ *
+ * Pads that carry no record reference (stop, next_song, fx, …) pass through.
+ */
+export function remapPadMap(
+  pads: PadAssignment[],
+  maps: { sceneIdMap: Map<string, string>; clipIdMap: Map<string, string>; stemIdMap: Map<string, string> },
+): PadAssignment[] {
+  const mapFor: Partial<Record<PadMode, Map<string, string>>> = {
+    scene: maps.sceneIdMap,
+    clip: maps.clipIdMap,
+    stem_mute: maps.stemIdMap,
+    stem_solo: maps.stemIdMap,
+  }
+  return normalizePadMap(pads).map((pad) => {
+    const lookup = mapFor[pad.mode]
+    if (!lookup || !pad.targetId) return pad
+    const mapped = lookup.get(pad.targetId)
+    if (mapped) return { ...pad, targetId: mapped }
+    return { ...pad, mode: 'empty' as const, label: '', targetId: null }
+  })
+}
+
 // ---------------------------------------------------------------- records ----
 
 export const LiveProject = z.object({

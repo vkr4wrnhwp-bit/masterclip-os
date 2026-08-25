@@ -206,6 +206,19 @@ test('MIDI Learn maps a control from the mock controller', async () => {
   await expect(page.locator('table').filter({ hasText: 'Device' }).getByText('mock-controller')).toBeVisible()
 })
 
+test('Learn refuses a target-less mapping instead of storing a dead one', async () => {
+  // A scene/stem mapping with no target saved happily, said "Mapped." and could
+  // never fire. Selecting a target type that needs one, with none chosen,
+  // must disable Learn rather than persist it.
+  await page.getByLabel('Target').selectOption('stem_mute')
+  const learn = page.getByRole('button', { name: 'Learn', exact: true })
+  await expect(learn).toBeDisabled()
+
+  // A target that stands alone needs nothing, and stays available.
+  await page.getByLabel('Target').selectOption('stop')
+  await expect(learn).toBeEnabled()
+})
+
 test('performance mode shows the stage surface with lock and emergency stop', async () => {
   await page.getByRole('button', { name: 'Back to workspace' }).click()
   await page.getByRole('button', { name: /Performance Mode/ }).click()

@@ -29,6 +29,9 @@ export function LiveMidi({ projectId }: { projectId: string }) {
   const [status, setStatus] = React.useState<string | null>(null)
   const [conflict, setConflict] = React.useState<{ body: Record<string, unknown>; message: string } | null>(null)
 
+  /** null for targets that stand alone (stop, click, master volume, …). */
+  const needsTarget = TARGETS.find((t) => t.value === targetType)?.needsTarget ?? null
+
   const saveMapping = async (body: Record<string, unknown>) => {
     try {
       await liveApi.createMapping(projectId, body)
@@ -130,7 +133,7 @@ export function LiveMidi({ projectId }: { projectId: string }) {
                     ))}
                   </select>
                 </Field>
-                {TARGETS.find((t) => t.value === targetType)?.needsTarget === 'pad' && (
+                {needsTarget === 'pad' && (
                   <Field label="Pad">
                     <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
                       {Array.from({ length: 16 }, (_, i) => (
@@ -141,7 +144,7 @@ export function LiveMidi({ projectId }: { projectId: string }) {
                     </select>
                   </Field>
                 )}
-                {TARGETS.find((t) => t.value === targetType)?.needsTarget === 'scene' && (
+                {needsTarget === 'scene' && (
                   <Field label="Scene">
                     <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
                       <option value="">choose…</option>
@@ -153,7 +156,7 @@ export function LiveMidi({ projectId }: { projectId: string }) {
                     </select>
                   </Field>
                 )}
-                {TARGETS.find((t) => t.value === targetType)?.needsTarget === 'stem' && (
+                {needsTarget === 'stem' && (
                   <Field label="Stem">
                     <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
                       <option value="">choose…</option>
@@ -175,7 +178,14 @@ export function LiveMidi({ projectId }: { projectId: string }) {
                     </button>
                   </>
                 ) : (
-                  <button className="primary" onClick={() => (setStatus(null), midi.startLearn(targetType, targetId || null))}>
+                  <button
+                    className="primary"
+                    // A pad/scene/stem mapping with no target persists happily,
+                    // reports "Mapped." and can never fire. Refuse it up front.
+                    disabled={needsTarget !== null && !targetId}
+                    title={needsTarget !== null && !targetId ? `choose a ${needsTarget} first` : undefined}
+                    onClick={() => (setStatus(null), midi.startLearn(targetType, targetId || null))}
+                  >
                     Learn
                   </button>
                 )}
@@ -342,7 +352,13 @@ function KeyboardZoneMapper({
       <div className="field-row">
         <Field label="Device">
           <select value={device} onChange={(e) => setDeviceId(e.target.value)}>
-            {devices.length === 0 && <option value="">no device — connect one or use the mock</option>}
+            {/* Shown whenever nothing is selected, not only when the list is
+                empty: with devices listed but none connected the select used to
+                display a device while the value was '', leaving Map disabled
+                with nothing on screen explaining why. */}
+            {!device && (
+              <option value="">{devices.length === 0 ? 'no device — connect one or use the mock' : 'select a device'}</option>
+            )}
             {devices.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}

@@ -409,9 +409,9 @@ merging Live Lab from `main`).
 
 ## Street Banker Live Lab (audited 2026-08-25)
 
-Same vocabulary, same standard. Verification run at `d110abb`: `pnpm typecheck`
-**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **580 passed / 580** ·
-`pnpm test:e2e` **40 passed / 40** (whole repo).
+Same vocabulary, same standard. Verification run at `b03cc17`: `pnpm typecheck`
+**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **591 passed / 591** ·
+`pnpm test:e2e` **41 passed / 41** (whole repo).
 
 Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in
 production mode, on a database built by the *previous* release rather than a
@@ -457,6 +457,7 @@ claim, and this build has not made it.
 | Live Set Builder (suggestions + approval-gated apply) | **REAL** | approval gating, subset application, click routing, pad mapping and idempotent re-planning tested |
 | Stage Control handoff | **REAL** as an interface | export/import is versioned and tested; there is **no Stage Control system in this repo to talk to** |
 | Remix/release import | **REAL** | imports org project audio and cross-project Live Lab assets, org- and project-checked |
+| Duplicating a set | **REAL** | scenes, clips, stems and assets are re-created and every reference to them rewritten — pads repoint at the copies, pads whose target did not survive are cleared to `empty`, and follow targets are remapped (a `target` follow that cannot be resolved falls back to `stop`). Verbatim copying of the pad map, and a source resolved only after the new project existed, were both fixed and are regression-tested |
 | Multi-device output routing (per-stem sends, FOH) | **PARTIAL** | logical outputs, cue/click buses and whole-mix `setSinkId` selection exist; per-stem *device* routing is the desktop backend's job |
 | Keyboard sampler, custom macros | **NOT BUILT** | deliberately (V1 scope). `cue` and `macro` are in the mapping vocabulary but dispatch to nothing and are not offered in the Learn UI — forward-compatible surface, not a working feature. Chromatic sampling is a desktop-phase item |
 | Desktop app, Ableton Link, MIDI Clock, Stage Bridge | **NOT BUILT** | `docs/LIVE_LAB_DESKTOP.md` is a migration plan, not an implementation |
