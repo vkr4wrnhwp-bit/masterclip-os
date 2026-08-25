@@ -95,6 +95,19 @@ export type IdPrefix =
   | 'ause' // audio usage ledger entry
   | 'abud' // audio budget
   | 'pwh' // provider webhook event
+  // Live Lab (Street Banker live-performance module)
+  | 'lproj'
+  | 'lset'
+  | 'lscn'
+  | 'lclip'
+  | 'lstem'
+  | 'lmap'
+  | 'lout'
+  | 'laij'
+  | 'lpkg'
+  | 'lpev'
+  | 'last'
+  | 'ent'
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`

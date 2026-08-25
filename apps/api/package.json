@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@masterclip/agents": "workspace:*",
+    "@masterclip/ai-audio": "workspace:*",
     "@masterclip/asset-storage": "workspace:*",
     "@masterclip/audio-core": "workspace:*",
     "@masterclip/audio-domain": "workspace:*",
@@ -19,6 +20,7 @@
     "@masterclip/domain": "workspace:*",
     "@masterclip/media-tools": "workspace:*",
     "@masterclip/model-router": "workspace:*",
+    "@masterclip/performance-project": "workspace:*",
     "@masterclip/prompt-compiler": "workspace:*",
     "@masterclip/provider-core": "workspace:*",
     "@masterclip/queue": "workspace:*",

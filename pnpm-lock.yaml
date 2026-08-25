@@ -20,6 +20,9 @@ importers:
       '@masterclip/agents':
         specifier: workspace:*
         version: link:packages/agents
+      '@masterclip/ai-audio':
+        specifier: workspace:*
+        version: link:packages/ai-audio
       '@masterclip/api':
         specifier: workspace:*
         version: link:apps/api
@@ -53,12 +56,24 @@ importers:
       '@masterclip/domain':
         specifier: workspace:*
         version: link:packages/domain
+      '@masterclip/live-engine':
+        specifier: workspace:*
+        version: link:packages/live-engine
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:packages/media-tools
+      '@masterclip/midi-engine':
+        specifier: workspace:*
+        version: link:packages/midi-engine
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:packages/model-router
+      '@masterclip/performance-cache':
+        specifier: workspace:*
+        version: link:packages/performance-cache
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:packages/performance-project
       '@masterclip/prompt-compiler':
         specifier: workspace:*
         version: link:packages/prompt-compiler
@@ -165,6 +180,9 @@ importers:
       '@masterclip/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@masterclip/ai-audio':
+        specifier: workspace:*
+        version: link:../../packages/ai-audio
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:../../packages/asset-storage
@@ -195,6 +213,9 @@ importers:
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:../../packages/model-router
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../../packages/performance-project
       '@masterclip/prompt-compiler':
         specifier: workspace:*
         version: link:../../packages/prompt-compiler
@@ -246,6 +267,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@masterclip/live-engine':
+        specifier: workspace:*
+        version: link:../../packages/live-engine
+      '@masterclip/midi-engine':
+        specifier: workspace:*
+        version: link:../../packages/midi-engine
+      '@masterclip/performance-cache':
+        specifier: workspace:*
+        version: link:../../packages/performance-cache
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../../packages/performance-project
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -303,6 +336,12 @@ importers:
       '@masterclip/shot-schema':
         specifier: workspace:*
         version: link:../shot-schema
+
+  packages/ai-audio:
+    dependencies:
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
 
   packages/asset-storage:
     dependencies:
@@ -399,6 +438,12 @@ importers:
 
   packages/domain:
     dependencies:
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
@@ -406,11 +451,26 @@ importers:
         specifier: workspace:*
         version: link:../shot-schema
 
+  packages/live-engine:
+    dependencies:
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
   packages/media-tools:
     dependencies:
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/midi-engine:
+    dependencies:
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
 
   packages/model-router:
     dependencies:
@@ -426,6 +486,18 @@ importers:
       '@masterclip/shot-schema':
         specifier: workspace:*
         version: link:../shot-schema
+
+  packages/performance-cache:
+    dependencies:
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
+
+  packages/performance-project:
+    dependencies:
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
 
   packages/prompt-compiler:
     dependencies:
@@ -549,6 +621,9 @@ importers:
       '@masterclip/agents':
         specifier: workspace:*
         version: link:../agents
+      '@masterclip/ai-audio':
+        specifier: workspace:*
+        version: link:../ai-audio
       '@masterclip/asset-storage':
         specifier: workspace:*
         version: link:../asset-storage
@@ -576,12 +651,18 @@ importers:
       '@masterclip/domain':
         specifier: workspace:*
         version: link:../domain
+      '@masterclip/live-engine':
+        specifier: workspace:*
+        version: link:../live-engine
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:../media-tools
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:../model-router
+      '@masterclip/performance-project':
+        specifier: workspace:*
+        version: link:../performance-project
       '@masterclip/prompt-compiler':
         specifier: workspace:*
         version: link:../prompt-compiler

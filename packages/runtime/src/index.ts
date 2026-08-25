@@ -2,7 +2,7 @@ import { createDb, type Db } from '@masterclip/database'
 import { DurableQueue, QueueWorker, QUEUES } from '@masterclip/queue'
 import { createStorage, type StorageDriver } from '@masterclip/asset-storage'
 import { AuthService } from '@masterclip/auth'
-import { AssetRepo, AuditLog, BibleRepo, ProjectRepo, RenderRepo } from '@masterclip/domain'
+import { AssetRepo, AuditLog, BibleRepo, EntitlementService, LiveLabRepo, ProjectRepo, RenderRepo } from '@masterclip/domain'
 import { ProviderRegistry } from '@masterclip/provider-core'
 import { createMockProvider } from '@masterclip/provider-mock'
 import { createMuapiProvider } from '@masterclip/provider-muapi'
@@ -13,12 +13,14 @@ import { createLumaProvider } from '@masterclip/provider-luma'
 import { createReplicateProvider } from '@masterclip/provider-replicate'
 import { createSelfHostedProvider } from '@masterclip/provider-selfhosted'
 import { CostController, CostLedger, MetricsService, QuoteStore } from '@masterclip/cost-engine'
+import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
 import { createAudioLayer, type AudioLayer } from '@masterclip/audio-engine'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
 
 export * from './render.js'
 export * from './masters.js'
+export * from './live-lab.js'
 
 /**
  * The composition root.
@@ -47,6 +49,9 @@ export interface Runtime {
   metrics: MetricsService
   agents: AgentLayer
   audio: AudioLayer
+  liveLab: LiveLabRepo
+  entitlements: EntitlementService
+  liveLabService: LiveLabService
   close(): Promise<void>
 }
 
@@ -91,6 +96,8 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     registry.register(createSelfHostedProvider({ ...deps, config }))
   }
 
+  const liveLabRepo = new LiveLabRepo(db, clock)
+
   return {
     config,
     logger,
@@ -111,6 +118,15 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     metrics: new MetricsService(db, clock),
     agents: createAgentLayer(config, logger),
     audio: createAudioLayer({ config, logger, db, storage, queue, clock, ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}) }),
+    liveLab: liveLabRepo,
+    entitlements: new EntitlementService(db, clock),
+    liveLabService: new LiveLabService({
+      liveLab: liveLabRepo,
+      storage,
+      clock,
+      logger: logger.child({ component: 'live-lab' }),
+      aiProviderId: config.LIVE_AI_PROVIDER,
+    }),
     async close() {
       await db.close()
     },

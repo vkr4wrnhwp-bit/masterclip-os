@@ -155,3 +155,64 @@ test('masters states plainly what a delivery is and is not', async () => {
   await expect(page.getByRole('heading', { name: 'Masters' })).toBeVisible()
   await expect(page.getByText(/No AI upscaling|container and codec conversions/).first()).toBeVisible()
 })
+
+// ---------------------------------------------------------------- Live Lab --
+
+test('live lab is in the nav for the entitled org and builds a set', async () => {
+  await expect(page.getByRole('link', { name: 'Live Lab' })).toBeVisible()
+  await page.goto('/#/live-lab')
+  await expect(page.getByRole('heading', { name: 'Live Lab' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start from blank set' }).click()
+  await page.getByLabel('Set name').fill('E2E Tour Set')
+  await page.getByRole('button', { name: 'Create live set' }).click()
+
+  // The workspace: transport, pad grid, setlist.
+  await expect(page.getByRole('heading', { name: 'E2E Tour Set' })).toBeVisible()
+  await expect(page.getByText('Pad grid')).toBeVisible()
+  await expect(page.locator('.pad')).toHaveCount(16)
+
+  // Build the setlist.
+  await page.getByLabel('Add item').fill('OPENING')
+  await page.getByRole('button', { name: 'Add to set' }).click()
+  await expect(page.locator('ol.setlist li')).toHaveCount(1)
+  await expect(page.locator('ol.setlist').getByText('OPENING')).toBeVisible()
+
+  // Add a scene to the selected song.
+  await page.getByLabel('New scene').fill('DROP')
+  await page.getByRole('button', { name: 'Add scene' }).click()
+  await expect(page.locator('.scene-row')).toHaveCount(1)
+})
+
+test('MIDI Learn maps a control from the mock controller', async () => {
+  // Still inside the live project from the previous test.
+  await page.getByRole('button', { name: 'MIDI', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /^MIDI —/ })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Use mock controller' }).click()
+  await expect(page.getByText('Live Lab Mock Controller')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Learn', exact: true }).click()
+  await expect(page.getByText('Waiting for MIDI input…')).toBeVisible()
+
+  // Touch a hardware control (the mock sends real MIDI bytes).
+  await page.getByRole('button', { name: 'C2', exact: true }).click()
+  await expect(page.getByText('Mapped.')).toBeVisible()
+
+  // The mapping persists into the table.
+  await expect(page.locator('table').filter({ hasText: 'Device' }).getByText('mock-controller')).toBeVisible()
+})
+
+test('performance mode shows the stage surface with lock and emergency stop', async () => {
+  await page.getByRole('button', { name: 'Back to workspace' }).click()
+  await page.getByRole('button', { name: /Performance Mode/ }).click()
+  await expect(page.getByRole('button', { name: /EMERGENCY STOP/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'LOCK PERFORMANCE' })).toBeVisible()
+  await expect(page.locator('.pad')).toHaveCount(16)
+
+  // Locking blocks the exit until unlocked.
+  await page.getByRole('button', { name: 'LOCK PERFORMANCE' }).click()
+  await expect(page.getByRole('button', { name: 'Exit' })).toBeDisabled()
+  await page.getByRole('button', { name: /LOCKED/ }).click()
+  await expect(page.getByRole('button', { name: 'Exit' })).toBeEnabled()
+})

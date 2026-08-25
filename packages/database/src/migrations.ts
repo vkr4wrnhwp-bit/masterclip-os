@@ -631,7 +631,217 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent, created_at)
 `,
   },
   {
-    id: '0003_audio_intelligence',
+    id: '0003_live_lab',
+    sql: `
+-- ===========================================================================
+-- Live Lab — live-performance projects. Every table is organization scoped:
+-- org_id is checked in the API layer on every access, and the tests assert
+-- that records can never cross a tenant boundary.
+-- ===========================================================================
+
+-- Feature entitlements (Partner OS seam). One row per (org, capability) and
+-- per (org, limit key). Enforced server-side; hiding UI is not enforcement.
+CREATE TABLE IF NOT EXISTS org_entitlements (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL REFERENCES orgs(id),
+  capability    TEXT NOT NULL,
+  enabled       INTEGER NOT NULL,
+  limit_value   BIGINT,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_entitlements ON org_entitlements(org_id, capability);
+
+CREATE TABLE IF NOT EXISTS live_projects (
+  id                 TEXT PRIMARY KEY,
+  org_id             TEXT NOT NULL REFERENCES orgs(id),
+  artist_id          TEXT,
+  name               TEXT NOT NULL,
+  description        TEXT NOT NULL,
+  status             TEXT NOT NULL,
+  master_tempo       REAL NOT NULL,
+  time_signature     TEXT NOT NULL,
+  source_release_ids TEXT NOT NULL,
+  pad_map            TEXT NOT NULL,
+  created_by         TEXT NOT NULL,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_live_projects_org ON live_projects(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS live_set_items (
+  id                 TEXT PRIMARY KEY,
+  org_id             TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id    TEXT NOT NULL REFERENCES live_projects(id),
+  sort_order         INTEGER NOT NULL,
+  item_type          TEXT NOT NULL,
+  title              TEXT NOT NULL,
+  source_release_id  TEXT,
+  source_track_id    TEXT,
+  bpm                REAL,
+  song_key           TEXT,
+  duration_ms        BIGINT,
+  notes              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_live_set_items ON live_set_items(live_project_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS live_scenes (
+  id                     TEXT PRIMARY KEY,
+  org_id                 TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id        TEXT NOT NULL REFERENCES live_projects(id),
+  live_set_item_id       TEXT NOT NULL REFERENCES live_set_items(id),
+  name                   TEXT NOT NULL,
+  scene_type             TEXT NOT NULL,
+  sort_order             INTEGER NOT NULL,
+  color                  TEXT NOT NULL,
+  bpm                    REAL,
+  song_key               TEXT,
+  bars                   INTEGER,
+  quantization           TEXT NOT NULL,
+  loop_enabled           INTEGER NOT NULL,
+  follow_action          TEXT NOT NULL,
+  follow_target_scene_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_scenes_item ON live_scenes(live_set_item_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_live_scenes_project ON live_scenes(live_project_id);
+
+-- Live Lab audio files. Separate from the video 'assets' table on purpose:
+-- live assets are org+live-project scoped, carry performance metadata, and
+-- keep AI generation lineage inline.
+CREATE TABLE IF NOT EXISTS live_assets (
+  id               TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id  TEXT NOT NULL REFERENCES live_projects(id),
+  kind             TEXT NOT NULL,
+  storage_key      TEXT NOT NULL,
+  filename         TEXT NOT NULL,
+  mime             TEXT NOT NULL,
+  bytes            BIGINT NOT NULL,
+  sha256           TEXT NOT NULL,
+  duration_ms      BIGINT,
+  metadata         TEXT NOT NULL,
+  rights_owner     TEXT NOT NULL,
+  rights_confirmed INTEGER NOT NULL,
+  rights_confirmed_by TEXT,
+  rights_confirmed_at TEXT,
+  lineage          TEXT,
+  created_by       TEXT NOT NULL,
+  created_at       TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_live_assets_project ON live_assets(live_project_id, kind);
+
+CREATE TABLE IF NOT EXISTS live_clips (
+  id               TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id  TEXT NOT NULL REFERENCES live_projects(id),
+  live_scene_id    TEXT NOT NULL REFERENCES live_scenes(id),
+  name             TEXT NOT NULL,
+  source_asset_id  TEXT NOT NULL REFERENCES live_assets(id),
+  start_ms         BIGINT NOT NULL,
+  end_ms           BIGINT,
+  loop_start_ms    BIGINT,
+  loop_end_ms      BIGINT,
+  one_shot         INTEGER NOT NULL,
+  gain             REAL NOT NULL,
+  pan              REAL NOT NULL,
+  output_id        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_clips_scene ON live_clips(live_scene_id);
+
+CREATE TABLE IF NOT EXISTS live_stems (
+  id               TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id  TEXT NOT NULL REFERENCES live_projects(id),
+  live_set_item_id TEXT NOT NULL REFERENCES live_set_items(id),
+  stem_type        TEXT NOT NULL,
+  label            TEXT NOT NULL,
+  source_asset_id  TEXT NOT NULL REFERENCES live_assets(id),
+  gain             REAL NOT NULL,
+  pan              REAL NOT NULL,
+  muted            INTEGER NOT NULL,
+  solo             INTEGER NOT NULL,
+  output_id        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_stems_item ON live_stems(live_set_item_id);
+
+CREATE TABLE IF NOT EXISTS live_midi_mappings (
+  id                 TEXT PRIMARY KEY,
+  org_id             TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id    TEXT NOT NULL REFERENCES live_projects(id),
+  device_identifier  TEXT NOT NULL,
+  channel            INTEGER NOT NULL,
+  message_type       TEXT NOT NULL,
+  note_or_controller INTEGER NOT NULL,
+  target_type        TEXT NOT NULL,
+  target_id          TEXT,
+  minimum            REAL NOT NULL,
+  maximum            REAL NOT NULL,
+  inversion          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_live_midi_project ON live_midi_mappings(live_project_id);
+
+CREATE TABLE IF NOT EXISTS live_outputs (
+  id               TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id  TEXT NOT NULL REFERENCES live_projects(id),
+  name             TEXT NOT NULL,
+  output_type      TEXT NOT NULL,
+  device_id        TEXT,
+  channel_index    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_live_outputs_project ON live_outputs(live_project_id);
+
+CREATE TABLE IF NOT EXISTS live_ai_jobs (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id       TEXT NOT NULL REFERENCES live_projects(id),
+  live_set_item_id      TEXT,
+  source_asset_id       TEXT,
+  provider              TEXT NOT NULL,
+  operation             TEXT NOT NULL,
+  prompt                TEXT NOT NULL,
+  configuration         TEXT NOT NULL,
+  status                TEXT NOT NULL,
+  output_asset_ids      TEXT NOT NULL,
+  error                 TEXT,
+  estimated_cost_micros BIGINT NOT NULL,
+  final_cost_micros     BIGINT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL,
+  completed_at          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_ai_jobs_project ON live_ai_jobs(live_project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_live_ai_jobs_org_month ON live_ai_jobs(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS live_performance_packages (
+  id               TEXT PRIMARY KEY,
+  org_id           TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id  TEXT NOT NULL REFERENCES live_projects(id),
+  version          INTEGER NOT NULL,
+  status           TEXT NOT NULL,
+  manifest         TEXT NOT NULL,
+  storage_size     BIGINT NOT NULL,
+  created_at       TEXT NOT NULL,
+  verified_at      TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_live_packages ON live_performance_packages(live_project_id, version);
+
+CREATE TABLE IF NOT EXISTS live_performance_events (
+  id                     TEXT PRIMARY KEY,
+  org_id                 TEXT NOT NULL REFERENCES orgs(id),
+  live_project_id        TEXT NOT NULL REFERENCES live_projects(id),
+  performance_package_id TEXT,
+  event_type             TEXT NOT NULL,
+  payload                TEXT NOT NULL,
+  local_timestamp        TEXT NOT NULL,
+  synchronized_at        TEXT,
+  created_at             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_live_events_project ON live_performance_events(live_project_id, created_at);
+`,
+  },
+  {
+    id: '0004_audio_intelligence',
     sql: `
 -- ===========================================================================
 -- Street Banker Audio Intelligence

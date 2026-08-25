@@ -53,14 +53,21 @@ The agent holds no database access and no unrestricted functions to call.
 ## Stage Control restriction
 
 No cloud AI audio generation or speech agent may sit in a safety-critical
-monitor-control path. Stage Control (when it exists in this codebase) must
-remain local where required, deterministic, engineer-authorized, bounded, and
-functional with every cloud AI feature disabled — including full ElevenLabs
+monitor-control path. Live Lab and its Stage Control surface
+([LIVE_LAB_STAGE_CONTROL.md](LIVE_LAB_STAGE_CONTROL.md)) must remain local
+where required, deterministic, engineer-authorized, bounded, and functional
+with every cloud AI feature disabled — including full ElevenLabs
 unavailability. Audio Intelligence may transcribe post-show notes, summarize
 monitor requests, and produce tour-day briefings; it must never directly
-control monitor levels, FOH, IEM levels, or venue routing. There is
-deliberately no integration point between this layer and any control-path
-system, and none may be added without a security review.
+control monitor levels, FOH, IEM levels, or venue routing.
+
+**Verified as of this build:** there is no code path between the two. No
+`audio-*` package imports Live Lab or performance-project code, and no Live
+Lab package imports `audio-*`; Live Lab's scene builder runs on its own
+`@masterclip/ai-audio` provider layer, selected by `LIVE_AI_PROVIDER` and
+defaulting to the local mock. Adding an integration point in either direction
+requires a security review — a grep for cross-imports between the two package
+families is the cheap way to re-check this claim.
 
 ## Spend containment
 

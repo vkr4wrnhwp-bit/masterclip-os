@@ -147,6 +147,14 @@ const EnvSchema = z.object({
   /** Cheaper model used for first-pass visual QC over extracted frames. */
   ANTHROPIC_QC_MODEL: z.string().default('claude-haiku-4-5'),
 
+  // --- Live Lab ------------------------------------------------------------
+  /**
+   * AI audio provider for the Live Lab scene builder. `mock-audio` synthesizes
+   * real WAVs locally at zero cost; a hosted music-model adapter (e.g. an
+   * ElevenLabs integration) registers under its own id and is selected here.
+   */
+  LIVE_AI_PROVIDER: z.string().default('mock-audio'),
+
   // --- media ---------------------------------------------------------------
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),

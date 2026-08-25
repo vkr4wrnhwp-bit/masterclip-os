@@ -8,6 +8,7 @@ export const QUEUES = {
   qc: 'qc',
   maintenance: 'maintenance',
   audio: 'audio',
+  live: 'live',
 } as const
 
 /** Job types handled by apps/worker. */
@@ -35,6 +36,7 @@ export const JOB_TYPES = {
   audioRetentionSweep: 'audio.retention.sweep',
   audioScheduleTick: 'audio.schedule.tick',
   audioWebhookProcess: 'audio.webhook.process',
+  liveAiGenerate: 'live.ai.generate',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]

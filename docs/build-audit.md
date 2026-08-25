@@ -382,8 +382,9 @@ further building, and it is the only way to close risk #3.
 ## Street Banker Audio Intelligence (audited 2026-08-25)
 
 Same vocabulary, same standard. The audio layer's own verification run:
-`pnpm typecheck` **31/31 clean** · `pnpm lint` **clean** · `pnpm test`
-**319 passed / 319** · `pnpm test:e2e` **19 passed / 19**.
+`pnpm typecheck` **36/36 clean** · `pnpm lint` **clean** · `pnpm test`
+**415 passed / 415** · `pnpm test:e2e` **22 passed / 22** (whole repo, after
+merging Live Lab from `main`).
 
 | Area | Status | Notes |
 |---|---|---|
