@@ -986,6 +986,38 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     return { ok: true }
   })
 
+  // ----------------------------------------------------------- set builder ----
+
+  /**
+   * BUILD MY LIVE SET. GET-like POST without `apply` returns suggestions only;
+   * `apply` executes exactly the ids the artist approved. Everything is
+   * additive placeholder material — original masters are never modified.
+   */
+  app.post('/api/live-lab/projects/:projectId/build-set', async (request) => {
+    const { projectId } = request.params as { projectId: string }
+    const { auth } = await requireLiveProject(request, projectId, 'live_lab.projects')
+    const body = z
+      .object({ apply: z.boolean().optional(), suggestionIds: z.array(z.string()).max(64).optional() })
+      .parse(request.body ?? {})
+
+    if (!body.apply) {
+      return runtime.liveLabService.buildSetPlan(projectId)
+    }
+    if (!body.suggestionIds || body.suggestionIds.length === 0) {
+      throw new AppError({ kind: 'validation', code: 'live.no_suggestions', message: 'apply requires the approved suggestionIds' })
+    }
+    const result = await runtime.liveLabService.applySetPlan(auth.orgId, projectId, auth.userId, body.suggestionIds)
+    await runtime.audit.record({
+      orgId: auth.orgId,
+      actor: auth.userId,
+      action: 'live.set_builder.applied',
+      targetType: 'live_project',
+      targetId: projectId,
+      data: { applied: result.applied },
+    })
+    return result
+  })
+
   // -------------------------------------------------- performance package ----
 
   app.post('/api/live-lab/projects/:projectId/performance-package', async (request) => {

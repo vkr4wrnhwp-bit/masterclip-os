@@ -31,9 +31,42 @@ import { liveApi, type LiveProjectBundle } from './api.js'
 
 let shared: { backend: WebAudioBackend; engine: LiveAudioEngine } | null = null
 
+/** Per-device audio preferences (sink, bus gains) — conveniences, never show-critical. */
+export const AUDIO_PREFS = {
+  sink: 'livelab.audio.sink',
+  cueGain: 'livelab.audio.cue-gain',
+  clickGain: 'livelab.audio.click-gain',
+} as const
+
+export function readAudioPref(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function writeAudioPref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // best-effort
+  }
+}
+
+function applyStoredAudioPrefs(backend: WebAudioBackend): void {
+  const cue = Number(readAudioPref(AUDIO_PREFS.cueGain))
+  if (Number.isFinite(cue) && cue > 0) backend.setBusGain('cue', cue)
+  const click = Number(readAudioPref(AUDIO_PREFS.clickGain))
+  if (Number.isFinite(click) && click > 0) backend.setBusGain('click', click)
+  const sink = readAudioPref(AUDIO_PREFS.sink)
+  if (sink) void backend.setOutputDevice(sink).catch(() => undefined)
+}
+
 export function getEngine(): { backend: WebAudioBackend; engine: LiveAudioEngine } {
   if (!shared) {
     const backend = new WebAudioBackend()
+    applyStoredAudioPrefs(backend)
     shared = { backend, engine: new LiveAudioEngine(backend) }
   }
   return shared
@@ -62,7 +95,7 @@ export interface EngineSnapshot {
   bpm: number
   clickEnabled: boolean
   padStates: PadState[]
-  stems: Array<{ id: string; label: string; stemType: string; gain: number; pan: number; muted: boolean; solo: boolean }>
+  stems: Array<{ id: string; label: string; stemType: string; gain: number; pan: number; muted: boolean; solo: boolean; level: number }>
 }
 
 export function snapshotOf(engine: LiveAudioEngine): EngineSnapshot {
@@ -77,7 +110,16 @@ export function snapshotOf(engine: LiveAudioEngine): EngineSnapshot {
     bpm: engine.effectiveBpm,
     clickEnabled: engine.isClickEnabled,
     padStates: Array.from({ length: 16 }, (_, index) => engine.padState(index)),
-    stems: engine.stems.list().map((s) => ({ id: s.id, label: s.label, stemType: s.stemType, gain: s.gain, pan: s.pan, muted: s.muted, solo: s.solo })),
+    stems: engine.stems.list().map((s) => ({
+      id: s.id,
+      label: s.label,
+      stemType: s.stemType,
+      gain: s.gain,
+      pan: s.pan,
+      muted: s.muted,
+      solo: s.solo,
+      level: engine.stemLevel(s.id),
+    })),
   }
 }
 

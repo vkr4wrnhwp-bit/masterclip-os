@@ -115,6 +115,9 @@ export function StemDeckPanel({
           <div className="stem-name">
             <span className="stem-type">{stem.stemType.toUpperCase()}</span>
             {stem.label !== stem.stemType && <span className="faint"> {stem.label}</span>}
+            <span className="stem-meter">
+              <span className="stem-meter-fill" style={{ width: `${Math.round(Math.min(1, stem.level) * 100)}%` }} />
+            </span>
           </div>
           <div className="stem-controls">
             <button className={`small${stem.muted ? ' danger' : ''}`} onClick={() => onMute(stem.id)}>

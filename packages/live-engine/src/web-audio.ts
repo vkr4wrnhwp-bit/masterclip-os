@@ -80,8 +80,14 @@ export class WebAudioBackend implements AudioBackend {
     gain.gain.value = opts.gain
     const panner = this.context.createStereoPanner()
     panner.pan.value = opts.pan
+    // A small analyser per voice feeds the stem meters. fftSize 256 keeps the
+    // read cheap; meters are cosmetic and must never cost the audio thread.
+    const analyser = this.context.createAnalyser()
+    analyser.fftSize = 256
+    const meterData = new Uint8Array(analyser.fftSize)
     source.connect(gain)
-    gain.connect(panner)
+    gain.connect(analyser)
+    analyser.connect(panner)
     panner.connect(this.busFor(opts.outputId))
 
     if (opts.loop) {
@@ -129,6 +135,16 @@ export class WebAudioBackend implements AudioBackend {
       setPan: (value: number) => {
         panner.pan.setTargetAtTime(value, this.context.currentTime, 0.01)
       },
+      level: () => {
+        if (stopped) return 0
+        analyser.getByteTimeDomainData(meterData)
+        let peak = 0
+        for (const sample of meterData) {
+          const deviation = Math.abs(sample - 128) / 128
+          if (deviation > peak) peak = deviation
+        }
+        return peak
+      },
     }
   }
 
@@ -164,7 +180,45 @@ export class WebAudioBackend implements AudioBackend {
     if (bus) bus.gain.setTargetAtTime(value, this.context.currentTime, 0.02)
   }
 
+  busGain(outputId: string): number {
+    return this.buses.get(outputId)?.gain.value ?? 1
+  }
+
+  /**
+   * Routes the whole context to another output device where the browser
+   * supports AudioContext.setSinkId (Chromium). Per-bus device routing is the
+   * desktop backend's job — the web MVP moves the entire mix.
+   */
+  async setOutputDevice(deviceId: string): Promise<boolean> {
+    const context = this.context as AudioContext & { setSinkId?: (id: string) => Promise<void> }
+    if (typeof context.setSinkId !== 'function') return false
+    await context.setSinkId(deviceId)
+    return true
+  }
+
+  supportsOutputSelection(): boolean {
+    return typeof (this.context as AudioContext & { setSinkId?: unknown }).setSinkId === 'function'
+  }
+
   async close(): Promise<void> {
     await this.context.close()
   }
+}
+
+export interface OutputDeviceInfo {
+  deviceId: string
+  label: string
+}
+
+/**
+ * Available audio output devices. Labels are empty until the site has media
+ * permission — callers should render a positional fallback name rather than
+ * forcing a microphone prompt just to name speakers.
+ */
+export async function listOutputDevices(): Promise<OutputDeviceInfo[]> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return []
+  const devices = await navigator.mediaDevices.enumerateDevices()
+  return devices
+    .filter((device) => device.kind === 'audiooutput')
+    .map((device, index) => ({ deviceId: device.deviceId, label: device.label || `Output device ${index + 1}` }))
 }

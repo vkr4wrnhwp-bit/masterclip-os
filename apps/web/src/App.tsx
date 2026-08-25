@@ -14,6 +14,7 @@ import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
 import { LivePerformance } from './live/LivePerformance.jsx'
 import { LiveMidi } from './live/LiveMidi.jsx'
+import { LiveSettings } from './live/LiveSettings.jsx'
 
 export interface Route {
   name: string
@@ -28,6 +29,7 @@ function parseHash(): Route {
   for (const [key, value] of new URLSearchParams(query ?? '')) params[key] = value
   if (segments.length === 0) return { name: 'dashboard', params }
   if (segments[0] === 'live-lab') {
+    if (segments[1] === 'settings') return { name: 'live-settings', params }
     if (segments[1] === 'projects' && segments[2] && segments[2] !== 'new') {
       const liveProjectId = segments[2]
       if (segments[3] === 'performance') return { name: 'live-performance', params: { ...params, liveProjectId } }
@@ -138,6 +140,9 @@ export function App() {
                 <NavLink route={route} to="/live-lab" name="live-lab">
                   Live Lab
                 </NavLink>
+                <NavLink route={route} to="/live-lab/settings" name="live-settings">
+                  Live settings
+                </NavLink>
               </>
             )}
             <div className="group">System</div>
@@ -172,6 +177,7 @@ export function App() {
           {route.name === 'live-lab' && <LiveLabHome />}
           {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}
+          {route.name === 'live-settings' && <LiveSettings />}
         </main>
       </div>
     </>

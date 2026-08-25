@@ -2,7 +2,7 @@ import React from 'react'
 import type { LiveScene, PadAssignment } from '@masterclip/performance-project'
 import { navigate } from '../App.jsx'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
-import { liveApi, type LiveProjectBundle } from './api.js'
+import { liveApi, type LiveProjectBundle, type SetSuggestion } from './api.js'
 import { cacheShow, useLiveEngine, type CacheProgress } from './engine.js'
 import { PadGrid, StemDeckPanel, TransportBar } from './components.jsx'
 
@@ -231,7 +231,102 @@ function Setlist({
           Add to set
         </button>
       </Card>
+      <SetBuilderPanel projectId={data.project.id} onChanged={onChanged} />
     </div>
+  )
+}
+
+/**
+ * BUILD MY LIVE SET: server-computed suggestions (walk-on, interlude, encore,
+ * outro, click tracks, default pad map). Every one requires explicit approval;
+ * applying adds placeholder material and never touches existing items.
+ */
+function SetBuilderPanel({ projectId, onChanged }: { projectId: string; onChanged: () => void }) {
+  const [suggestions, setSuggestions] = React.useState<SetSuggestion[] | null>(null)
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const load = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const plan = await liveApi.buildSetPlan(projectId)
+      setSuggestions(plan.suggestions)
+      setSelected(new Set(plan.suggestions.filter((s) => s.kind !== 'needs_bpm').map((s) => s.id)))
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const apply = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await liveApi.applySetPlan(projectId, [...selected])
+      setSuggestions(null)
+      onChanged()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title="Build my live set">
+      {suggestions === null ? (
+        <>
+          <div className="faint" style={{ fontSize: 12, marginBottom: 8 }}>
+            Suggest walk-on, interlude, encore, outro, click tracks and a pad mapping for this set. Nothing is added without your approval.
+          </div>
+          <button className="small" disabled={busy} onClick={() => void load()}>
+            {busy ? 'analyzing…' : 'Suggest additions'}
+          </button>
+        </>
+      ) : suggestions.length === 0 ? (
+        <Empty>Nothing to suggest — the set already has its structure, clicks and pads.</Empty>
+      ) : (
+        <>
+          {suggestions.map((suggestion) => (
+            <label key={suggestion.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8, fontSize: 12 }}>
+              {suggestion.kind === 'needs_bpm' ? (
+                <Badge tone="warn">info</Badge>
+              ) : (
+                <input
+                  type="checkbox"
+                  style={{ width: 'auto', marginTop: 2 }}
+                  checked={selected.has(suggestion.id)}
+                  onChange={(e) => {
+                    const next = new Set(selected)
+                    if (e.target.checked) next.add(suggestion.id)
+                    else next.delete(suggestion.id)
+                    setSelected(next)
+                  }}
+                />
+              )}
+              <span>
+                <strong>{suggestion.title}</strong>
+                <span className="faint" style={{ display: 'block' }}>
+                  {suggestion.description}
+                </span>
+              </span>
+            </label>
+          ))}
+          <div className="button-row">
+            <button className="small primary" disabled={busy || selected.size === 0} onClick={() => void apply()}>
+              {busy ? 'applying…' : `Apply ${selected.size} approved`}
+            </button>
+            <button className="small" onClick={() => setSuggestions(null)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
+      {error && <Callout tone="danger">{error}</Callout>}
+    </Card>
   )
 }
 

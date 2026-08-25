@@ -474,6 +474,13 @@ export class LiveAudioEngine {
     }
   }
 
+  /** Instantaneous meter level for a playing stem (0–1; 0 when idle or unmetered). */
+  stemLevel(stemId: string): number {
+    const handle = this.stemHandles.get(stemId)
+    if (!handle || handle.stopped) return 0
+    return handle.level?.() ?? 0
+  }
+
   // ---------------------------------------------------------------- click ----
 
   setClickEnabled(enabled: boolean): void {

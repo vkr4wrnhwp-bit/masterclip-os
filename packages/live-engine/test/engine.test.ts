@@ -202,6 +202,16 @@ describe('stems', () => {
     const handle = backend.plays.find((p) => p.sampleId === 'stemB')
     expect(handle!.gainChanges.at(-1)).toBeCloseTo(0.3)
   })
+
+  it('stem meters read the playing handle level and go silent on stop', () => {
+    engine.loadProject(stemProject())
+    engine.startSong('song1')
+    const play = backend.plays.find((p) => p.sampleId === 'stemA')!
+    play.meterLevel = 0.62
+    expect(engine.stemLevel('sA')).toBeCloseTo(0.62)
+    engine.stopAll()
+    expect(engine.stemLevel('sA')).toBe(0)
+  })
 })
 
 describe('follow actions', () => {

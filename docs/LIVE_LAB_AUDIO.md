@@ -16,6 +16,8 @@ buses: master ─▶ destination
 
 - Every clip/stem gets its own source + gain + panner chain; live gain and pan
   moves use `setTargetAtTime` ramps (~10 ms) so mutes don't click.
+- A small per-voice `AnalyserNode` (fftSize 256) feeds the stem meters —
+  cosmetic reads on the UI interval, never work on the audio thread.
 - Loop points map to `source.loopStart/loopEnd`, clamped to the buffer.
 - `decodeAudioData` is fed a copy — decoding detaches buffers, and the cache
   still owns its bytes.
@@ -46,6 +48,9 @@ interface LiveAudioOutput {
 
 The web MVP mixes master, cue and click into the stereo device output, but each
 is already a separate gain bus, and every clip/stem row stores an `outputId`.
+Where the browser supports `AudioContext.setSinkId` (Chromium), the Live Lab
+settings screen routes the whole mix to a chosen output device and remembers
+the choice per device; cue and click bus levels are adjustable there too.
 The desktop backend maps the same logical outputs onto real interface channels
 (separate vocal/drums/bass/music sends, click-only outputs, FOH feeds) without
 any change above the backend interface. Stage Control/IEM routing stays on the

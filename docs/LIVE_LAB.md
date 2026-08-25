@@ -49,9 +49,10 @@ that is the isolation that lets `apps/desktop-live` reuse them unchanged (see
 
 ```
 #/live-lab                          home: BUILD MY LIVE SET + recent projects
-#/live-lab/projects/:id             workspace: setlist · scenes · pads · stems · AI builder
+#/live-lab/projects/:id             workspace: setlist · scenes · pads · stems · AI builder · set builder
 #/live-lab/projects/:id/performance Performance Mode (full-screen stage surface)
 #/live-lab/projects/:id/midi        MIDI devices, Learn, mappings, keyboard zones
+#/live-lab/settings                 entitlements report · audio output device · cue/click levels · storage
 ```
 
 The nav entry appears only when the organization holds `live_lab.access` — and
@@ -87,9 +88,15 @@ copyrighted material anywhere in seed data.
 - **Phase 2 (integration)** — built: release import, stem import, Remix-style
   asset import between live projects, AI Scene Builder on the provider layer
   (mock provider), usage ledger entries, Stage Control handoff, entitlements.
-- **Phase 3 (advanced)** — partially: output abstraction (master/cue/click buses),
-  scene follow actions, background generation. Multi-device routing, keyboard
-  sampler and custom macros are future work.
+- **Phase 3 (advanced)** — largely built: output abstraction with cue/click
+  buses and whole-mix output-device selection (`AudioContext.setSinkId` where
+  supported), per-stem meters, scene follow actions, background generation, and
+  the **Live Set Builder** (`POST /projects/:id/build-set`): server-computed
+  suggestions — walk-on, interlude, encore, outro, click tracks for songs
+  missing them, a default pad mapping — each requiring explicit approval before
+  anything is added, and never touching existing items or masters. Per-stem
+  *device* routing, the keyboard sampler and custom macros remain desktop-phase
+  work.
 - **Phase 4 (desktop)** and **Phase 5 (live AI instrument)** — architecture
   prepared, not built. The experimental NEXT SCENE mode is intentionally not
   enabled; its constraint is already enforced everywhere: generated audio is

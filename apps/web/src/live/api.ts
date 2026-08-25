@@ -61,9 +61,16 @@ export interface LiveProjectBundle {
   aiJobs: LiveAiJob[]
 }
 
+export interface SetSuggestion {
+  id: string
+  kind: 'add_item' | 'add_click' | 'pad_map' | 'needs_bpm'
+  title: string
+  description: string
+}
+
 export const liveApi = {
   capabilities: () =>
-    get<{ capabilities: string[]; limits: Record<string, number | null>; rightsStatement: string; aiProvider: string }>(
+    get<{ capabilities: string[]; limits: Record<string, number | null>; all: string[]; rightsStatement: string; aiProvider: string }>(
       '/api/live-lab/capabilities',
     ),
 
@@ -84,6 +91,10 @@ export const liveApi = {
   upload: (id: string, form: FormData) =>
     request<{ asset: LiveAssetView }>(`/api/live-lab/projects/${id}/upload`, { method: 'POST', body: form }),
   assetUrl: (assetId: string) => get<{ url: string; asset: LiveAssetView }>(`/api/live-lab/assets/${assetId}/url`),
+
+  buildSetPlan: (id: string) => post<{ suggestions: SetSuggestion[] }>(`/api/live-lab/projects/${id}/build-set`, {}),
+  applySetPlan: (id: string, suggestionIds: string[]) =>
+    post<{ applied: string[] }>(`/api/live-lab/projects/${id}/build-set`, { apply: true, suggestionIds }),
 
   reorder: (id: string, order: string[]) => patch<{ items: LiveSetItem[] }>(`/api/live-lab/projects/${id}/set`, { order }),
   createItem: (id: string, body: Record<string, unknown>) => post<{ item: LiveSetItem }>(`/api/live-lab/projects/${id}/set-items`, body),

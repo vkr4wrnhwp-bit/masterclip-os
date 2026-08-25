@@ -458,6 +458,79 @@ describe('AI scene builder', () => {
   })
 })
 
+describe('live set builder', () => {
+  it('suggests set structure, clicks and pads — and applies only what was approved', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    // Three songs, one without a BPM; one already has a click stem.
+    const first = await seedSong(owner, projectId) // TRACK ONE, bpm 120, has click
+    const second = await runtime.liveLab.createItem({ orgId: owner.orgId, liveProjectId: projectId, type: 'song', title: 'TRACK TWO', bpm: 124 })
+    const third = await runtime.liveLab.createItem({ orgId: owner.orgId, liveProjectId: projectId, type: 'song', title: 'TRACK THREE' })
+
+    const planResponse = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/build-set`, {})
+    expect(planResponse.statusCode).toBe(200)
+    const plan = (planResponse.json() as { suggestions: Array<{ id: string; kind: string }> }).suggestions
+    const ids = plan.map((s) => s.id)
+    expect(ids).toContain('walk_on')
+    expect(ids).toContain('interlude')
+    expect(ids).toContain('encore')
+    expect(ids).toContain('outro')
+    expect(ids).toContain(`click:${second.id}`)
+    expect(ids).not.toContain(`click:${first.item.id}`) // already has one
+    expect(ids).toContain(`bpm:${third.id}`) // informational, not applicable
+    expect(ids).toContain('pad_map')
+
+    // Approval is required: apply with nothing approved is refused.
+    const refused = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/build-set`, { apply: true })
+    expect(refused.statusCode).toBe(400)
+
+    // Approve a subset only.
+    const applied = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/build-set`, {
+      apply: true,
+      suggestionIds: ['walk_on', 'outro', `click:${second.id}`, 'pad_map', `bpm:${third.id}`],
+    })
+    expect(applied.statusCode).toBe(200)
+    expect((applied.json() as { applied: string[] }).applied.sort()).toEqual(['walk_on', `click:${second.id}`, 'outro', 'pad_map'].sort())
+
+    const items = await runtime.liveLab.listItems(projectId)
+    const ordered = [...items].sort((a, b) => a.sortOrder - b.sortOrder)
+    // Walk-on first, outro last; unapproved interlude/encore were NOT added.
+    expect(ordered[0]!.type).toBe('walk_on')
+    expect(ordered.at(-1)!.type).toBe('outro')
+    expect(items.some((i) => i.type === 'interlude')).toBe(false)
+    expect(items.some((i) => i.type === 'encore')).toBe(false)
+    // Existing songs are untouched.
+    expect(items.find((i) => i.id === first.item.id)?.title).toBe('TRACK ONE')
+
+    // The click stem exists, is routed to the click output, and its
+    // placeholder audio carries approved lineage.
+    const stems = await runtime.liveLab.listStems(projectId)
+    const click = stems.find((s) => s.liveSetItemId === second.id && s.stemType === 'click')
+    expect(click).toBeDefined()
+    expect(click!.outputId).toBe('click')
+    const clickAsset = await runtime.liveLab.getAsset(click!.sourceAssetId)
+    expect(clickAsset.lineage?.provider).toBe('local-synth')
+    expect(clickAsset.lineage?.approvedBy).toBe(owner.userId)
+    expect(clickAsset.rightsConfirmed).toBe(true)
+
+    // The pad map is populated with a STOP pad and at least one scene pad.
+    const project = await runtime.liveLab.getProject(projectId)
+    expect(project.padMap.some((p) => p.mode === 'scene')).toBe(true)
+    expect(project.padMap[15]!.mode).toBe('stop')
+
+    // Applied suggestions do not come back on the next plan.
+    const replan = (await call(owner, 'POST', `/api/live-lab/projects/${projectId}/build-set`, {})).json() as {
+      suggestions: Array<{ id: string }>
+    }
+    const replanIds = replan.suggestions.map((s) => s.id)
+    expect(replanIds).not.toContain('walk_on')
+    expect(replanIds).not.toContain('outro')
+    expect(replanIds).not.toContain(`click:${second.id}`)
+    expect(replanIds).toContain('interlude')
+    expect(replanIds).toContain('encore')
+  })
+})
+
 describe('performance package', () => {
   it('builds, verifies with matching device checksums, and reaches READY', async () => {
     const owner = await signupOwner()

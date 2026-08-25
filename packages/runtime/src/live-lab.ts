@@ -1,4 +1,4 @@
-import { AudioProviderRegistry, MockAudioProvider } from '@masterclip/ai-audio'
+import { AudioProviderRegistry, MockAudioProvider, durationMsOf, synthesizeWav } from '@masterclip/ai-audio'
 import { objectKey } from '@masterclip/asset-storage'
 import type { StorageDriver } from '@masterclip/asset-storage'
 import type { LiveAsset, LiveLabRepo } from '@masterclip/domain'
@@ -18,6 +18,14 @@ import { AppError, sha256Hex, type Clock, type Logger } from '@masterclip/shared
  * on the worker, never inside an HTTP request) and server-side performance
  * package assembly/verification.
  */
+
+export interface SetSuggestion {
+  /** Stable within a plan; the client passes approved ids back to apply. */
+  id: string
+  kind: 'add_item' | 'add_click' | 'pad_map' | 'needs_bpm'
+  title: string
+  description: string
+}
 
 export interface LiveLabServiceDeps {
   liveLab: LiveLabRepo
@@ -144,6 +152,250 @@ export class LiveLabService {
       await liveLab.updateAiJob(jobId, { status: 'failed', error: message, completedAt: clock.isoNow() })
       logger.warn('live.ai.failed', { job_id: jobId, error: message })
     }
+  }
+
+  // ---------------------------------------------------------- set builder ----
+
+  /**
+   * BUILD MY LIVE SET: inspects the current set and proposes what a stage-ready
+   * show still needs — walk-on, interlude, encore, outro, click tracks for
+   * songs that lack them, and a default pad mapping. Suggestions only:
+   * applySetPlan() runs the ones the artist explicitly approved, and nothing
+   * here ever modifies original masters or existing set items.
+   */
+  async buildSetPlan(liveProjectId: string): Promise<{ suggestions: SetSuggestion[] }> {
+    const { liveLab } = this.deps
+    const project = await liveLab.getProject(liveProjectId)
+    const [items, stems, scenes] = await Promise.all([
+      liveLab.listItems(liveProjectId),
+      liveLab.listStems(liveProjectId),
+      liveLab.listScenes(liveProjectId),
+    ])
+    const ordered = [...items].sort((a, b) => a.sortOrder - b.sortOrder)
+    const songs = ordered.filter((i) => i.type === 'song')
+    const suggestions: SetSuggestion[] = []
+
+    if (!ordered.some((i) => i.type === 'walk_on')) {
+      suggestions.push({
+        id: 'walk_on',
+        kind: 'add_item',
+        title: 'Add walk-on music',
+        description: `A sparse ${project.masterTempo} BPM walk-on intro placeholder, first in the set. Replace it with owned or generated audio when ready.`,
+      })
+    }
+    if (songs.length >= 3 && !ordered.some((i) => i.type === 'interlude')) {
+      suggestions.push({
+        id: 'interlude',
+        kind: 'add_item',
+        title: 'Add a mid-set interlude',
+        description: 'An 8-bar breathing point placed mid-set — a costume change, a talk break, a reset.',
+      })
+    }
+    if (songs.length >= 2 && !ordered.some((i) => i.type === 'encore')) {
+      suggestions.push({
+        id: 'encore',
+        kind: 'add_item',
+        title: 'Add an encore slot',
+        description: 'A high-energy encore placeholder before the outro.',
+      })
+    }
+    if (!ordered.some((i) => i.type === 'outro')) {
+      suggestions.push({
+        id: 'outro',
+        kind: 'add_item',
+        title: 'Add outro / walk-off music',
+        description: 'Sparse outro placeholder to close the show instead of dead air.',
+      })
+    }
+
+    for (const song of songs) {
+      const hasClick = stems.some((s) => s.liveSetItemId === song.id && s.stemType === 'click')
+      if (!hasClick && song.bpm) {
+        suggestions.push({
+          id: `click:${song.id}`,
+          kind: 'add_click',
+          title: `Build click track for ${song.title}`,
+          description: `A ${song.bpm} BPM click stem routed to the click output, matched to the song length.`,
+        })
+      }
+      if (!song.bpm) {
+        suggestions.push({
+          id: `bpm:${song.id}`,
+          kind: 'needs_bpm',
+          title: `${song.title} has no BPM`,
+          description: 'Click tracks and quantized launching need a tempo — set it on the set item. (Not automatable: tempo detection from audio is a later phase.)',
+        })
+      }
+    }
+
+    const padsAssigned = project.padMap.filter((p) => p.mode !== 'empty' && p.mode !== 'stop').length
+    if (padsAssigned === 0 && scenes.length > 0) {
+      suggestions.push({
+        id: 'pad_map',
+        kind: 'pad_map',
+        title: 'Create a default pad mapping',
+        description: 'Row 1: first song’s scenes · Row 2: its stem mutes · Row 3: more scenes · Row 4: other songs + STOP.',
+      })
+    }
+
+    return { suggestions }
+  }
+
+  /** Applies exactly the approved suggestions. Additive only; re-derives the plan first. */
+  async applySetPlan(orgId: string, liveProjectId: string, userId: string, suggestionIds: string[]): Promise<{ applied: string[] }> {
+    const { liveLab, storage, clock } = this.deps
+    const project = await liveLab.getProject(liveProjectId)
+    const { suggestions } = await this.buildSetPlan(liveProjectId)
+    const approved = suggestions.filter((s) => suggestionIds.includes(s.id) && s.kind !== 'needs_bpm')
+    const applied: string[] = []
+
+    const storeSynth = async (
+      name: string,
+      kind: 'audio' | 'click',
+      spec: { bpm: number; bars: number; energy: number; layers: Record<string, boolean> },
+    ) => {
+      const wav = synthesizeWav({ ...spec, seed: seedFrom(`${liveProjectId}:${name}`) })
+      const filename = `${name}.wav`
+      const key = objectKey({ projectId: liveProjectId, kind: `live-${kind}`, id: `builder-${seedFrom(name)}`, filename })
+      const digest = sha256Hex(wav)
+      await storage.putBuffer(key, wav, { contentType: 'audio/wav', sha256: digest })
+      return liveLab.createAsset({
+        orgId,
+        liveProjectId,
+        kind,
+        storageKey: key,
+        filename,
+        mime: 'audio/wav',
+        bytes: wav.length,
+        sha256: digest,
+        durationMs: durationMsOf({ bpm: spec.bpm, bars: spec.bars }),
+        metadata: { setBuilder: true },
+        rightsOwner: 'locally synthesized placeholder',
+        rightsConfirmed: true,
+        rightsConfirmedBy: userId,
+        lineage: {
+          sourceAssetId: null,
+          sourceVersion: null,
+          provider: 'local-synth',
+          model: 'mock-synth-1',
+          prompt: `set builder: ${name}`,
+          settings: spec,
+          generatedAt: clock.isoNow(),
+          approvedBy: userId,
+          approvedAt: clock.isoNow(),
+          rightsConfirmed: true,
+        },
+        createdBy: userId,
+      })
+    }
+
+    const ITEM_SPECS: Record<string, { type: 'walk_on' | 'interlude' | 'encore' | 'outro'; title: string; bars: number; energy: number; layers: Record<string, boolean>; sceneType: 'intro' | 'interlude' | 'custom' | 'outro' }> = {
+      walk_on: { type: 'walk_on', title: 'WALK ON', bars: 16, energy: 0.2, layers: { pad: true }, sceneType: 'intro' },
+      interlude: { type: 'interlude', title: 'INTERLUDE', bars: 8, energy: 0.3, layers: { pad: true, bass: true }, sceneType: 'interlude' },
+      encore: { type: 'encore', title: 'ENCORE', bars: 8, energy: 0.9, layers: { kick: true, hat: true, bass: true }, sceneType: 'custom' },
+      outro: { type: 'outro', title: 'OUTRO', bars: 8, energy: 0.2, layers: { pad: true }, sceneType: 'outro' },
+    }
+
+    for (const suggestion of approved) {
+      if (suggestion.kind === 'add_item') {
+        const spec = ITEM_SPECS[suggestion.id]
+        if (!spec) continue
+        const asset = await storeSynth(spec.title.toLowerCase().replace(/\s+/g, '-'), 'audio', {
+          bpm: project.masterTempo,
+          bars: spec.bars,
+          energy: spec.energy,
+          layers: spec.layers,
+        })
+        const item = await liveLab.createItem({
+          orgId,
+          liveProjectId,
+          type: spec.type,
+          title: spec.title,
+          bpm: project.masterTempo,
+          durationMs: asset.durationMs,
+          notes: 'added by the set builder — placeholder audio, replace when ready',
+        })
+        const scene = await liveLab.createScene({
+          orgId,
+          liveProjectId,
+          liveSetItemId: item.id,
+          name: spec.title,
+          sceneType: spec.sceneType,
+          bars: spec.bars,
+        })
+        await liveLab.createClip({ orgId, liveProjectId, liveSceneId: scene.id, name: spec.title, sourceAssetId: asset.id })
+        applied.push(suggestion.id)
+      } else if (suggestion.kind === 'add_click') {
+        const itemId = suggestion.id.slice('click:'.length)
+        const item = await liveLab.getItem(itemId)
+        if (!item.bpm) continue
+        const beatMs = 60000 / item.bpm
+        const bars = Math.min(128, Math.max(8, item.durationMs ? Math.ceil(item.durationMs / (beatMs * 4)) : 16))
+        const asset = await storeSynth(`click-${item.title.toLowerCase().replace(/\s+/g, '-')}`, 'click', {
+          bpm: item.bpm,
+          bars,
+          energy: 0.5,
+          layers: { click: true },
+        })
+        await liveLab.createStem({
+          orgId,
+          liveProjectId,
+          liveSetItemId: itemId,
+          stemType: 'click',
+          sourceAssetId: asset.id,
+          outputId: 'click',
+        })
+        applied.push(suggestion.id)
+      } else if (suggestion.kind === 'pad_map') {
+        await this.applyDefaultPadMap(liveProjectId)
+        applied.push(suggestion.id)
+      }
+    }
+
+    // Put the set in show order: walk-on first, then songs/interlude as laid
+    // out, encore, outro last. Only newly added structural items move.
+    if (approved.some((s) => s.kind === 'add_item')) {
+      const items = [...(await liveLab.listItems(liveProjectId))].sort((a, b) => a.sortOrder - b.sortOrder)
+      const walkOns = items.filter((i) => i.type === 'walk_on')
+      const outros = items.filter((i) => i.type === 'outro')
+      const encores = items.filter((i) => i.type === 'encore')
+      const middle = items.filter((i) => i.type !== 'walk_on' && i.type !== 'outro' && i.type !== 'encore')
+      await liveLab.reorderItems(liveProjectId, [...walkOns, ...middle, ...encores, ...outros].map((i) => i.id))
+    }
+
+    return { applied }
+  }
+
+  /** Row 1: first song's scenes · Row 2: its stems · Row 3: more scenes · Row 4: other songs + STOP. */
+  private async applyDefaultPadMap(liveProjectId: string): Promise<void> {
+    const { liveLab } = this.deps
+    const [project, items, scenes, stems] = await Promise.all([
+      liveLab.getProject(liveProjectId),
+      liveLab.listItems(liveProjectId),
+      liveLab.listScenes(liveProjectId),
+      liveLab.listStems(liveProjectId),
+    ])
+    const ordered = [...items].sort((a, b) => a.sortOrder - b.sortOrder)
+    const firstSong = ordered.find((i) => i.type === 'song') ?? ordered[0]
+    const padMap = project.padMap.map((p) => ({ ...p }))
+    const setPad = (index: number, mode: 'scene' | 'stem_mute' | 'stop', label: string, targetId: string | null) => {
+      padMap[index] = { index, mode, label: label.slice(0, 12), targetId, color: '' }
+    }
+
+    if (firstSong) {
+      const firstScenes = scenes.filter((s) => s.liveSetItemId === firstSong.id).sort((a, b) => a.sortOrder - b.sortOrder)
+      firstScenes.slice(0, 4).forEach((scene, i) => setPad(i, 'scene', scene.name, scene.id))
+      const firstStems = stems.filter((s) => s.liveSetItemId === firstSong.id && s.stemType !== 'click')
+      firstStems.slice(0, 4).forEach((stem, i) => setPad(4 + i, 'stem_mute', stem.label || stem.stemType, stem.id))
+      firstScenes.slice(4, 8).forEach((scene, i) => setPad(8 + i, 'scene', scene.name, scene.id))
+    }
+    const otherFirstScenes = ordered
+      .filter((i) => i.id !== firstSong?.id)
+      .map((item) => scenes.filter((s) => s.liveSetItemId === item.id).sort((a, b) => a.sortOrder - b.sortOrder)[0])
+      .filter((scene): scene is NonNullable<typeof scene> => scene !== undefined)
+    otherFirstScenes.slice(0, 3).forEach((scene, i) => setPad(12 + i, 'scene', scene.name, scene.id))
+    setPad(15, 'stop', 'STOP', null)
+    await liveLab.updateProject(liveProjectId, { padMap })
   }
 
   /**

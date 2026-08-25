@@ -33,6 +33,8 @@ export interface PlayHandle {
   setGain(value: number): void
   setPan(value: number): void
   readonly stopped: boolean
+  /** Instantaneous peak level 0–1, when the backend can meter. */
+  level?(): number
 }
 
 export interface AudioBackend {
@@ -57,6 +59,8 @@ export interface RecordedPlay extends PlayOptions {
   handleId: string
   stoppedAt: number | null
   gainChanges: number[]
+  /** Settable by tests so meter plumbing is assertable. */
+  meterLevel: number
 }
 
 export interface RecordedClick {
@@ -106,7 +110,7 @@ export class TestAudioBackend implements AudioBackend {
 
   play(opts: PlayOptions): PlayHandle {
     if (!this.samples.has(opts.sampleId)) throw new Error(`sample not loaded: ${opts.sampleId}`)
-    const record: RecordedPlay = { ...opts, handleId: `h${++this.handleSeq}`, stoppedAt: null, gainChanges: [] }
+    const record: RecordedPlay = { ...opts, handleId: `h${++this.handleSeq}`, stoppedAt: null, gainChanges: [], meterLevel: 0 }
     this.plays.push(record)
     const backend = this
     return {
@@ -121,6 +125,9 @@ export class TestAudioBackend implements AudioBackend {
         record.gainChanges.push(value)
       },
       setPan() {},
+      level() {
+        return record.meterLevel
+      },
     }
   }
 
