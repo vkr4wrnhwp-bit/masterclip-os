@@ -17,7 +17,8 @@ async function main(): Promise<void> {
   const render = new RenderService(runtime)
   const logger = runtime.logger.child({ component: 'worker' })
 
-  const workers = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live].map((queueName) => {
+  const queueNames = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live]
+  const workers = queueNames.map((queueName) => {
     const worker = new QueueWorker(runtime.queue, {
       queueName,
       concurrency: config.WORKER_CONCURRENCY,
@@ -175,7 +176,11 @@ async function main(): Promise<void> {
 
   for (const worker of workers) worker.start()
   logger.info('worker.started', {
-    queues: [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live],
+    // Derived from the workers actually started. A second hand-maintained
+    // list drifted once already, reporting the live queue as absent while
+    // it was in fact running — precisely the wrong hint for an operator
+    // debugging a stuck job.
+    queues: queueNames,
     concurrency: config.WORKER_CONCURRENCY,
     mode: config.MASTERCLIP_MODE,
     providers: runtime.registry.list().map((p) => `${p.providerId}${p.isConfigured() ? '' : ' (unconfigured)'}`),
