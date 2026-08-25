@@ -88,6 +88,12 @@ export interface SongAnalysis {
   engineVersion: string
   sourceChecksum: string
   featureVector: { metrics: Record<string, Measured> } | null
+  /**
+   * `basis` says whether the vocal figures were measured from an isolated
+   * vocal or inferred from the full mix. The UI shows it next to them, because
+   * the same occupancy percentage means two different things either way.
+   */
+  vocalAnalysis: { basis?: 'full_mix' | 'isolated_stem'; occupancy?: Measured } & Record<string, unknown>
   energyCurve: { values: number[]; stepSeconds: number }
   providers: Record<string, { provider: string; modelVersion: string }>
   failureReason: string | null
@@ -300,12 +306,26 @@ export interface ProjectDetail {
   thingsWorthTesting: SongObservation[]
 }
 
+export interface SongVocalStem {
+  id: string
+  songVersionId: string
+  stemAssetId: string | null
+  status: 'pending' | 'ready' | 'failed' | 'unsupported'
+  stemName: string | null
+  provider: string
+  failureReason: string | null
+  createdAt: string
+}
+
 export const songLabApi = {
   capabilities: () =>
     get<{ capabilities: string[]; flagship: boolean; rightsStatement: string; analysisProvider: string }>('/api/song-lab/capabilities'),
 
   projects: () => get<{ projects: SongLabProject[] }>('/api/song-lab/projects'),
   project: (id: string) => get<ProjectDetail>(`/api/song-lab/projects/${id}`),
+  vocalStems: (id: string) => get<{ vocalStems: SongVocalStem[] }>(`/api/song-lab/projects/${id}/vocal-stems`),
+  separateVocal: (id: string, versionId: string) =>
+    post<{ vocalStem: SongVocalStem }>(`/api/song-lab/projects/${id}/versions/${versionId}/vocal-stem`, {}),
   createProject: (body: {
     title: string
     artistName: string

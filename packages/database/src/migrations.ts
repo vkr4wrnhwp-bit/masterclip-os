@@ -1760,4 +1760,52 @@ CREATE TABLE IF NOT EXISTS song_lab_handoffs (
 CREATE INDEX IF NOT EXISTS idx_song_lab_handoffs ON song_lab_handoffs(org_id, song_lab_project_id, created_at);
 `,
   },
+  {
+    id: '0006_song_lab_vocal_stems',
+    sql: `
+-- ===========================================================================
+-- Isolated vocal stems for Song Lab
+--
+-- Vocal metrics (occupancy, time to first vocal, phrase length, rest ratio,
+-- held notes) are measured from a spectral proxy over the full mix unless an
+-- isolated vocal exists. The proxy is honest but capped: a dense guitar record
+-- scores as vocal. Separating the stem raises the measurement quality, so the
+-- confidence attached to those metrics may rise with it.
+--
+-- That uplift is only defensible if the stem is real, so this table records
+-- the provenance of every stem rather than just pointing at an asset. An
+-- analysis that claims an isolated-stem measurement can be traced back to
+-- provider and model that produced the audio it measured.
+--
+-- The stem is a derived asset. The original recording is untouched, as
+-- everywhere else in Song Lab.
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS song_vocal_stems (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id TEXT NOT NULL REFERENCES song_lab_projects(id),
+  song_version_id     TEXT NOT NULL,
+  -- The mix this was separated from. Pinned so a stem is never silently
+  -- reused against a different recording.
+  source_asset_id     TEXT NOT NULL,
+  source_checksum     TEXT NOT NULL,
+  -- The derived audio. NULL until the job completes.
+  stem_asset_id       TEXT,
+  -- pending | ready | failed | unsupported
+  status              TEXT NOT NULL,
+  -- The stem name the provider returned (vocals, lead_vocal, ...), kept
+  -- verbatim so a provider that renames its outputs is visible in the data.
+  stem_name           TEXT,
+  provider            TEXT NOT NULL,
+  model_version       TEXT NOT NULL,
+  failure_reason      TEXT,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_vocal_stems_version ON song_vocal_stems(org_id, song_version_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_song_vocal_stems_project ON song_vocal_stems(org_id, song_lab_project_id, created_at);
+`,
+  },
 ]

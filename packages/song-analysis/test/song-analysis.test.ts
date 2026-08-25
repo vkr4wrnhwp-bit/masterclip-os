@@ -220,7 +220,51 @@ describe('energy and vocal activity', () => {
     const activity = detectVocalActivity(analyzeFrames(toMono(audio), audio), { isolatedVocal: true })
     expect(activity.confidence).toBeGreaterThan(0.6)
   })
+
+  it('measures the stem when the provider is handed one', async () => {
+    const { LocalVocalAnalysisProvider } = await import('../src/local-provider.js')
+    const mix = sourceFrom(encodeWav([tone(120, 4, 0.5)]), 'mix')
+    const stem = sourceFrom(encodeWav([tone(300, 4, 0.5)]), 'stem')
+
+    const fromMix = await new LocalVocalAnalysisProvider().analyzeVocals(mix)
+    const fromStem = await new LocalVocalAnalysisProvider().analyzeVocals(mix, { isolatedVocal: stem })
+
+    expect(fromMix.basis).toBe('full_mix')
+    expect(fromStem.basis).toBe('isolated_stem')
+    expect(fromStem.occupancy.confidence).toBeGreaterThan(fromMix.occupancy.confidence)
+  })
+
+  it('falls back to the mix honestly when the stem cannot be decoded', async () => {
+    // The dangerous failure is not falling back — it is falling back while
+    // still claiming an isolated-stem measurement. The numbers would then
+    // describe the mix while carrying a stem's confidence.
+    const { LocalVocalAnalysisProvider } = await import('../src/local-provider.js')
+    const mix = sourceFrom(encodeWav([tone(120, 4, 0.5)]), 'mix')
+    const corrupt = sourceFrom(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7]), 'stem')
+
+    const result = await new LocalVocalAnalysisProvider().analyzeVocals(mix, { isolatedVocal: corrupt })
+
+    expect(result.basis).toBe('full_mix')
+    expect(result.occupancy.note).toContain('not an isolated vocal')
+  })
 })
+
+/** Wraps raw bytes as the AudioSource shape a provider expects. */
+function sourceFrom(bytes: Uint8Array, name: string) {
+  return {
+    asset: {
+      id: name,
+      orgId: 'org_test',
+      storageKey: `${name}.wav`,
+      mimeType: 'audio/wav',
+      fileName: `${name}.wav`,
+      checksum: `checksum-${name}`,
+      fileSize: bytes.length,
+      durationMs: null,
+    },
+    read: async () => bytes,
+  }
+}
 
 describe('stereo width', () => {
   it('is unmeasurable for a mono file rather than reported as zero', async () => {

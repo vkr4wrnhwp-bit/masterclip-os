@@ -93,6 +93,48 @@ before the title · repeat the title · add a response vocal · shorten one line
 
 All of these are writing and performance choices. None is generated here.
 
+## What the vocal numbers were measured from
+
+Every figure on this page is one of two very different things, and the analysis
+says which:
+
+| Basis | Method | Confidence |
+| --- | --- | --- |
+| `full_mix` | Infers where the voice is from band energy (roughly 200 Hz–2 kHz), tonality and centroid movement | capped ~0.45 |
+| `isolated_stem` | Measures a separated lead vocal directly | ~0.85 |
+
+The mix-based proxy is honest but limited, and limited in a way it cannot detect:
+a dense guitar arrangement scores as vocal, and nothing in the signal tells the
+detector it is wrong. Occupancy measured this way carries the note *"estimated
+from the full mix, not an isolated vocal"* wherever it appears.
+
+Separating the vocal replaces the inference with a measurement, so the
+confidence rises — because the evidence got better, not because the number was
+adjusted. The caveat is dropped only when it stops being true.
+
+```
+POST /api/song-lab/projects/:id/versions/:versionId/vocal-stem
+```
+
+Four things this deliberately does not do:
+
+- **It is never automatic.** Separation spends the organization's provider
+  budget. Song Lab is the diagnostic layer and does not spend an artist's money
+  on its own initiative.
+- **It requires `audio.stem_separation`**, not just Song Lab. Starting the
+  action inside Song Lab does not make it a Song Lab capability.
+- **It never guesses which stem is the vocal.** A provider that returns an
+  archive, or stems whose names are not recognised, yields `unsupported` — a
+  distinct outcome from `failed` — and the figures stay on the mix-based proxy.
+- **It never touches the original.** The stem is a new derived asset, and the
+  source checksum is pinned to it, so a stem is only ever measured against the
+  recording it came from. An edited version has different audio and therefore no
+  stem until one is separated for it.
+
+If the stem exists but cannot be decoded, the analysis falls back to the mix and
+reports `full_mix`. The failure mode worth guarding against is not the fallback
+— it is falling back while still claiming stem-level confidence.
+
 ## Register
 
 Reported as a normalized band from the spectral centroid of voiced frames, never as

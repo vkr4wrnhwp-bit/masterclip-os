@@ -1,7 +1,18 @@
 import React from 'react'
 import { AsyncBlock, Badge, Callout, Card, Field, Stat, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
-import { AbPlayer, BenchmarkRow, ConfidencePill, EnergyBars, EnergyCurve, LowSampleWarning, ObservationCard, StructureTimeline, Tabs } from './components.jsx'
+import {
+  AbPlayer,
+  BenchmarkRow,
+  ClassificationChip,
+  ConfidencePill,
+  EnergyBars,
+  EnergyCurve,
+  LowSampleWarning,
+  ObservationCard,
+  StructureTimeline,
+  Tabs,
+} from './components.jsx'
 import { clock, seconds, songLabApi, type SongSection } from './api.js'
 
 /**
@@ -145,6 +156,10 @@ function OverviewTab({
         </Card>
       </div>
 
+      <div style={{ marginTop: 16 }}>
+        <VocalBasisPanel projectId={projectId} detail={detail} reload={reload} />
+      </div>
+
       <Card title="Everything measured" action={<span className="faint">{detail.observations.length} observations</span>}>
         {detail.observations.length === 0 ? (
           <div className="empty">no observations yet</div>
@@ -153,6 +168,79 @@ function OverviewTab({
         )}
       </Card>
     </>
+  )
+}
+
+/**
+ * What the vocal numbers were measured from, and how to improve that.
+ *
+ * The figures themselves live on other tabs. What belongs here is the
+ * qualifier, because a vocal-occupancy percentage taken from a full mix and one
+ * taken from an isolated vocal are not the same claim, and the artist has no
+ * way to tell them apart from the number alone.
+ *
+ * Separation is offered, never performed automatically: it spends the
+ * organization's provider budget, and that is the artist's call.
+ */
+function VocalBasisPanel({
+  projectId,
+  detail,
+  reload,
+}: {
+  projectId: string
+  detail: Awaited<ReturnType<typeof songLabApi.project>>
+  reload: () => void
+}) {
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const stems = useAsync(() => songLabApi.vocalStems(projectId), [projectId, detail.analysis?.id])
+
+  const versionId = detail.project.currentVersionId
+  const basis = detail.analysis?.vocalAnalysis?.basis ?? 'full_mix'
+  const isolated = basis === 'isolated_stem'
+
+  const separate = async () => {
+    if (!versionId) return
+    setBusy(true)
+    setError(null)
+    try {
+      await songLabApi.separateVocal(projectId, versionId)
+      stems.reload()
+      reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const current = stems.data?.vocalStems.find((stem) => stem.songVersionId === versionId) ?? null
+
+  return (
+    <Card title="Vocal measurement" action={<ClassificationChip label={isolated ? 'Isolated Vocal' : 'Full Mix'} />}>
+      {error && <Callout tone="warn">{error}</Callout>}
+
+      <p className="faint">
+        {isolated
+          ? 'Vocal occupancy, time to first vocal, phrase length and rest ratio were measured from a separated lead vocal.'
+          : 'Vocal occupancy, time to first vocal, phrase length and rest ratio are estimated from the full mix. The detector infers where the voice is from band energy and tonality, so a dense arrangement reads as more vocal than it is. These figures carry lower confidence for that reason.'}
+      </p>
+
+      {current?.status === 'pending' && <Callout tone="info">Separating the lead vocal. The next analysis will measure it.</Callout>}
+      {current?.status === 'unsupported' && (
+        <Callout tone="info">
+          {current.provider} could not return an isolated lead vocal, so the vocal figures stay measured from the mix.
+          {current.failureReason ? ` (${current.failureReason})` : ''}
+        </Callout>
+      )}
+      {current?.status === 'failed' && <Callout tone="warn">Separation failed: {current.failureReason ?? 'unknown reason'}</Callout>}
+
+      {!isolated && current?.status !== 'pending' && (
+        <button className="small" onClick={separate} disabled={busy || !versionId}>
+          {current ? 'Try separating the vocal again' : 'Separate the vocal and re-measure'}
+        </button>
+      )}
+    </Card>
   )
 }
 

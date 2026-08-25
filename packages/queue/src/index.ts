@@ -43,6 +43,7 @@ export const JOB_TYPES = {
   songLabAnalyzeAudio: 'song_lab.audio.analyze',
   songLabDetectStructure: 'song_lab.structure.detect',
   songLabAnalyzeVocal: 'song_lab.vocal.analyze',
+  songLabSeparateVocal: 'song_lab.vocal.separate',
   songLabTranscribeLyrics: 'song_lab.lyrics.transcribe',
   songLabAnalyzeLyrics: 'song_lab.lyrics.analyze',
   songLabBuildFeatures: 'song_lab.features.build',

@@ -5,6 +5,7 @@ import type { AuditLog, EntitlementService } from '@masterclip/domain'
 import type { AppConfig, Clock, Logger } from '@masterclip/shared'
 import type { AudioAssetService } from '@masterclip/audio-engine'
 import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo } from '@masterclip/audio-domain'
+import type { AudioProviderRegistry } from '@masterclip/audio-core'
 import type { AudioExperimentRenderer } from '@masterclip/audio-experiments'
 import type { BenchmarkProvider } from '@masterclip/music-benchmarking'
 import type { LyricAnalysisProvider } from '@masterclip/lyric-analysis'
@@ -22,6 +23,7 @@ import type {
   SongOutcomeRepo,
   SongSectionRepo,
   SongVersionRepo,
+  SongVocalStemRepo,
 } from '@masterclip/song-lab-domain'
 
 export interface SongLabRepos {
@@ -37,6 +39,7 @@ export interface SongLabRepos {
   arReviews: SongArReviewRepo
   outcomes: SongOutcomeRepo
   handoffs: SongLabHandoffRepo
+  vocalStems: SongVocalStemRepo
 }
 
 /** Providers, all replaceable. None is hardwired into a service. */
@@ -63,6 +66,14 @@ export interface SongLabPlatform {
   operatorDesk: OperatorDeskRepo
   remix: RemixRepo
   entitlements: EntitlementService
+  /**
+   * The audio layer's provider registry, for stem separation.
+   *
+   * Song Lab resolves exactly one slot from it (`stems`) and registers nothing.
+   * Reaching for the registry rather than taking a provider directly keeps the
+   * org's configured default and fallback in force here as everywhere else.
+   */
+  providerRegistry: AudioProviderRegistry
 }
 
 export interface SongLabDeps {
