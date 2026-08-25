@@ -14,9 +14,10 @@ jobs:
   masterclip:
     name: MASTERCLIP OS typecheck, lint, tests & build
     runs-on: ubuntu-latest
-    # The whole suite is roughly ten minutes on a hosted runner. GitHub's
-    # default ceiling is six hours, which is what a hung ffmpeg probe or a
-    # deadlocked worker test would actually burn before anyone noticed.
+    # The whole suite runs in about four and a half minutes on a hosted
+    # runner. GitHub's default ceiling is six hours, which is what a hung
+    # ffmpeg probe or a deadlocked worker test would actually burn before
+    # anyone noticed. 30 leaves generous headroom without being useless.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
