@@ -127,6 +127,29 @@ test('performance mode runs with the network actually disabled', async () => {
   await expect(page.getByText(/OFFLINE|CLOUD OFFLINE/).first()).toBeVisible()
 })
 
+test('a crash mid-show recovers offline, and never restarts audio by itself', async () => {
+  // Still offline. Change something the engine reports, so a snapshot exists.
+  await page.getByRole('button', { name: 'CLICK' }).click()
+  await expect(page.locator('.perf-indicators').getByText('CLICK')).toBeVisible()
+
+  // The crash: the tab goes away and comes back, with no network to come back
+  // to. This is the venue scenario, not a tidy reload.
+  await page.reload()
+
+  await expect(page.getByRole('button', { name: /EMERGENCY STOP/ })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'RESTORE PERFORMANCE' })).toBeVisible()
+  // The offer says plainly what it will and will not do.
+  await expect(page.getByText(/Audio will not restart/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'RESTORE PERFORMANCE' }).click()
+
+  // State came back...
+  await expect(page.getByRole('button', { name: 'RESTORE PERFORMANCE' })).toHaveCount(0)
+  // ...and nothing is playing. Sound after a crash must be a deliberate act:
+  // the transport clock reads as stopped, not as a running bar count.
+  await expect(page.locator('.perf-position')).toHaveText('—.—')
+})
+
 test('the setlist and transport still respond offline', async () => {
   // Still offline from the previous test.
   await expect(page.getByRole('button', { name: 'LOCK PERFORMANCE' })).toBeVisible()

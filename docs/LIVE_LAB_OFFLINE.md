@@ -92,6 +92,20 @@ connection it rendered **Request failed** and the verified audio cache was never
 reached. Caching a show's audio while leaving the show itself in the cloud is
 not local-first; it only looks like it from inside an already-running session.
 
+Two more things had to hold before any of that was reachable after a crash:
+
+- **The application itself.** A service worker (`apps/web/public/sw.js`) caches
+  the app shell, so reloading with no network loads the app instead of
+  `ERR_INTERNET_DISCONNECTED`. It never caches `/api/` — the app already knows
+  how to be offline, and a worker answering an API call from a stale cache
+  would make a performer trust data that is no longer true.
+- **The signed-in identity.** `/api/auth/me` fails when the server is
+  unreachable, and that used to read as *signed out* — a sign-in form nobody at
+  a venue can complete. A server that answers "no" still signs you out; a
+  server that cannot be answered at all does not. This grants nothing: every
+  API call still needs a real session cookie, and the only data it unlocks is
+  what this same user already cached on this device.
+
 `loadShowBundle` prefers the network and falls back to the stored copy. That
 order is deliberate: a set edited since the last package should be picked up
 when there is a connection to pick it up from, so the stored bundle is the

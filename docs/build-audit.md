@@ -411,7 +411,7 @@ merging Live Lab from `main`).
 
 Same vocabulary, same standard. Verification run at `b03cc17`: `pnpm typecheck`
 **44/44 clean** · `pnpm lint` **clean** · `pnpm test` **591 passed / 591** ·
-`pnpm test:e2e` **44 passed / 44** (whole repo).
+`pnpm test:e2e` **45 passed / 45** (whole repo).
 
 Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in
 production mode, on a database built by the *previous* release rather than a
@@ -449,7 +449,7 @@ claim, and this build has not made it.
 | Offline performance package (manifest, checksums, verification) | **REAL** | server-side and device-reported verification both tested; a missing or corrupted cached file provably prevents READY |
 | IndexedDB show cache in a browser | **REAL** | run in real Chromium against real IndexedDB and real WebCrypto: byte-identical round-trip, store digest agreeing with a digest of the source bytes, a single flipped byte changing that digest, a non-WAV refused as undecodable, and **a cached show surviving a page reload** — the property the offline package actually depends on |
 | Performance Mode running with the network down | **REAL** | demonstrated in Chromium with `context.setOffline(true)` — the network genuinely off, verified unreachable inside the test before the show is started. The demonstration found a real defect: audio was cached but the *show* was not, so Performance Mode fetched its setlist, scenes and manifest over the network and rendered "Request failed" at a venue with no connection. The bundle is now stored on the device when the package is built, and the offline start is regression-tested |
-| Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio |
+| Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio, and demonstrated **offline in a real browser**: reload with the network down, the app loads from the service-worker shell cache, the session survives an unreachable `/api/auth/me`, RESTORE PERFORMANCE is offered, and the transport reads stopped afterwards. Reaching that offer offline needed all three — shell, session, bundle — and none of them worked before |
 | Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
 | AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
