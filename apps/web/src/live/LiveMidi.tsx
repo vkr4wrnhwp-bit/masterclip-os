@@ -1,9 +1,9 @@
 import React from 'react'
-import { noteName, defaultKeyboardZones } from '@masterclip/midi-engine'
+import { noteName, defaultKeyboardZones, type MidiDeviceInfo } from '@masterclip/midi-engine'
 import type { MidiMapping } from '@masterclip/performance-project'
 import { navigate } from '../App.jsx'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
-import { liveApi } from './api.js'
+import { liveApi, type LiveProjectBundle } from './api.js'
 import { useLiveEngine, useMidi } from './engine.js'
 import { dispatchMidi } from './LivePerformance.jsx'
 
@@ -242,30 +242,7 @@ export function LiveMidi({ projectId }: { projectId: string }) {
             )}
           </Card>
 
-          <Card title="Keyboard zones (default layout)">
-            <table>
-              <thead>
-                <tr>
-                  <th>Range</th>
-                  <th>Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {defaultKeyboardZones().map((zone) => (
-                  <tr key={zone.kind}>
-                    <td className="mono">
-                      {noteName(zone.lowNote)}–{noteName(zone.highNote)}
-                    </td>
-                    <td>{zone.label}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="faint" style={{ fontSize: 11, marginTop: 8 }}>
-              Zones are conventions for mapping, not hardware profiles — any key can be learned onto any target. A chromatic sampler mode is
-              planned for the desktop build.
-            </div>
-          </Card>
+          <KeyboardZoneMapper projectId={projectId} data={data} onChanged={bundle.reload} devices={midi.devices} />
         </div>
       )}
     </AsyncBlock>
@@ -288,5 +265,157 @@ function MockControllerPanel({ send }: { send: (bytes: number[]) => void }) {
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * Applies a keyboard zone in one action.
+ *
+ * The zones were data and documentation with no way to use them: mapping a
+ * scene-launch octave meant twelve separate MIDI Learns. This assigns a whole
+ * run of consecutive notes to a song's scenes (or to the pads) at once, and
+ * shows the resulting note→target list before anything is written.
+ */
+function KeyboardZoneMapper({
+  projectId,
+  data,
+  onChanged,
+  devices,
+}: {
+  projectId: string
+  data: LiveProjectBundle
+  onChanged: () => void
+  devices: MidiDeviceInfo[]
+}) {
+  const zones = defaultKeyboardZones()
+  const [deviceId, setDeviceId] = React.useState('')
+  const [channel, setChannel] = React.useState(0)
+  const [startNote, setStartNote] = React.useState(zones[3]?.lowNote ?? 72)
+  const [source, setSource] = React.useState<string>('pads')
+  const [status, setStatus] = React.useState<string | null>(null)
+  const [conflict, setConflict] = React.useState<Record<string, unknown> | null>(null)
+  const [busy, setBusy] = React.useState(false)
+
+  // What the chosen source expands to, in order. Pads are positional; a song
+  // contributes its scenes in performance order.
+  const targets: Array<{ id: string; label: string }> =
+    source === 'pads'
+      ? Array.from({ length: 16 }, (_, i) => ({ id: `pad:${i}`, label: `Pad ${i + 1}` }))
+      : data.scenes
+          .filter((scene) => scene.liveSetItemId === source)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((scene) => ({ id: scene.id, label: scene.name }))
+
+  const device = deviceId || devices.find((d) => d.connected)?.id || ''
+
+  const apply = async (replaceExisting: boolean) => {
+    setBusy(true)
+    setStatus(null)
+    try {
+      const result = await liveApi.mapKeyboardZone(projectId, {
+        deviceIdentifier: device,
+        channel,
+        startNote,
+        targetType: source === 'pads' ? 'pad' : 'scene',
+        targetIds: targets.map((t) => t.id),
+        replaceExisting,
+      })
+      setConflict(null)
+      setStatus(`Mapped ${result.mappings.length} notes${result.replaced.length > 0 ? `, replaced ${result.replaced.length}` : ''}.`)
+      onChanged()
+    } catch (err) {
+      const error = err as Error & { code?: string; details?: Record<string, unknown> }
+      if (error.code === 'live.midi_duplicate') setConflict({ message: error.message })
+      else setStatus(error.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card title="Keyboard zones">
+      <div className="faint" style={{ fontSize: 12, marginBottom: 10 }}>
+        Map a run of keys to a song&rsquo;s scenes or to the pads in one action, instead of learning each note. Zones are conventions, not
+        hardware profiles — any key can still be learned onto any target individually.
+      </div>
+
+      <div className="field-row">
+        <Field label="Device">
+          <select value={device} onChange={(e) => setDeviceId(e.target.value)}>
+            {devices.length === 0 && <option value="">no device — connect one or use the mock</option>}
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Channel">
+          <select value={channel} onChange={(e) => setChannel(Number(e.target.value))}>
+            {Array.from({ length: 16 }, (_, i) => (
+              <option key={i} value={i}>
+                {i + 1}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Starting key">
+          <select value={startNote} onChange={(e) => setStartNote(Number(e.target.value))}>
+            {zones.map((zone) => (
+              <option key={zone.kind} value={zone.lowNote}>
+                {noteName(zone.lowNote)} — {zone.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Map">
+          <select value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="pads">The 16 pads</option>
+            {data.items
+              .slice()
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title} — scenes
+                </option>
+              ))}
+          </select>
+        </Field>
+      </div>
+
+      {targets.length === 0 ? (
+        <Empty>That song has no scenes yet.</Empty>
+      ) : (
+        <div className="faint mono" style={{ fontSize: 11, marginBottom: 8 }}>
+          {targets.slice(0, 6).map((t, i) => (
+            <span key={t.id} style={{ marginRight: 12 }}>
+              {noteName(startNote + i)} → {t.label}
+            </span>
+          ))}
+          {targets.length > 6 && <span>… {targets.length} keys through {noteName(startNote + targets.length - 1)}</span>}
+        </div>
+      )}
+
+      {conflict && (
+        <Callout tone="warn" title="Some of those keys are already mapped">
+          {String(conflict.message)}
+          <div className="button-row" style={{ marginTop: 6 }}>
+            <button className="small danger" disabled={busy} onClick={() => void apply(true)}>
+              Replace them
+            </button>
+            <button className="small" onClick={() => setConflict(null)}>
+              Keep existing
+            </button>
+          </div>
+        </Callout>
+      )}
+
+      <div className="button-row">
+        <button className="primary" disabled={busy || targets.length === 0 || !device} onClick={() => void apply(false)}>
+          {busy ? 'mapping…' : `Map ${targets.length} keys`}
+        </button>
+        {status && <Badge tone={status.startsWith('Mapped') ? 'ok' : 'danger'}>{status}</Badge>}
+      </div>
+    </Card>
   )
 }

@@ -351,6 +351,136 @@ describe('MIDI mappings', () => {
   })
 })
 
+describe('keyboard zone mapping', () => {
+  it('maps a run of keys onto a song’s scenes in performance order', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    const { item, scene } = await seedSong(owner, projectId)
+    const second = await runtime.liveLab.createScene({
+      orgId: owner.orgId,
+      liveProjectId: projectId,
+      liveSetItemId: item.id,
+      name: 'DROP',
+      sceneType: 'drop',
+      sortOrder: 1,
+    })
+
+    // C5 = 72, the default scene-launch zone.
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 72,
+      targetType: 'scene',
+      targetIds: [scene.id, second.id],
+    })
+    expect(response.statusCode).toBe(200)
+    const mappings = (response.json() as { mappings: Array<{ noteOrController: number; targetId: string; messageType: string }> }).mappings
+    expect(mappings).toHaveLength(2)
+    // Consecutive notes, in the order given — not an arbitrary shuffle.
+    expect(mappings[0]).toMatchObject({ noteOrController: 72, targetId: scene.id, messageType: 'note_on' })
+    expect(mappings[1]).toMatchObject({ noteOrController: 73, targetId: second.id })
+  })
+
+  it('refuses to half-map a keyboard when a target is not in the project', async () => {
+    const owner = await signupOwner()
+    const projectA = await createProject(owner, 'A')
+    const projectB = await createProject(owner, 'B')
+    const seeded = await seedSong(owner, projectA)
+    const mine = await seedSong(owner, projectB)
+
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectB}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 60,
+      targetType: 'scene',
+      // Second id belongs to another project: the whole request must fail.
+      targetIds: [mine.scene.id, seeded.scene.id],
+    })
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.code).toBe('live.unknown_scene')
+    // Nothing was written — not even the valid first target.
+    expect(await runtime.liveLab.listMappings(projectB)).toHaveLength(0)
+  })
+
+  it('warns before overwriting keys that are already mapped, then replaces on request', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    const { scene } = await seedSong(owner, projectId)
+    await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      messageType: 'note_on',
+      noteOrController: 60,
+      targetType: 'stop',
+    })
+
+    const refused = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 60,
+      targetType: 'scene',
+      targetIds: [scene.id],
+    })
+    expect(refused.statusCode).toBe(409)
+    expect(refused.json().error.code).toBe('live.midi_duplicate')
+
+    const replaced = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 60,
+      targetType: 'scene',
+      targetIds: [scene.id],
+      replaceExisting: true,
+    })
+    expect(replaced.statusCode).toBe(200)
+    const all = await runtime.liveLab.listMappings(projectId)
+    expect(all).toHaveLength(1)
+    expect(all[0]!.targetType).toBe('scene')
+  })
+
+  it('refuses a run that would pass the top of the keyboard', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 120,
+      targetType: 'pad',
+      targetIds: Array.from({ length: 16 }, (_, i) => `pad:${i}`),
+    })
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.code).toBe('live.zone_overflow')
+  })
+
+  it('validates pad target ids', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 36,
+      targetType: 'pad',
+      targetIds: ['pad:0', 'pad:99'],
+    })
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.code).toBe('live.unknown_pad')
+  })
+
+  it('requires the midi entitlement', async () => {
+    await signupOwner()
+    const partner = await secondOrg(['live_lab.access', 'live_lab.projects'])
+    const projectId = await createProject(partner)
+    const response = await call(partner, 'POST', `/api/live-lab/projects/${projectId}/midi-mappings/bulk`, {
+      deviceIdentifier: 'keys-88',
+      channel: 0,
+      startNote: 60,
+      targetType: 'pad',
+      targetIds: ['pad:0'],
+    })
+    expect(response.statusCode).toBe(403)
+  })
+})
+
 describe('AI scene builder', () => {
   const aiRequest = {
     prompt: 'a sparse eight bar intro, drums enter after four bars',

@@ -190,7 +190,10 @@ test('MIDI Learn maps a control from the mock controller', async () => {
   await expect(page.getByRole('heading', { name: /^MIDI —/ })).toBeVisible()
 
   await page.getByRole('button', { name: 'Use mock controller' }).click()
-  await expect(page.getByText('Live Lab Mock Controller')).toBeVisible()
+  // Scoped to the Devices card: the controller's name also appears in the
+  // keyboard-zone mapper's device picker.
+  const devicesCard = page.locator('.card').filter({ hasText: 'Devices' }).first()
+  await expect(devicesCard.getByText('Live Lab Mock Controller')).toBeVisible()
 
   await page.getByRole('button', { name: 'Learn', exact: true }).click()
   await expect(page.getByText('Waiting for MIDI input…')).toBeVisible()
