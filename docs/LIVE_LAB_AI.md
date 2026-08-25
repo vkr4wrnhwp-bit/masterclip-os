@@ -18,10 +18,22 @@ interface AudioIntelligenceProvider {
 
 - `MockAudioProvider` (`mock-audio`, the default) renders three genuinely
   different, tempo-locked WAV options per request with the local synthesizer —
-  free, offline, deterministic per seed.
-- A hosted music-model adapter (an ElevenLabs integration or similar) registers
-  under its own id and is selected with `LIVE_AI_PROVIDER`. Nothing upstream
-  changes.
+  free, offline, deterministic per seed. It is always registered, so Live Lab
+  works with no credentials and no audio platform at all.
+- `PlatformMusicProvider` (`platform:<providerId>`) bridges onto the platform's
+  music slot from Audio Intelligence — ElevenLabs when a key is configured, the
+  platform mock otherwise. Registered automatically when the build composes the
+  audio layer, and selected with `LIVE_AI_PROVIDER`.
+
+The bridge describes the composer *structurally* rather than importing
+`@masterclip/audio-core`, so `ai-audio` stays portable to the desktop build
+instead of dragging the whole audio platform with it.
+
+**Length is requested exactly; grid alignment is not guaranteed.** The section
+length is computed from bars and BPM and passed as `music_length_ms`, but a
+generative music model is not a click-locked renderer. Every option generated
+this way says so in its description — *check against the click before use* —
+because a bar that drifts is discovered on stage otherwise.
 
 ## The workflow
 

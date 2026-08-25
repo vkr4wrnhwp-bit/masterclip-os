@@ -1,4 +1,4 @@
-import { AudioProviderRegistry, MockAudioProvider, durationMsOf, synthesizeWav } from '@masterclip/ai-audio'
+import { AudioProviderRegistry, MockAudioProvider, PlatformMusicProvider, durationMsOf, synthesizeWav, type MusicComposer } from '@masterclip/ai-audio'
 import { objectKey } from '@masterclip/asset-storage'
 import type { StorageDriver } from '@masterclip/asset-storage'
 import type { LiveAsset, LiveLabRepo } from '@masterclip/domain'
@@ -33,6 +33,12 @@ export interface LiveLabServiceDeps {
   clock: Clock
   logger: Logger
   aiProviderId: string
+  /**
+   * The platform's music generator, when the Audio Intelligence layer is
+   * present. Optional so Live Lab still runs — on the mock — in a build that
+   * does not compose the audio platform at all.
+   */
+  musicComposer?: MusicComposer | null
 }
 
 export class LiveLabService {
@@ -42,6 +48,10 @@ export class LiveLabService {
     // The mock is always registered — same philosophy as the video mock
     // provider: the entire AI pipeline must be exercisable with no credentials.
     this.audioProviders.register(new MockAudioProvider())
+    // The platform's music layer, when this build has one. Registered whether
+    // or not it is configured: `available()` decides at request time, so a key
+    // added later starts being used without a redeploy of this wiring.
+    if (deps.musicComposer) this.audioProviders.register(new PlatformMusicProvider(deps.musicComposer))
   }
 
   get aiProviderId(): string {
@@ -88,6 +98,7 @@ export class LiveLabService {
 
       const provider = this.audioProviders.get(job.provider)
       const result = await provider.generateScene({
+        orgId: job.organizationId,
         request: config,
         bpm,
         beatsPerBar: parseTimeSignature(project.timeSignature).beatsPerBar,
@@ -97,10 +108,15 @@ export class LiveLabService {
 
       const outputAssetIds: string[] = []
       for (const option of result.options) {
-        const filename = `${job.id}-${option.label.toLowerCase().replace(/\s+/g, '-')}.wav`
+        // Sniffed, not assumed: the mock synthesizes WAV but a hosted music
+        // model returns mp3, and a package manifest that mislabels its audio
+        // fails verification on the performance device rather than here.
+        const mime = sniffAudioMime(option.wavBytes)
+        const extension = mime === 'audio/mpeg' ? 'mp3' : 'wav'
+        const filename = `${job.id}-${option.label.toLowerCase().replace(/\s+/g, '-')}.${extension}`
         const key = objectKey({ projectId: job.liveProjectId, kind: 'live-generated', id: job.id, filename })
         const digest = sha256Hex(option.wavBytes)
-        await storage.putBuffer(key, option.wavBytes, { contentType: 'audio/wav', sha256: digest })
+        await storage.putBuffer(key, option.wavBytes, { contentType: mime, sha256: digest })
         const lineage: GenerationLineage = {
           sourceAssetId: job.sourceAssetId,
           sourceVersion: null,
@@ -127,7 +143,7 @@ export class LiveLabService {
           kind: 'generated',
           storageKey: key,
           filename,
-          mime: 'audio/wav',
+          mime,
           bytes: option.wavBytes.length,
           sha256: digest,
           durationMs: option.durationMs,
@@ -506,6 +522,16 @@ class ServerPackageStore implements PackageFileStore {
       ascii(4, 4) === 'ftyp'
     )
   }
+}
+
+/** Container sniffing for generated audio. Mirrors the upload path's rules. */
+function sniffAudioMime(bytes: Uint8Array): string {
+  const ascii = (start: number, length: number) => String.fromCharCode(...bytes.slice(start, start + length))
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WAVE') return 'audio/wav'
+  if (ascii(0, 3) === 'ID3') return 'audio/mpeg'
+  if (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) return 'audio/mpeg'
+  if (ascii(4, 4) === 'ftyp') return 'audio/mp4'
+  return 'audio/wav'
 }
 
 function extensionOf(filename: string): string {

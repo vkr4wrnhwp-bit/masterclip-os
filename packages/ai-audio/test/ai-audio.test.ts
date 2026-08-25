@@ -3,6 +3,7 @@ import type { AiSceneRequest } from '@masterclip/performance-project'
 import { checkPromptSafety } from '../src/safety.js'
 import { durationMsOf, encodeWavPcm16, synthesize, synthesizeWav, SAMPLE_RATE } from '../src/wav.js'
 import { MockAudioProvider } from '../src/mock-provider.js'
+import { PlatformMusicProvider } from '../src/platform-provider.js'
 import { assertGenerationAllowed } from '../src/provider.js'
 
 const request = (over: Partial<AiSceneRequest> = {}): AiSceneRequest => ({
@@ -76,7 +77,7 @@ describe('WAV synthesis', () => {
 describe('mock provider', () => {
   it('renders three distinct tempo-locked options', async () => {
     const provider = new MockAudioProvider()
-    const result = await provider.generateScene({ request: request(), bpm: 120, beatsPerBar: 4, sourceAudio: null, seed: 7 })
+    const result = await provider.generateScene({ orgId: 'org', request: request(), bpm: 120, beatsPerBar: 4, sourceAudio: null, seed: 7 })
     expect(result.options.map((o) => o.label)).toEqual(['OPTION A', 'OPTION B', 'OPTION C'])
     for (const option of result.options) {
       expect(option.durationMs).toBe(16000)
@@ -90,11 +91,112 @@ describe('mock provider', () => {
   it('refuses without rights confirmation — at the provider layer, not just the API', async () => {
     const provider = new MockAudioProvider()
     await expect(
-      provider.generateScene({ request: request({ rightsConfirmed: false }), bpm: 120, beatsPerBar: 4, sourceAudio: null, seed: 7 }),
+      provider.generateScene({ orgId: 'org', request: request({ rightsConfirmed: false }), bpm: 120, beatsPerBar: 4, sourceAudio: null, seed: 7 }),
     ).rejects.toThrow(/rights confirmation/)
   })
 
   it('refuses unsafe prompts at the provider layer too', () => {
     expect(() => assertGenerationAllowed(request({ prompt: 'in the style of Drake' }))).toThrow(/refused/)
+  })
+})
+
+describe('platform music bridge', () => {
+  /** Records what the platform layer was asked for. */
+  class RecordingComposer {
+    readonly providerId = 'recording'
+    readonly calls: Array<Record<string, unknown>> = []
+    constructor(private readonly configured = true) {}
+    isConfigured() {
+      return this.configured
+    }
+    async generateMusic(input: Record<string, unknown>) {
+      this.calls.push(input)
+      return { audio: { bytes: new Uint8Array([0x49, 0x44, 0x33, 1, 2, 3]), contentType: 'audio/mpeg', filename: 'c.mp3' } }
+    }
+  }
+
+  it('asks the platform for exactly the section length the tempo implies', async () => {
+    const composer = new RecordingComposer()
+    const provider = new PlatformMusicProvider(composer)
+    const result = await provider.generateScene({
+      orgId: 'org_1',
+      request: request({ bars: 8 }),
+      bpm: 120,
+      beatsPerBar: 4,
+      sourceAudio: null,
+      seed: 5,
+    })
+    // 8 bars of 4/4 at 120 BPM = 16s.
+    expect(composer.calls).toHaveLength(3)
+    for (const call of composer.calls) {
+      expect(call.musicLengthMs).toBe(16000)
+      expect(call.orgId).toBe('org_1')
+      expect(call.instrumental).toBe(true)
+    }
+    expect(result.options.map((o) => o.label)).toEqual(['OPTION A', 'OPTION B', 'OPTION C'])
+    // Three takes must be genuinely different requests, not the same one thrice.
+    expect(new Set(composer.calls.map((c) => c.seed)).size).toBe(3)
+    expect(new Set(composer.calls.map((c) => c.prompt)).size).toBe(3)
+  })
+
+  it('carries the artist’s own words through unaltered', async () => {
+    const composer = new RecordingComposer()
+    await new PlatformMusicProvider(composer).generateScene({
+      orgId: 'org_1',
+      request: request({ prompt: 'dark sparse intro, sub bass only', bars: 4, instrumentation: ['sub bass'] }),
+      bpm: 90,
+      beatsPerBar: 4,
+      sourceAudio: null,
+      seed: 1,
+    })
+    const prompt = String(composer.calls[0]!.prompt)
+    expect(prompt).toContain('dark sparse intro, sub bass only')
+    expect(prompt).toContain('4 bars at 90 BPM')
+    expect(prompt).toContain('sub bass')
+  })
+
+  it('enforces rights and prompt safety before the platform is touched', async () => {
+    const composer = new RecordingComposer()
+    const provider = new PlatformMusicProvider(composer)
+    await expect(
+      provider.generateScene({
+        orgId: 'org_1',
+        request: request({ rightsConfirmed: false }),
+        bpm: 120,
+        beatsPerBar: 4,
+        sourceAudio: null,
+        seed: 1,
+      }),
+    ).rejects.toThrow(/rights confirmation/)
+    await expect(
+      provider.generateScene({
+        orgId: 'org_1',
+        request: request({ prompt: 'in the style of Drake' }),
+        bpm: 120,
+        beatsPerBar: 4,
+        sourceAudio: null,
+        seed: 1,
+      }),
+    ).rejects.toThrow(/refused/)
+    // The provider was never called for either.
+    expect(composer.calls).toHaveLength(0)
+  })
+
+  it('reports itself unavailable when the platform provider has no credentials', () => {
+    expect(new PlatformMusicProvider(new RecordingComposer(false)).available()).toBe(false)
+    expect(new PlatformMusicProvider(new RecordingComposer(true)).available()).toBe(true)
+  })
+
+  it('warns on every option that grid alignment is not guaranteed', async () => {
+    const provider = new PlatformMusicProvider(new RecordingComposer())
+    const result = await provider.generateScene({
+      orgId: 'org_1',
+      request: request({ bars: 8 }),
+      bpm: 128,
+      beatsPerBar: 4,
+      sourceAudio: null,
+      seed: 2,
+    })
+    for (const option of result.options) expect(option.description).toMatch(/check against the click/)
   })
 })

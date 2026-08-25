@@ -440,7 +440,7 @@ claim, and this build has not made it.
 | Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
 | AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
-| A real AI audio provider for Live Lab | **NOT BUILT** | `ai-audio` has one adapter (mock). PR #2's ElevenLabs music/stems adapters are the obvious host — wiring them in is the next integration, not a rewrite |
+| A real AI audio provider for Live Lab | **DEV-LABELED** | Live Lab now composes through the platform's music slot (`PlatformMusicProvider`), so a configured ElevenLabs key serves the scene builder with no further wiring — tested end to end against the platform *mock*, and **never run against a live music model** |
 | Live Set Builder (suggestions + approval-gated apply) | **REAL** | approval gating, subset application, click routing, pad mapping and idempotent re-planning tested |
 | Stage Control handoff | **REAL** as an interface | export/import is versioned and tested; there is **no Stage Control system in this repo to talk to** |
 | Remix/release import | **REAL** | imports org project audio and cross-project Live Lab assets, org- and project-checked |
