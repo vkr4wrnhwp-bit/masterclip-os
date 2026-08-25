@@ -99,6 +99,27 @@ add detail, and nothing upscales or interpolates by default.
 
 ---
 
+## Live Lab
+
+The live-performance module: turn releases, stems, and authorized AI-generated
+sections into a stage-ready, MIDI-controlled show. Setlist → scenes → 16-pad
+grid → stem deck, with quantized launching on a Web Audio + AudioWorklet
+engine, controller-agnostic MIDI Learn, an offline **performance package**
+(checksum-verified local cache — the show runs with the internet unplugged),
+crash recovery, and an AI Scene Builder on a provider-agnostic audio layer
+whose mock synthesizes real WAVs at zero cost.
+
+`pnpm seed` creates a fictional **Example Artist** demo set; open **Live Lab**
+in the nav. Entitlement-gated per organization and enforced server-side.
+
+Docs: [LIVE_LAB.md](docs/LIVE_LAB.md) · [LIVE_ENGINE.md](docs/LIVE_ENGINE.md) ·
+[MIDI](docs/LIVE_LAB_MIDI.md) · [audio](docs/LIVE_LAB_AUDIO.md) ·
+[offline](docs/LIVE_LAB_OFFLINE.md) · [AI](docs/LIVE_LAB_AI.md) ·
+[Stage Control](docs/LIVE_LAB_STAGE_CONTROL.md) ·
+[desktop plan](docs/LIVE_LAB_DESKTOP.md) · [runbook](docs/LIVE_LAB_RUNBOOK.md)
+
+---
+
 ## Providers
 
 Implemented adapters: **mock** (local ffmpeg), **MuAPI**, **Google Gemini (Veo)**,
@@ -203,6 +224,8 @@ packages/   shared · shot-schema · domain · database · queue · asset-storag
             auth · provider-core · provider-{mock,muapi,google,fal,runway,
             luma,replicate,selfhosted} · media-tools · qc-engine · cost-engine
             model-router · prompt-compiler · agents · runtime
+            live-engine · midi-engine · performance-project · performance-cache
+            ai-audio                          (Live Lab — docs/LIVE_LAB.md)
 docs/       architecture · provider-matrix · current-pricing-snapshot
             model-capabilities · licensing-inventory · security-model
             cost-strategy · cinematic-standard · risk-register · build-audit

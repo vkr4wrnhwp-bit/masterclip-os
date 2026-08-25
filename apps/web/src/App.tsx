@@ -9,6 +9,12 @@ import { ReviewGrid } from './views/ReviewGrid.jsx'
 import { MastersView } from './views/Masters.jsx'
 import { CostLab } from './views/CostLab.jsx'
 import { ProvidersView } from './views/Providers.jsx'
+import { liveApi } from './live/api.js'
+import { LiveLabHome } from './live/LiveLabHome.jsx'
+import { LiveProject } from './live/LiveProject.jsx'
+import { LivePerformance } from './live/LivePerformance.jsx'
+import { LiveMidi } from './live/LiveMidi.jsx'
+import { LiveSettings } from './live/LiveSettings.jsx'
 
 export interface Route {
   name: string
@@ -22,6 +28,17 @@ function parseHash(): Route {
   const params: Record<string, string> = {}
   for (const [key, value] of new URLSearchParams(query ?? '')) params[key] = value
   if (segments.length === 0) return { name: 'dashboard', params }
+  if (segments[0] === 'live-lab') {
+    if (segments[1] === 'settings') return { name: 'live-settings', params }
+    if (segments[1] === 'projects' && segments[2] && segments[2] !== 'new') {
+      const liveProjectId = segments[2]
+      if (segments[3] === 'performance') return { name: 'live-performance', params: { ...params, liveProjectId } }
+      if (segments[3] === 'midi') return { name: 'live-midi', params: { ...params, liveProjectId } }
+      // set / audio / ai-scenes are areas of the same workspace surface.
+      return { name: 'live-project', params: { ...params, liveProjectId } }
+    }
+    return { name: 'live-lab', params }
+  }
   if (segments[0] === 'project' && segments[1]) return { name: 'project', params: { ...params, projectId: segments[1] } }
   if (segments[0] === 'shot' && segments[1]) return { name: segments[2] === 'review' ? 'review' : 'shot', params: { ...params, shotId: segments[1] } }
   if (segments[0] === 'queue' && segments[1]) return { name: 'queue', params: { ...params, projectId: segments[1] } }
@@ -50,6 +67,14 @@ export function App() {
   const [user, setUser] = React.useState<User | null>(null)
   const [checking, setChecking] = React.useState(true)
   const health = useAsync(() => api.health(), [])
+  // Live Lab is entitlement-gated: the nav entry only exists when the org has
+  // live_lab.access. (The server enforces it regardless — this is courtesy.)
+  // Keyed by email because the signup/login response carries `id` while
+  // /api/auth/me carries `userId` — email is the field both shapes share.
+  const liveCaps = useAsync(
+    () => (user ? liveApi.capabilities().catch(() => null) : Promise.resolve(null)),
+    [user?.email],
+  )
 
   React.useEffect(() => {
     api
@@ -66,6 +91,12 @@ export function App() {
   if (route.params.projectId) localStorage.setItem('masterclip.lastProject', route.params.projectId)
 
   const mode = health.data?.mode ?? 'sandbox'
+
+  // Performance Mode is a stage surface: no chrome, no nav, nothing to hit by
+  // accident. Everything else renders inside the normal app shell.
+  if (route.name === 'live-performance') {
+    return <LivePerformance projectId={route.params.liveProjectId ?? ''} />
+  }
 
   return (
     <>
@@ -103,6 +134,17 @@ export function App() {
                 </NavLink>
               </>
             )}
+            {liveCaps.data?.capabilities.includes('live_lab.access') && (
+              <>
+                <div className="group">Performance</div>
+                <NavLink route={route} to="/live-lab" name="live-lab">
+                  Live Lab
+                </NavLink>
+                <NavLink route={route} to="/live-lab/settings" name="live-settings">
+                  Live settings
+                </NavLink>
+              </>
+            )}
             <div className="group">System</div>
             <NavLink route={route} to="/providers" name="providers">
               Providers &amp; models
@@ -132,6 +174,10 @@ export function App() {
           {route.name === 'masters' && <MastersView projectId={route.params.projectId ?? ''} />}
           {route.name === 'costs' && <CostLab projectId={route.params.projectId ?? ''} />}
           {route.name === 'providers' && <ProvidersView />}
+          {route.name === 'live-lab' && <LiveLabHome />}
+          {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
+          {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}
+          {route.name === 'live-settings' && <LiveSettings />}
         </main>
       </div>
     </>

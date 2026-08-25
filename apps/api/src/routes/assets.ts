@@ -42,7 +42,11 @@ export function sniffMime(head: Uint8Array): string | null {
     if (brand.startsWith('qt')) return 'video/quicktime'
     return 'video/mp4'
   }
-  if (startsWith(0x49, 0x44, 0x33) || startsWith(0xff, 0xfb)) return 'audio/mpeg'
+  // ID3-tagged, or a bare MPEG frame sync (11 set bits). Matching only the
+  // common `FF FB` refused perfectly valid tagless MP3s — `FF FA`, `FF F3`
+  // and friends differ only in layer/bitrate bits.
+  if (startsWith(0x49, 0x44, 0x33)) return 'audio/mpeg'
+  if (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0) return 'audio/mpeg'
   return null
 }
 
