@@ -46,17 +46,47 @@ async function precacheShell() {
     const html = await response.clone().text()
     await cache.put('/', response)
 
-    const urls = new Set()
-    for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
-      const url = match[1]
-      // Same-origin, non-API only — the same boundary the fetch handler keeps.
-      if (url.startsWith('/') && !url.startsWith('/api/')) urls.add(url)
-    }
+    const urls = assetsNamedBy(html)
     await Promise.all([...urls].map((url) => cache.add(url).catch(() => undefined)))
   } catch {
     // Installed with no network: nothing to precache now, and the fetch
     // handler still fills the cache on the next successful load.
   }
+}
+
+/** Same-origin, non-API URLs the document names — the fetch handler's boundary. */
+function assetsNamedBy(html) {
+  const urls = new Set()
+  for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+    const url = match[1]
+    if (url.startsWith('/') && !url.startsWith('/api/')) urls.add(url)
+  }
+  return urls
+}
+
+/**
+ * Drop assets the current document no longer names.
+ *
+ * Filenames are content-hashed, so every deploy adds a new set and the old one
+ * would otherwise stay cached forever. That matters more here than in most
+ * apps: this origin's storage budget is shared with the performance package,
+ * and the app refuses to mark a show READY when storage is short. A shell cache
+ * quietly growing by a version each deploy would eat the headroom a performer
+ * needs for their audio.
+ *
+ * Only ever called with a document fetched from the network, so an offline
+ * session never prunes against a stale page.
+ */
+async function pruneToDocument(cache, html) {
+  const keep = assetsNamedBy(html)
+  const requests = await cache.keys()
+  await Promise.all(
+    requests.map(async (request) => {
+      const path = new URL(request.url).pathname + new URL(request.url).search
+      if (path === '/' || keep.has(path)) return
+      await cache.delete(request).catch(() => undefined)
+    }),
+  )
 }
 
 self.addEventListener('activate', (event) => {
@@ -101,6 +131,15 @@ self.addEventListener('fetch', (event) => {
         // Opaque and error responses are not worth keeping.
         if (response && response.ok && response.type === 'basic') {
           cache.put(request, response.clone()).catch(() => undefined)
+          if (navigation) {
+            // A fresh document is the only reliable signal that a deploy
+            // landed, and the only trustworthy list of what is still in use.
+            // Cache the assets it names and drop the ones it does not.
+            const html = await response.clone().text()
+            const assets = assetsNamedBy(html)
+            await Promise.all([...assets].map((url) => cache.add(url).catch(() => undefined)))
+            await pruneToDocument(cache, html)
+          }
         }
         return response
       } catch (err) {

@@ -108,6 +108,12 @@ Two more things had to hold before any of that was reachable after a crash:
   browser's own HTTP cache hides this on a warm machine, which is why the
   offline spec asserts the bundle is in the worker's cache rather than trusting
   that the reload succeeded.
+
+  Assets the current document no longer names are dropped when a document is
+  fetched over the network. Filenames are content-hashed, so nothing overwrites
+  them and every deploy would otherwise add a version that stays forever — and
+  this origin's storage is shared with the show audio, which the app refuses to
+  mark READY when storage is short. Shell growth is not free here.
 - **The signed-in identity.** `/api/auth/me` fails when the server is
   unreachable, and that used to read as *signed out* — a sign-in form nobody at
   a venue can complete. A server that answers "no" still signs you out; a

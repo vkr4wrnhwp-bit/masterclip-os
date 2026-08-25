@@ -187,3 +187,35 @@ test('the setlist and transport still respond offline', async () => {
 
   await context.setOffline(false)
 })
+
+test('a deploy does not leave the previous bundle cached forever', async () => {
+  // Back online after the previous test. Seed a stale asset of the kind an
+  // earlier deploy leaves behind: filenames are content-hashed, so nothing
+  // overwrites them and they would otherwise sit there for good.
+  const staleKey = '/assets/index-STALEHASH0.js'
+  await page.evaluate(async (key) => {
+    const names = await caches.keys()
+    const shell = names.find((name) => name.startsWith('masterclip-shell'))
+    if (!shell) throw new Error('no shell cache')
+    const cache = await caches.open(shell)
+    await cache.put(key, new Response('// a previous deploy', { headers: { 'content-type': 'text/javascript' } }))
+  }, staleKey)
+
+  // A document fetched over the network is the only trustworthy statement of
+  // what is still in use, so that is when the worker prunes.
+  await page.goto('/')
+  await page.waitForLoadState('load')
+
+  const paths = await page.evaluate(async () => {
+    const names = await caches.keys()
+    const shell = names.find((name) => name.startsWith('masterclip-shell'))
+    if (!shell) return []
+    const cache = await caches.open(shell)
+    return (await cache.keys()).map((request) => new URL(request.url).pathname)
+  })
+
+  // The old bundle is gone; the current one is still there. This origin's
+  // storage is shared with the show audio, so shell growth is not free.
+  expect(paths).not.toContain(staleKey)
+  expect(paths.filter((path) => path.endsWith('.js')).length).toBeGreaterThan(0)
+})
