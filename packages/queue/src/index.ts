@@ -7,6 +7,7 @@ export const QUEUES = {
   media: 'media',
   qc: 'qc',
   maintenance: 'maintenance',
+  live: 'live',
 } as const
 
 /** Job types handled by apps/worker. */
@@ -21,6 +22,7 @@ export const JOB_TYPES = {
   refreshCatalog: 'maintenance.refresh_catalog',
   providerHealth: 'maintenance.provider_health',
   recomputeStats: 'maintenance.recompute_stats',
+  liveAiGenerate: 'live.ai.generate',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]

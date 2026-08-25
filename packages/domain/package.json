@@ -9,6 +9,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@masterclip/database": "workspace:*",
+    "@masterclip/performance-project": "workspace:*",
     "@masterclip/shared": "workspace:*",
     "@masterclip/shot-schema": "workspace:*"
   }

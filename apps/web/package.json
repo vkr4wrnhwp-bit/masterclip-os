@@ -9,6 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@masterclip/live-engine": "workspace:*",
+    "@masterclip/midi-engine": "workspace:*",
+    "@masterclip/performance-cache": "workspace:*",
+    "@masterclip/performance-project": "workspace:*",
     "@masterclip/shared": "workspace:*",
     "@masterclip/shot-schema": "workspace:*"
   }

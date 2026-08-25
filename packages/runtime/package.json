@@ -10,7 +10,10 @@
   },
   "dependencies": {
     "@masterclip/agents": "workspace:*",
+    "@masterclip/ai-audio": "workspace:*",
     "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/live-engine": "workspace:*",
+    "@masterclip/performance-project": "workspace:*",
     "@masterclip/auth": "workspace:*",
     "@masterclip/cost-engine": "workspace:*",
     "@masterclip/database": "workspace:*",

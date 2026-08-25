@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const render = new RenderService(runtime)
   const logger = runtime.logger.child({ component: 'worker' })
 
-  const workers = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance].map((queueName) => {
+  const workers = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.live].map((queueName) => {
     const worker = new QueueWorker(runtime.queue, {
       queueName,
       concurrency: config.WORKER_CONCURRENCY,
@@ -72,6 +72,14 @@ async function main(): Promise<void> {
 
     worker.register<{ projectId: string }>(JOB_TYPES.recomputeStats, async ({ projectId }) => {
       await runtime.metrics.recomputeModelPerformance(projectId)
+    })
+
+    // Live Lab AI scene generation. Asynchronous by design: the artist keeps
+    // rehearsing while this renders, and results never replace live audio —
+    // they land as options awaiting explicit acceptance.
+    worker.register<{ jobId: string }>(JOB_TYPES.liveAiGenerate, async ({ jobId }, ctx) => {
+      await ctx.heartbeat()
+      await runtime.liveLabService.runAiJob(jobId)
     })
 
     worker.register(JOB_TYPES.refreshCatalog, async () => {

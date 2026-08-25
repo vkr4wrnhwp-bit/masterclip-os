@@ -4,6 +4,7 @@ import { AppError, formatUsd, maskSecret } from '@masterclip/shared'
 import { toNum, toStr } from '@masterclip/database'
 import { verifyCallbackToken } from '@masterclip/provider-core'
 import { ROUTING_PROFILES } from '@masterclip/model-router'
+import { FLAGSHIP_CAPABILITIES } from '@masterclip/performance-project'
 import type { Runtime } from '@masterclip/runtime'
 import { SESSION_COOKIE, requireAuth, requireProject } from '../server.js'
 import { clearCsrfCookie, issueCsrfCookie } from '../security/csrf.js'
@@ -36,6 +37,9 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       displayName: body.displayName,
       orgRole: 'owner',
     })
+    // The bootstrap organization is flagship: every Live Lab capability on.
+    // Partner / white-label orgs are provisioned with a configured subset.
+    await runtime.entitlements.grantAll(org.id, FLAGSHIP_CAPABILITIES)
     const session = await runtime.auth.login(body.email, body.password)
     void reply.setCookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', path: '/', secure: runtime.config.NODE_ENV === 'production' })
     issueCsrfCookie(runtime, reply, session.token)

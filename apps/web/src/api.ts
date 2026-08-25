@@ -68,6 +68,10 @@ const get = <T>(path: string) => request<T>(path)
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
 const put = <T>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) })
 const patch = <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) })
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
+
+// Shared by the Live Lab client (src/live/api.ts).
+export { request, get, post, put, patch, del }
 
 export interface User {
   userId: string
