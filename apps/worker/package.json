@@ -10,6 +10,7 @@
   "dependencies": {
     "@masterclip/agents": "workspace:*",
     "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/audio-engine": "workspace:*",
     "@masterclip/cost-engine": "workspace:*",
     "@masterclip/database": "workspace:*",
     "@masterclip/domain": "workspace:*",

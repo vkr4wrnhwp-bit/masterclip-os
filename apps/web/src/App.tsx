@@ -9,6 +9,16 @@ import { ReviewGrid } from './views/ReviewGrid.jsx'
 import { MastersView } from './views/Masters.jsx'
 import { CostLab } from './views/CostLab.jsx'
 import { ProvidersView } from './views/Providers.jsx'
+import { AudioIntelligenceView } from './views/AudioIntelligence.jsx'
+import { AudioMeetingsView } from './views/AudioMeetings.jsx'
+import { AudioMeetingDetailView } from './views/AudioMeetingDetail.jsx'
+import { AudioBriefsView } from './views/AudioBriefs.jsx'
+import { AudioOperatorView } from './views/AudioOperator.jsx'
+import { AudioGlobalReleaseView } from './views/AudioGlobalRelease.jsx'
+import { AudioCampaignsView } from './views/AudioCampaigns.jsx'
+import { AudioRemixView } from './views/AudioRemix.jsx'
+import { AudioVoiceVaultView } from './views/AudioVoiceVault.jsx'
+import { AudioSettingsView } from './views/AudioSettings.jsx'
 import { liveApi } from './live/api.js'
 import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
@@ -45,6 +55,10 @@ function parseHash(): Route {
   if (segments[0] === 'masters' && segments[1]) return { name: 'masters', params: { ...params, projectId: segments[1] } }
   if (segments[0] === 'costs' && segments[1]) return { name: 'costs', params: { ...params, projectId: segments[1] } }
   if (segments[0] === 'providers') return { name: 'providers', params }
+  if (segments[0] === 'audio') {
+    if (segments[1] === 'meetings' && segments[2]) return { name: 'audio-meeting', params: { ...params, meetingId: segments[2] } }
+    return { name: `audio-${segments[1] ?? 'home'}`, params }
+  }
   return { name: segments[0] ?? 'dashboard', params }
 }
 
@@ -134,6 +148,34 @@ export function App() {
                 </NavLink>
               </>
             )}
+            <div className="group">Audio Intelligence</div>
+            <NavLink route={route} to="/audio" name="audio-home">
+              Overview
+            </NavLink>
+            <NavLink route={route} to="/audio/meetings" name="audio-meetings">
+              Meetings
+            </NavLink>
+            <NavLink route={route} to="/audio/briefs" name="audio-briefs">
+              Signal briefs
+            </NavLink>
+            <NavLink route={route} to="/audio/operator" name="audio-operator">
+              Operator
+            </NavLink>
+            <NavLink route={route} to="/audio/global-release" name="audio-global-release">
+              Global release
+            </NavLink>
+            <NavLink route={route} to="/audio/campaigns" name="audio-campaigns">
+              Campaign toolkit
+            </NavLink>
+            <NavLink route={route} to="/audio/remix" name="audio-remix">
+              Remix lab
+            </NavLink>
+            <NavLink route={route} to="/audio/voice-vault" name="audio-voice-vault">
+              Voice vault
+            </NavLink>
+            <NavLink route={route} to="/audio/settings" name="audio-settings">
+              Audio settings
+            </NavLink>
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
                 <div className="group">Performance</div>
@@ -174,6 +216,16 @@ export function App() {
           {route.name === 'masters' && <MastersView projectId={route.params.projectId ?? ''} />}
           {route.name === 'costs' && <CostLab projectId={route.params.projectId ?? ''} />}
           {route.name === 'providers' && <ProvidersView />}
+          {route.name === 'audio-home' && <AudioIntelligenceView />}
+          {route.name === 'audio-meetings' && <AudioMeetingsView />}
+          {route.name === 'audio-meeting' && <AudioMeetingDetailView meetingId={route.params.meetingId ?? ''} />}
+          {route.name === 'audio-briefs' && <AudioBriefsView />}
+          {route.name === 'audio-operator' && <AudioOperatorView />}
+          {route.name === 'audio-global-release' && <AudioGlobalReleaseView />}
+          {route.name === 'audio-campaigns' && <AudioCampaignsView />}
+          {route.name === 'audio-remix' && <AudioRemixView />}
+          {route.name === 'audio-voice-vault' && <AudioVoiceVaultView />}
+          {route.name === 'audio-settings' && <AudioSettingsView isAdmin={user.orgRole === 'owner' || user.orgRole === 'admin'} />}
           {route.name === 'live-lab' && <LiveLabHome />}
           {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}

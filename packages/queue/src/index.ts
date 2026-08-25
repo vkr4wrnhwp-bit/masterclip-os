@@ -7,6 +7,7 @@ export const QUEUES = {
   media: 'media',
   qc: 'qc',
   maintenance: 'maintenance',
+  audio: 'audio',
   live: 'live',
 } as const
 
@@ -22,6 +23,19 @@ export const JOB_TYPES = {
   refreshCatalog: 'maintenance.refresh_catalog',
   providerHealth: 'maintenance.provider_health',
   recomputeStats: 'maintenance.recompute_stats',
+  // Street Banker Audio Intelligence
+  audioTranscribe: 'audio.transcribe',
+  audioExtractMeeting: 'audio.meeting.extract',
+  audioRenderBrief: 'audio.brief.render',
+  audioDubbingSubmit: 'audio.dubbing.submit',
+  audioDubbingPoll: 'audio.dubbing.poll',
+  audioCampaignGenerate: 'audio.campaign.generate',
+  audioRemixGenerate: 'audio.remix.generate',
+  audioAgentPostCall: 'audio.agent.post_call',
+  audioAgentSync: 'audio.agent.sync',
+  audioRetentionSweep: 'audio.retention.sweep',
+  audioScheduleTick: 'audio.schedule.tick',
+  audioWebhookProcess: 'audio.webhook.process',
   liveAiGenerate: 'live.ai.generate',
 } as const
 

@@ -15,6 +15,7 @@ import { createSelfHostedProvider } from '@masterclip/provider-selfhosted'
 import { CostController, CostLedger, MetricsService, QuoteStore } from '@masterclip/cost-engine'
 import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
+import { createAudioLayer, type AudioLayer } from '@masterclip/audio-engine'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
 
 export * from './render.js'
@@ -47,6 +48,7 @@ export interface Runtime {
   quotes: QuoteStore
   metrics: MetricsService
   agents: AgentLayer
+  audio: AudioLayer
   liveLab: LiveLabRepo
   entitlements: EntitlementService
   liveLabService: LiveLabService
@@ -115,6 +117,7 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     quotes: new QuoteStore(db, clock),
     metrics: new MetricsService(db, clock),
     agents: createAgentLayer(config, logger),
+    audio: createAudioLayer({ config, logger, db, storage, queue, clock, ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}) }),
     liveLab: liveLabRepo,
     entitlements: new EntitlementService(db, clock),
     liveLabService: new LiveLabService({

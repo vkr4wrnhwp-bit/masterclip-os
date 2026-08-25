@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MASTERCLIP OS — cinematic AI-video render factory: multi-provider generation, automated QC, cost-per-approved-second accounting, and master-clip delivery.",
+  "description": "MASTERCLIP OS \u2014 cinematic AI-video render factory: multi-provider generation, automated QC, cost-per-approved-second accounting, and master-clip delivery.",
   "engines": {
     "node": ">=22.5.0"
   },
@@ -53,6 +53,10 @@
     "@masterclip/ai-audio": "workspace:*",
     "@masterclip/api": "workspace:*",
     "@masterclip/asset-storage": "workspace:*",
+    "@masterclip/audio-core": "workspace:*",
+    "@masterclip/audio-domain": "workspace:*",
+    "@masterclip/audio-engine": "workspace:*",
+    "@masterclip/audio-providers": "workspace:*",
     "@masterclip/auth": "workspace:*",
     "@masterclip/cli": "workspace:*",
     "@masterclip/cost-engine": "workspace:*",

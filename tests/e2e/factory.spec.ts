@@ -8,8 +8,9 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test'
  * session: a review grid with nothing to review proves nothing, and re-signing
  * in between steps would test the login form rather than the product.
  */
-const EMAIL = `e2e-${Date.now()}@masterclip.test`
-const PASSWORD = 'e2e-password-1234'
+// Shared with the other spec files: signup closes behind the first account,
+// so whichever file runs first bootstraps and the rest sign in with these.
+import { E2E_EMAIL as EMAIL, E2E_PASSWORD as PASSWORD } from './credentials.js'
 
 let context: BrowserContext
 let page: Page
