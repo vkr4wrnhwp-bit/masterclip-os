@@ -46,7 +46,12 @@ const EnvSchema = z.object({
   /** Multiplies every rate-limit budget. Raise it for a busy shared deployment. */
   RATE_LIMIT_SCALE: num(1),
   WEB_PORT: num(4311),
-  /** Externally reachable origin, used to build provider webhook callback URLs. */
+  /**
+   * Externally reachable origin, used to build provider webhook callback URLs.
+   * Read `config.publicBaseUrl` rather than this: a managed host usually knows
+   * its own external URL and supplies it, so the resolved value falls back to
+   * the host's when this is unset.
+   */
   PUBLIC_BASE_URL: z.string().default(''),
 
   // --- persistence ---------------------------------------------------------
@@ -157,6 +162,13 @@ const EnvSchema = z.object({
   GIT_COMMIT: z.string().default(''),
   RENDER_GIT_COMMIT: z.string().default(''),
   RENDER_GIT_BRANCH: z.string().default(''),
+  /**
+   * Render sets this to the service's own external origin at runtime. The URL
+   * is not knowable when the blueprint is written — the service does not exist
+   * yet — so it cannot be hardcoded in render.yaml, and webhooks would be dead
+   * on a fresh deploy without this fallback.
+   */
+  RENDER_EXTERNAL_URL: z.string().default(''),
   VERCEL_GIT_COMMIT_SHA: z.string().default(''),
   SOURCE_VERSION: z.string().default(''),
 
@@ -253,6 +265,11 @@ export interface AppConfig extends RawEnv {
   commit: string
   /** Resolved branch name, or '' when unknown. */
   branch: string
+  /**
+   * Externally reachable origin: the explicit setting, else whatever the host
+   * reports about itself, else '' when nothing is reachable from outside.
+   */
+  publicBaseUrl: string
 }
 
 let cached: AppConfig | null = null
@@ -294,6 +311,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
     // a deployment that reports nothing says so rather than inventing a value.
     commit: firstNonEmpty(env.GIT_COMMIT, env.RENDER_GIT_COMMIT, env.VERCEL_GIT_COMMIT_SHA, env.SOURCE_VERSION),
     branch: firstNonEmpty(env.RENDER_GIT_BRANCH),
+    // An explicit setting wins; otherwise take the host's own idea of where it
+    // is reachable. Trailing slashes are stripped so callers can join paths
+    // without doubling the separator.
+    publicBaseUrl: firstNonEmpty(env.PUBLIC_BASE_URL, env.RENDER_EXTERNAL_URL).replace(/\/+$/, ''),
   }
   return cached
 }

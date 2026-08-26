@@ -169,9 +169,9 @@ async function cmdDoctor(ctx: Ctx): Promise<number> {
 
     checks.push({
       name: 'webhook callback URL',
-      ok: Boolean(config.PUBLIC_BASE_URL && config.WEBHOOK_SECRET),
-      detail: config.PUBLIC_BASE_URL
-        ? `${config.PUBLIC_BASE_URL} (secret ${maskSecret(config.WEBHOOK_SECRET)})`
+      ok: Boolean(config.publicBaseUrl && config.WEBHOOK_SECRET),
+      detail: config.publicBaseUrl
+        ? `${config.publicBaseUrl} (secret ${maskSecret(config.WEBHOOK_SECRET)})`
         : 'not set — providers will be polled instead of calling back',
       required: false,
     })
