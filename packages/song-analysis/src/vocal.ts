@@ -177,20 +177,80 @@ export interface RegisterProfile {
   method: string
 }
 
-export function registerProfile(activity: VocalActivity, frames: AnalysisFrames, fromFrame = 0, toFrame = frames.count): RegisterProfile {
+/**
+ * How far a register measurement is allowed to be trusted.
+ *
+ * From a full mix there are two independent doubts: whether the frames scored
+ * as voiced are the voice at all, and whether a spectral centroid tracks sung
+ * pitch. A separated stem settles the first outright — the frames *are* the
+ * vocal — and leaves only the second.
+ *
+ * So the stem ceiling is higher, but deliberately below the 0.85 that vocal
+ * *detection* earns on a stem: centroid is not pitch, and no amount of source
+ * separation makes it pitch. The uplift is for the doubt that was removed,
+ * not for the one that remains.
+ */
+export const REGISTER_CONFIDENCE_CEILING = { fullMix: 0.5, isolatedStem: 0.7 } as const
+
+export interface RegisterOptions {
+  /** True when the measured signal is a separated vocal rather than the mix. */
+  isolatedVocal?: boolean
+}
+
+/**
+ * Per-frame voiced register: the spectral centroid where a vocal is active,
+ * `null` where it is not.
+ *
+ * Extracted so a register can be re-measured over a *different* signal than the
+ * one a section was detected from — section boundaries come from the full mix,
+ * because an instrumental break is a section change and a vocal stem is silent
+ * there, while the register of those sections is better measured from the stem.
+ * The curve is what lets those two live on different sources.
+ */
+export function voicedRegisterCurve(activity: VocalActivity, frames: AnalysisFrames): Array<number | null> {
+  const curve = new Array<number | null>(frames.count)
+  for (let i = 0; i < frames.count; i++) curve[i] = activity.active[i] ? frames.centroid[i]! : null
+  return curve
+}
+
+export function registerProfile(
+  activity: VocalActivity,
+  frames: AnalysisFrames,
+  fromFrame = 0,
+  toFrame = frames.count,
+  opts: RegisterOptions = {},
+): RegisterProfile {
+  return registerProfileFromCurve(voicedRegisterCurve(activity, frames), fromFrame, toFrame, {
+    ...opts,
+    detectionConfidence: activity.confidence,
+  })
+}
+
+export function registerProfileFromCurve(
+  curve: Array<number | null>,
+  fromFrame = 0,
+  toFrame = curve.length,
+  opts: RegisterOptions & { detectionConfidence?: number } = {},
+): RegisterProfile {
   const values: number[] = []
-  for (let i = Math.max(0, fromFrame); i < Math.min(frames.count, toFrame); i++) {
-    if (activity.active[i]) values.push(frames.centroid[i]!)
+  for (let i = Math.max(0, fromFrame); i < Math.min(curve.length, toFrame); i++) {
+    const value = curve[i]
+    if (value !== null && value !== undefined) values.push(value)
   }
-  if (values.length < 8) return { medianRegister: null, lowRegister: null, highRegister: null, confidence: 0, method: 'voiced_centroid_percentiles' }
+  const method = opts.isolatedVocal ? 'isolated_stem_centroid_percentiles' : 'voiced_centroid_percentiles'
+  if (values.length < 8) return { medianRegister: null, lowRegister: null, highRegister: null, confidence: 0, method }
+
   values.sort((a, b) => a - b)
   const at = (p: number) => values[Math.min(values.length - 1, Math.floor((p / 100) * values.length))]!
+  const ceiling = opts.isolatedVocal ? REGISTER_CONFIDENCE_CEILING.isolatedStem : REGISTER_CONFIDENCE_CEILING.fullMix
   return {
     medianRegister: round(at(50)),
     lowRegister: round(at(10)),
     highRegister: round(at(90)),
-    confidence: Math.min(0.5, activity.confidence),
-    method: 'voiced_centroid_percentiles',
+    // Still bounded by the detection behind it: a stem measured by a detector
+    // that found almost nothing is not a confident register.
+    confidence: Math.min(ceiling, opts.detectionConfidence ?? ceiling),
+    method,
   }
 }
 
@@ -218,9 +278,19 @@ export function melodicContour(
   toFrame = frames.count,
   points = MELODIC_CONTOUR_POINTS,
 ): number[] {
+  return melodicContourFromCurve(voicedRegisterCurve(activity, frames), fromFrame, toFrame, points)
+}
+
+export function melodicContourFromCurve(
+  curve: Array<number | null>,
+  fromFrame = 0,
+  toFrame = curve.length,
+  points = MELODIC_CONTOUR_POINTS,
+): number[] {
   const voiced: number[] = []
-  for (let i = Math.max(0, fromFrame); i < Math.min(frames.count, toFrame); i++) {
-    if (activity.active[i]) voiced.push(frames.centroid[i]!)
+  for (let i = Math.max(0, fromFrame); i < Math.min(curve.length, toFrame); i++) {
+    const value = curve[i]
+    if (value !== null && value !== undefined) voiced.push(value)
   }
   if (voiced.length < MIN_CONTOUR_FRAMES) return []
 

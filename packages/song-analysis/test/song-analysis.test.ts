@@ -14,7 +14,9 @@ import {
   melodicContour,
   MELODIC_CONTOUR_POINTS,
   peakDbfs,
+  REGISTER_CONFIDENCE_CEILING,
   registerProfile,
+  registerProfileFromCurve,
   resample,
   toMono,
 } from '../src/index.js'
@@ -354,9 +356,43 @@ describe('vocal register', () => {
   })
 
   it('caps its own confidence, because a register from a full mix is inferred', () => {
-    const audio = decodeWav(encodeWav([tone(400, 4)]))
+    const audio = decodeWav(encodeWav([concat([tone(250, 2), tone(500, 2), tone(350, 2), tone(700, 2)])]))
     const frames = analyzeFrames(toMono(audio), audio)
-    expect(registerProfile(detectVocalActivity(frames), frames).confidence).toBeLessThanOrEqual(0.5)
+    const profile = registerProfile(detectVocalActivity(frames), frames)
+    // A real band, so the ceiling is doing work rather than passing vacuously.
+    expect(profile.medianRegister).not.toBeNull()
+    expect(profile.confidence).toBeLessThanOrEqual(REGISTER_CONFIDENCE_CEILING.fullMix)
+  })
+
+  it('trusts a register measured from a separated vocal further than one from the mix', () => {
+    // The uplift is for the doubt separation removes — whether those frames are
+    // the voice — and only that one.
+    //
+    // A moving signal, because the detector scores centroid motion: a dead
+    // steady tone reads as machinery and yields no voiced frames to measure.
+    const audio = decodeWav(encodeWav([concat([tone(250, 2), tone(500, 2), tone(350, 2), tone(700, 2)])]))
+    const frames = analyzeFrames(toMono(audio), audio)
+
+    const fromMix = registerProfile(detectVocalActivity(frames), frames)
+    const fromStem = registerProfile(detectVocalActivity(frames, { isolatedVocal: true }), frames, 0, frames.count, {
+      isolatedVocal: true,
+    })
+
+    expect(fromStem.confidence).toBeGreaterThan(fromMix.confidence)
+    expect(fromStem.confidence).toBe(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+    // Both describe the same signal, so the band itself must not move.
+    expect(fromStem.medianRegister).toBe(fromMix.medianRegister)
+    // And the method says which signal it read, so the number stays readable.
+    expect(fromStem.method).toBe('isolated_stem_centroid_percentiles')
+  })
+
+  it('still will not outrank the detection behind it, stem or not', () => {
+    // Centroid is not pitch, and separation does not make it pitch. A stem
+    // ceiling is a ceiling, never a floor applied to weak detection.
+    const curve = Array.from({ length: 40 }, (_, i) => 0.3 + i * 0.001)
+    const weak = registerProfileFromCurve(curve, 0, curve.length, { isolatedVocal: true, detectionConfidence: 0.2 })
+    expect(weak.confidence).toBe(0.2)
+    expect(REGISTER_CONFIDENCE_CEILING.isolatedStem).toBeLessThan(0.85)
   })
 
   it('reports no register rather than a guessed one for a window with no voiced frames', () => {

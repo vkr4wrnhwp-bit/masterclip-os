@@ -97,9 +97,25 @@ The band is measured per section over the raw analysis frames rather than the
 pooled ones — a pool is three quarters of a second, long enough to average two
 sung notes into one that was never sung — and reported as a 10th/50th/90th
 percentile triple. A section with fewer than eight voiced frames reports `null`
-throughout, at confidence 0. Because the profile inherits vocal-activity
-confidence and caps at **0.5**, a register figure never outranks the detection it
-came from.
+throughout, at confidence 0.
+
+The ceiling depends on what was measured. From a full mix there are two
+independent doubts — whether the frames scored as voiced are the voice at all,
+and whether a spectral centroid tracks sung pitch — and the confidence caps at
+**0.5**. A separated vocal stem settles the first outright and leaves only the
+second, so it caps at **0.7**: higher, but deliberately below the 0.85 that vocal
+*detection* earns on a stem, because centroid is not pitch and no amount of
+source separation makes it pitch. Either way the figure stays bounded by the
+detection behind it, so a stem measured by a detector that found almost nothing
+is not a confident register.
+
+Section boundaries and section registers therefore come from **different
+signals**. Boundaries are detected from the mix — an instrumental break is a
+section change and a vocal stem is silent there, so a detector fed the stem
+would lose it. The register of those sections is then re-measured against the
+stem where one exists, by windowing the per-frame register curve the vocal
+provider returns. A section the stem has nothing in keeps the mix band rather
+than losing it: separation can drop a quiet passage the proxy still caught.
 
 From the per-section bands the engine derives `verse_register`,
 `chorus_register`, `chorus_register_lift`, `vocal_register_range` and

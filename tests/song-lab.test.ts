@@ -9,6 +9,7 @@ import { loadConfig, silentLogger } from '@masterclip/shared'
 import { JOB_TYPES, QUEUES, QueueWorker } from '@masterclip/queue'
 import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { encodeWavPcm16, synthesize } from '@masterclip/ai-audio'
+import { REGISTER_CONFIDENCE_CEILING } from '@masterclip/song-analysis'
 import { FLAGSHIP_SONG_LAB_CAPABILITIES, PARTNER_SONG_LAB_CAPABILITIES } from '@masterclip/song-lab-domain'
 import { FLAGSHIP_CAPABILITIES } from '@masterclip/performance-project'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
@@ -1583,6 +1584,114 @@ describe('vocal stem separation', () => {
     // rewrite history, so the mix-based figures remain auditable.
     const original = await runtime.songLab.repos.analyses.get(session.orgId, before)
     expect(original.vocalAnalysis.basis).toBe('full_mix')
+  })
+
+  /**
+   * The register half of the same claim.
+   *
+   * Section *boundaries* have to come from the full mix — an instrumental break
+   * is a section change and a vocal stem is silent there — but the register of
+   * those sections is better measured from the stem. These pin that the two
+   * stay on their own signals.
+   */
+  it('re-measures each section register against the stem, and only then trusts it further', async () => {
+    const session = await bootstrapFlagship()
+    const { LocalVocalAnalysisProvider } = await import('@masterclip/song-analysis')
+    runtime.songLab.providers.vocals = new LocalVocalAnalysisProvider()
+    const actor = { userId: session.userId, orgId: session.orgId, orgRole: 'owner' as const }
+
+    const { projectId, versionId } = await seedWithVersion(session)
+    const before = await runtime.songLab.projects.reanalyze(actor, projectId)
+    await runtime.songLab.analysis.run(before, session.orgId)
+    const mixFeatures = await runtime.songLab.repos.sections.features(session.orgId, before)
+    const mixBest = Math.max(...[...mixFeatures.values()].map((feature) => feature.register.confidence))
+
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    const after = await runtime.songLab.projects.reanalyze(actor, projectId)
+    await runtime.songLab.analysis.run(after, session.orgId)
+    const stemFeatures = await runtime.songLab.repos.sections.features(session.orgId, after)
+    const measured = [...stemFeatures.values()].filter((feature) => feature.register.median !== null)
+
+    expect(measured.length).toBeGreaterThan(0)
+    const stemBest = Math.max(...measured.map((feature) => feature.register.confidence))
+    expect(stemBest).toBeGreaterThan(mixBest)
+    expect(stemBest).toBeGreaterThan(REGISTER_CONFIDENCE_CEILING.fullMix)
+    // Never past the ceiling: centroid is still not pitch on a stem.
+    expect(stemBest).toBeLessThanOrEqual(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+
+    // The earlier analysis keeps its mix-based bands, so the two remain
+    // comparable rather than one quietly overwriting the other.
+    const originalFeatures = await runtime.songLab.repos.sections.features(session.orgId, before)
+    expect(Math.max(...[...originalFeatures.values()].map((f) => f.register.confidence))).toBe(mixBest)
+  })
+
+  /** The overlay itself, without the database in the way. */
+  describe('stem register overlay', () => {
+    const sections = [
+      { sectionType: 'verse' as const, label: 'Verse 1', startMs: 0, endMs: 10_000, confidence: 0.7, orderIndex: 0 },
+      { sectionType: 'instrumental' as const, label: 'Instrumental', startMs: 10_000, endMs: 20_000, confidence: 0.7, orderIndex: 1 },
+    ]
+    const mixFeature = (median: number) => ({
+      energy: 0.5,
+      vocalOccupancy: 0.8,
+      arrangementDensity: 0.5,
+      spectralDensity: 0.5,
+      transientDensity: 0.5,
+      lowFrequencyDensity: 0.4,
+      stereoWidth: 0.2,
+      rhythmicDensity: 0.5,
+      similarityVector: [0.5],
+      register: { median, low: median - 0.05, high: median + 0.05, confidence: 0.45 },
+      melodicContour: [0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1, 0],
+    })
+    const structure = {
+      sections,
+      features: [mixFeature(0.3), mixFeature(0.4)],
+      confidence: 0.7,
+      provider: 'test',
+      modelVersion: '1',
+      method: 'test',
+    }
+    // Voiced across the first section, silent across the second — an
+    // instrumental, which is exactly where a separated vocal has nothing.
+    const curve = Array.from({ length: 200 }, (_, i) => (i < 100 ? 0.5 + Math.sin(i / 6) * 0.15 : null))
+    const vocals = (basis: 'full_mix' | 'isolated_stem', values: Array<number | null> = curve) => ({
+      basis,
+      occupancy: { value: 0.7, confidence: 0.85, analysisMethod: 'm', provider: 'p', modelVersion: '1' },
+      registerCurve: values,
+      registerCurveStepSeconds: 0.1,
+    })
+
+    it('leaves the mix path exactly as the detector measured it', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      // Same numbers, not merely equal ones: re-deriving a mix register here
+      // would be the same measurement with a fresh chance to disagree.
+      expect(withStemRegisters(structure as never, vocals('full_mix') as never)).toBe(structure)
+      expect(withStemRegisters(structure as never, vocals('isolated_stem', []) as never)).toBe(structure)
+    })
+
+    it('re-measures a voiced section from the stem and raises its confidence', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      const result = withStemRegisters(structure as never, vocals('isolated_stem') as never)
+      const verse = result.features[0]!
+
+      expect(verse.register.median).not.toBe(0.3)
+      expect(verse.register.confidence).toBe(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+      expect(result.method).toContain('isolated_stem_register')
+    })
+
+    it('keeps the mix band for a section the stem has nothing in', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      const result = withStemRegisters(structure as never, vocals('isolated_stem') as never)
+
+      // Separation can drop a passage the proxy still caught. Losing a band we
+      // already had would be a downgrade wearing an upgrade's clothes.
+      expect(result.features[1]!.register.median).toBe(0.4)
+      expect(result.features[1]!.register.confidence).toBe(0.45)
+    })
   })
 
   it('records unsupported separately from failed when no stem is a vocal', async () => {

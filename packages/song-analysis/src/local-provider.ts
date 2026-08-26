@@ -6,7 +6,7 @@ import { resample, toMono, type PcmAudio } from './pcm.js'
 import { analyzeLoudness, analyzeSilence, analyzeStereoWidth } from './loudness.js'
 import { estimateKey, harmonicChangeRate } from './key.js'
 import { estimateMeter, estimateTempo } from './tempo.js'
-import { detectVocalActivity, registerProfile, vocalPhraseMetrics } from './vocal.js'
+import { detectVocalActivity, registerProfileFromCurve, vocalPhraseMetrics, voicedRegisterCurve } from './vocal.js'
 import type {
   AudioSource,
   MusicFeatureProvider,
@@ -165,7 +165,11 @@ export function vocalAnalysisFrom(prepared: PreparedAudio, opts: { isolatedVocal
   const activity = detectVocalActivity(frames, opts)
   const durationSeconds = durationMs / 1000
   const phrase = vocalPhraseMetrics(activity, durationSeconds, frames)
-  const register = registerProfile(activity, frames)
+  const curve = voicedRegisterCurve(activity, frames)
+  const register = registerProfileFromCurve(curve, 0, curve.length, {
+    isolatedVocal: opts.isolatedVocal,
+    detectionConfidence: activity.confidence,
+  })
   const confidence = activity.confidence
 
   const maybe = (value: number | null, method: string, note: string): Measured<number> =>
@@ -183,6 +187,8 @@ export function vocalAnalysisFrom(prepared: PreparedAudio, opts: { isolatedVocal
     phrases: activity.phrases.map(([from, to]) => [Math.round(from * 1000), Math.round(to * 1000)] as [number, number]),
     activity: activity.likelihood,
     activityStepSeconds: frames.frameSeconds,
+    registerCurve: curve,
+    registerCurveStepSeconds: frames.frameSeconds,
     provider: LOCAL_ANALYSIS_PROVIDER,
     modelVersion: LOCAL_ANALYSIS_VERSION,
   }

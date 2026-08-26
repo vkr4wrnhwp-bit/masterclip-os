@@ -141,6 +141,13 @@ Reported as a normalized band from the spectral centroid of voiced frames, never
 note names, and capped by the vocal detector's own confidence — so a register
 figure never outranks the detection it came from.
 
+The cap follows the basis, exactly as the vocal figures above do: **0.5** from the
+mix, **0.7** from a separated stem. Separation removes the doubt about *whether
+those frames are the voice*; it does not make a spectral centroid into pitch, so
+the stem ceiling stays below the 0.85 that detection itself earns. Sections are
+still bounded from the mix — a vocal stem is silent through an instrumental break
+— and only their registers are re-measured against the stem.
+
 Measured **per section**, as a 10th/50th/90th percentile triple. From those bands
 come the verse register, the chorus register, and the difference between them:
 

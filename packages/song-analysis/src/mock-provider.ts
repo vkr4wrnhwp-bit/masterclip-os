@@ -127,6 +127,10 @@ export class MockVocalAnalysisProvider implements VocalAnalysisProvider {
       phrases,
       activity,
       activityStepSeconds: 0.5,
+      // No register was measured, so there is no curve to hand on. An empty
+      // curve is what stops a caller windowing synthetic values per section.
+      registerCurve: [],
+      registerCurveStepSeconds: 0.5,
       provider: MOCK_ANALYSIS_PROVIDER,
       modelVersion: MOCK_ANALYSIS_VERSION,
     }

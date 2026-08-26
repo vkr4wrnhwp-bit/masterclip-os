@@ -4,6 +4,8 @@ import {
   DecodeUnavailableError,
   HOOK_SECTION_TYPES,
   emptyRegister,
+  melodicContourFromCurve,
+  registerProfileFromCurve,
   type AudioSource,
   type DetectedSection,
   type MusicFeatureResult,
@@ -128,7 +130,14 @@ export class SongAnalysisService {
     const confirmed = previous ? await this.deps.repos.sections.confirmedSections(analysis.orgId, previous.id) : []
 
     const authoritative: CarriedSection[] = carried.length > 0 ? carried : confirmed.map(toCarried)
-    const sections = authoritative.length > 0 ? this.mergeAuthoritative(structure, authoritative) : structure
+    const merged = authoritative.length > 0 ? this.mergeAuthoritative(structure, authoritative) : structure
+
+    // Section boundaries come from the mix and the register comes from the best
+    // vocal available, which are not the same signal. Overlaying here is what
+    // keeps them independent: the detector never sees the stem (it would lose
+    // every instrumental boundary), and the register never settles for the mix
+    // when a real vocal exists.
+    const sections = withStemRegisters(merged, vocals)
 
     const stored = await this.deps.repos.sections.replaceAll(
       analysis.orgId,
@@ -395,6 +404,52 @@ export class SongAnalysisService {
 }
 
 // --------------------------------------------------------------- helpers ----
+
+/**
+ * Re-measures each section's register and melodic contour against a separated
+ * vocal, when one was actually measured.
+ *
+ * Returns the structure untouched on the mix path. That is not an optimization:
+ * the structure provider already measured the register from the same mix, so
+ * redoing it here would produce the identical numbers with an extra chance to
+ * disagree.
+ */
+export function withStemRegisters(structure: StructureAnalysisResult, vocals: VocalAnalysisResult): StructureAnalysisResult {
+  if (vocals.basis !== 'isolated_stem') return structure
+  const curve = vocals.registerCurve
+  const step = vocals.registerCurveStepSeconds
+  if (curve.length === 0 || !(step > 0)) return structure
+
+  const features = structure.features.map((feature, index) => {
+    const section = structure.sections[index]
+    if (!section) return feature
+    const fromFrame = Math.max(0, Math.floor(section.startMs / 1000 / step))
+    const toFrame = Math.min(curve.length, Math.ceil(section.endMs / 1000 / step))
+    const register = registerProfileFromCurve(curve, fromFrame, toFrame, {
+      isolatedVocal: true,
+      detectionConfidence: vocals.occupancy.confidence,
+    })
+    const contour = melodicContourFromCurve(curve, fromFrame, toFrame)
+
+    // A stem that yields nothing for this section leaves the mix measurement in
+    // place rather than erasing it. Separation can drop a quiet passage the
+    // proxy still caught, and losing a band we already had would be a downgrade
+    // dressed up as an upgrade.
+    if (register.medianRegister === null) return feature
+    return {
+      ...feature,
+      register: {
+        median: register.medianRegister,
+        low: register.lowRegister,
+        high: register.highRegister,
+        confidence: register.confidence,
+      },
+      melodicContour: contour.length > 0 ? contour : feature.melodicContour,
+    }
+  })
+
+  return { ...structure, features, method: `${structure.method}+isolated_stem_register` }
+}
 
 /** A section whose identity and position are known, not detected. */
 export interface CarriedSection {

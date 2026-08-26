@@ -192,6 +192,19 @@ export interface VocalAnalysisResult {
   /** Per-frame activity flags, for the vocal-density visualization. */
   activity: number[]
   activityStepSeconds: number
+  /**
+   * Per-frame voiced register — the value where a vocal is active, `null` where
+   * it is not — over whatever signal `basis` names.
+   *
+   * Returned so a caller holding section boundaries can re-measure each
+   * section's register against this signal without re-running the DSP. That
+   * matters when a stem exists: boundaries have to come from the full mix
+   * (an instrumental break is a section change and a vocal stem is silent
+   * there), while the register of those sections is better measured from the
+   * stem. Empty when the provider measured no register at all.
+   */
+  registerCurve: Array<number | null>
+  registerCurveStepSeconds: number
   provider: string
   modelVersion: string
 }
