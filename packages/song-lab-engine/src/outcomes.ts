@@ -1,5 +1,17 @@
+import { measured, unknown, type Measured } from '@masterclip/song-feature-vectors'
 import type { SongOutcomeLinkRecord } from '@masterclip/song-lab-domain'
 import type { Actor, SongLabDeps } from './deps.js'
+
+/**
+ * Below this a median is a number about a handful of releases, not a finding.
+ *
+ * The same floor a benchmark cohort has to clear before it may be published.
+ * A recommendation type is a population too, and it does not become one
+ * because it is easier to count.
+ */
+const MINIMUM_OUTCOME_SAMPLE = 8
+
+const SOURCE = { provider: 'song-lab-outcomes', modelVersion: '2.0.0' }
 
 /**
  * The closed loop.
@@ -55,9 +67,27 @@ export class SongOutcomeService {
    * is not randomized and every song differs in a hundred ways the loop does
    * not control for.
    */
-  async recommendationSummary(actor: Actor): Promise<
-    Array<{ recommendationType: string; suggested: number; accepted: number; implemented: number; released: number; observedMetrics: Record<string, number> }>
-  > {
+  /**
+   * What happened, per recommendation type, split by whether it was taken up.
+   *
+   * Two things this deliberately does not do, both of which the previous
+   * version did:
+   *
+   *   - **It does not pool implemented and not-implemented releases.** A median
+   *     over every release that happened to carry a recommendation answers no
+   *     question: it mixes the songs that took the note with the songs that
+   *     ignored it. The only comparison this data supports is between those two
+   *     groups, so that is the only one it reports.
+   *   - **It does not report a median over a handful of releases as though it
+   *     were a finding.** Below the sample floor each metric comes back as an
+   *     explicit unknown carrying its own count, the same way every other
+   *     figure in Song Lab reports insufficient evidence.
+   *
+   * Even at full sample this is observational. Artists who take a note differ
+   * from artists who do not in ways nothing here measures, so a difference
+   * between the groups is an association and is labelled one.
+   */
+  async recommendationSummary(actor: Actor): Promise<RecommendationOutcomeSummary[]> {
     const rows = await this.deps.db.query(
       `SELECT r.recommendation_type AS recommendation_type, o.accepted AS accepted, o.implemented AS implemented,
               o.release_id AS release_id, o.outcome_metrics AS outcome_metrics
@@ -67,17 +97,24 @@ export class SongOutcomeService {
       [actor.orgId],
     )
 
-    const grouped = new Map<string, { suggested: number; accepted: number; implemented: number; released: number; metrics: Record<string, number[]> }>()
+    const grouped = new Map<string, Bucket>()
     for (const row of rows) {
       const type = String(row.recommendation_type ?? 'unknown')
-      const entry = grouped.get(type) ?? { suggested: 0, accepted: 0, implemented: 0, released: 0, metrics: {} }
+      const entry = grouped.get(type) ?? emptyBucket()
       entry.suggested++
       if (Number(row.accepted) === 1) entry.accepted++
-      if (Number(row.implemented) === 1) entry.implemented++
-      if (row.release_id) entry.released++
-      const metrics = safeParse(row.outcome_metrics)
-      for (const [key, value] of Object.entries(metrics)) {
-        if (typeof value === 'number' && Number.isFinite(value)) (entry.metrics[key] ??= []).push(value)
+      const wasImplemented = Number(row.implemented) === 1
+      if (wasImplemented) entry.implemented++
+      // Only a released song has an outcome to observe. An unreleased one
+      // contributes to the counts and to nothing else.
+      if (!row.release_id) {
+        grouped.set(type, entry)
+        continue
+      }
+      entry.released++
+      const side = wasImplemented ? entry.implementedMetrics : entry.notImplementedMetrics
+      for (const [key, value] of Object.entries(safeParse(row.outcome_metrics))) {
+        if (typeof value === 'number' && Number.isFinite(value)) (side[key] ??= []).push(value)
       }
       grouped.set(type, entry)
     }
@@ -88,9 +125,66 @@ export class SongOutcomeService {
       accepted: entry.accepted,
       implemented: entry.implemented,
       released: entry.released,
-      observedMetrics: Object.fromEntries(Object.entries(entry.metrics).map(([key, values]) => [key, median(values)])),
+      implementedOutcome: summarise(entry.implementedMetrics, 'implemented'),
+      notImplementedOutcome: summarise(entry.notImplementedMetrics, 'not implemented'),
     }))
   }
+}
+
+export interface OutcomeGroup {
+  /** Released songs in this group. The denominator for every median below. */
+  sampleSize: number
+  /** Median per metric, or an explicit unknown when the group is too small. */
+  metrics: Record<string, Measured<number>>
+}
+
+export interface RecommendationOutcomeSummary {
+  recommendationType: string
+  suggested: number
+  accepted: number
+  implemented: number
+  released: number
+  implementedOutcome: OutcomeGroup
+  notImplementedOutcome: OutcomeGroup
+}
+
+interface Bucket {
+  suggested: number
+  accepted: number
+  implemented: number
+  released: number
+  implementedMetrics: Record<string, number[]>
+  notImplementedMetrics: Record<string, number[]>
+}
+
+function emptyBucket(): Bucket {
+  return { suggested: 0, accepted: 0, implemented: 0, released: 0, implementedMetrics: {}, notImplementedMetrics: {} }
+}
+
+function summarise(metrics: Record<string, number[]>, label: string): OutcomeGroup {
+  // Every metric in the group shares one denominator: the releases observed.
+  const sampleSize = Math.max(0, ...Object.values(metrics).map((values) => values.length))
+  const summarised: Record<string, Measured<number>> = {}
+  for (const [key, values] of Object.entries(metrics)) {
+    summarised[key] =
+      values.length < MINIMUM_OUTCOME_SAMPLE
+        ? unknown<number>(
+            'outcome_median',
+            SOURCE,
+            `${values.length} released song${values.length === 1 ? '' : 's'} where this was ${label} — below the ${MINIMUM_OUTCOME_SAMPLE} needed to report a median`,
+          )
+        : measured(
+            median(values),
+            // Confidence grows with the sample and is capped well short of
+            // certainty: this is observational data about self-selected
+            // groups, and no sample size fixes that.
+            Math.min(0.6, 0.3 + values.length / 100),
+            'outcome_median',
+            SOURCE,
+            `median over ${values.length} released songs where this was ${label} — association only`,
+          )
+  }
+  return { sampleSize, metrics: summarised }
 }
 
 function correlationNote(link: SongOutcomeLinkRecord, window: string, metrics: Record<string, number>): string {

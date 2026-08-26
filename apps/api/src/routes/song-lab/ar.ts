@@ -150,7 +150,8 @@ export async function registerSongLabArRoutes(app: FastifyInstance, runtime: Run
     const actor = await requireSongLabFlagship(runtime, request)
     return {
       summary: await songLab.outcomes.recommendationSummary(actor),
-      note: 'Counts and observed medians. Association only — this data cannot establish that a change caused an outcome.',
+      note:
+        'Counts, and medians split by whether the recommendation was implemented. A metric with a null value did not have enough released songs behind it to report. Association only — songs whose artists took a note differ from songs whose artists did not in ways this data does not measure, so a difference between the groups cannot establish that the change caused the outcome.',
     }
   })
 }
