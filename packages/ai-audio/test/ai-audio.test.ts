@@ -255,3 +255,64 @@ describe('wavDurationMs', () => {
     expect(measured).toBeLessThan(1000)
   })
 })
+
+describe('generation usage', () => {
+  class MeteredComposer {
+    readonly providerId = 'metered'
+    isConfigured() {
+      return true
+    }
+    async generateMusic() {
+      return {
+        audio: { bytes: new Uint8Array([0x49, 0x44, 0x33, 1, 2, 3]), contentType: 'audio/mpeg' },
+        usage: { unit: 'requests', inputUnits: 1, outputUnits: 30, providerRequestId: 'req_abc' },
+      }
+    }
+  }
+
+  const meteredRequest: AiSceneRequest = {
+    prompt: 'a rolling section',
+    bars: 8,
+    tempoBehavior: 'keep',
+    keyBehavior: 'keep',
+    energy: 'medium',
+    instrumentation: ['bass'],
+    intendedTransition: '',
+    rightsConfirmed: true,
+  }
+
+  it('reports what the provider measured, summed across the three options', async () => {
+    const provider = new PlatformMusicProvider(new MeteredComposer())
+    const result = await provider.generateScene({
+      orgId: 'org_1',
+      request: meteredRequest,
+      bpm: 120,
+      beatsPerBar: 4,
+      sourceAudio: null,
+      seed: 3,
+    })
+
+    // Three renders, so three purchases — not one.
+    expect(result.options).toHaveLength(3)
+    expect(result.usage?.unit).toBe('requests')
+    expect(result.usage?.inputUnits).toBe(3)
+    expect(result.usage?.outputUnits).toBe(90)
+    expect(result.usage?.providerRequestId).toBe('req_abc')
+    // Still unpriced here: the ledger reconciles cost, product logic does not.
+    expect(result.costMicros).toBe(0)
+  })
+
+  it('reports no usage for a provider that bought nothing', async () => {
+    const result = await new MockAudioProvider().generateScene({
+      orgId: 'org_1',
+      request: meteredRequest,
+      bpm: 120,
+      beatsPerBar: 4,
+      sourceAudio: null,
+      seed: 3,
+    })
+    // The local synthesizer costs nothing and does not belong in a ledger of
+    // purchases — absent, not zero.
+    expect(result.usage).toBeUndefined()
+  })
+})

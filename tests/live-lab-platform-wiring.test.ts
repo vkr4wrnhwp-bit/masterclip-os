@@ -184,3 +184,97 @@ describe('generated scene length', () => {
     }
   })
 })
+
+describe('platform spend is visible to the platform', () => {
+  it('records a Live Lab generation in the audio usage ledger', async () => {
+    const org = await runtime.projects.createOrg('Ledger Org')
+    const user = await runtime.auth.createUser({
+      orgId: org.id,
+      email: `ledger-${Math.random().toString(36).slice(2)}@example.com`,
+      password: 'a-sufficiently-long-password',
+      displayName: 'Artist',
+      orgRole: 'owner',
+    })
+    const project = await runtime.liveLab.createProject({
+      orgId: org.id,
+      name: 'Ledger Set',
+      artistId: null,
+      createdBy: user.id,
+    })
+
+    const before = await runtime.audio.repos.usage.list(org.id)
+
+    const job = await runtime.liveLab.createAiJob({
+      orgId: org.id,
+      liveProjectId: project.id,
+      liveSetItemId: null,
+      sourceAssetId: null,
+      provider: platformProviderId(),
+      operation: 'scene_generation',
+      configuration: {
+        prompt: 'a dark rolling section',
+        bars: 8,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'medium',
+        instrumentation: ['bass'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+      createdBy: user.id,
+    })
+    await runtime.liveLabService.runAiJob(job.id)
+    expect((await runtime.liveLab.getAiJob(job.id)).status).toBe('ready')
+
+    const after = await runtime.audio.repos.usage.list(org.id)
+    expect(after.length).toBe(before.length + 1)
+
+    const entry = after[0]!
+    // Attributed to Live Lab rather than filed under some other feature.
+    expect(entry.projectType).toBe('live_lab')
+    expect(entry.projectId).toBe(project.id)
+    expect(entry.jobId).toBe(job.id)
+    expect(entry.provider).toContain('platform')
+    expect(entry.operation).toBe('scene_generation')
+    // Units the provider measured, not a price this layer invented.
+    expect(entry.unit).toBeTruthy()
+    expect(entry.outputUnits).toBeGreaterThan(0)
+  })
+
+  it('does not put the local synthesizer in a ledger of purchases', async () => {
+    const org = await runtime.projects.createOrg('Mock Org')
+    const user = await runtime.auth.createUser({
+      orgId: org.id,
+      email: `mock-${Math.random().toString(36).slice(2)}@example.com`,
+      password: 'a-sufficiently-long-password',
+      displayName: 'Artist',
+      orgRole: 'owner',
+    })
+    const project = await runtime.liveLab.createProject({ orgId: org.id, name: 'Mock Set', artistId: null, createdBy: user.id })
+
+    const job = await runtime.liveLab.createAiJob({
+      orgId: org.id,
+      liveProjectId: project.id,
+      liveSetItemId: null,
+      sourceAssetId: null,
+      provider: 'mock-audio',
+      operation: 'scene_generation',
+      configuration: {
+        prompt: 'a warm pad',
+        bars: 4,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'low',
+        instrumentation: ['pad'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+      createdBy: user.id,
+    })
+    await runtime.liveLabService.runAiJob(job.id)
+    expect((await runtime.liveLab.getAiJob(job.id)).status).toBe('ready')
+
+    // Nothing was bought, so nothing is owed and nothing is recorded.
+    expect(await runtime.audio.repos.usage.list(org.id)).toHaveLength(0)
+  })
+})

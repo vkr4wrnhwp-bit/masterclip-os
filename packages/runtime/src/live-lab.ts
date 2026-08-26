@@ -39,6 +39,34 @@ export interface LiveLabServiceDeps {
    * does not compose the audio platform at all.
    */
   musicComposer?: MusicComposer | null
+  /**
+   * The platform's usage ledger, when this build has one.
+   *
+   * Structurally typed for the same reason the composer is: Live Lab must
+   * still build in a deployment that does not compose the audio platform.
+   */
+  usageLedger?: UsageLedger | null
+}
+
+/** The slice of the audio layer's usage ledger this service writes to. */
+export interface UsageLedger {
+  record(entry: {
+    orgId: string
+    userId: string
+    projectType: string
+    projectId: string | null
+    provider: string
+    operation: string
+    model: string
+    unit: string
+    inputUnits: number
+    outputUnits: number
+    estimatedCostMicros: number
+    finalCostMicros: number
+    currency: string
+    providerRequestId: string | null
+    jobId: string | null
+  }): Promise<unknown>
 }
 
 export class LiveLabService {
@@ -154,6 +182,43 @@ export class LiveLabService {
           createdBy: job.createdBy,
         })
         outputAssetIds.push(asset.id)
+      }
+
+      // What the provider measured goes in the platform's ledger, so Live Lab
+      // spend is visible beside every other audio purchase. Without this the
+      // org's month-to-date figure understated real spend, and the budget
+      // layer that reads it gave the rest of the platform more headroom than
+      // it had. Recorded in units, never priced here: cost reconciliation is
+      // the ledger's job and a price table in product logic is what its design
+      // refuses.
+      //
+      // A provider that bought nothing reports no usage — the local
+      // synthesizer generates for free and does not belong in a purchase
+      // ledger.
+      if (result.usage && this.deps.usageLedger) {
+        try {
+          await this.deps.usageLedger.record({
+            orgId: job.organizationId,
+            userId: job.createdBy,
+            projectType: 'live_lab',
+            projectId: job.liveProjectId,
+            provider: provider.id,
+            operation: 'scene_generation',
+            model: result.model,
+            unit: result.usage.unit,
+            inputUnits: result.usage.inputUnits,
+            outputUnits: result.usage.outputUnits,
+            estimatedCostMicros: 0,
+            finalCostMicros: result.costMicros,
+            currency: 'USD',
+            providerRequestId: result.usage.providerRequestId ?? null,
+            jobId: job.id,
+          })
+        } catch (err) {
+          // The audio is generated and stored; losing the ledger row must not
+          // fail the job, but it must not pass silently either.
+          logger.warn('live.ai.usage_unrecorded', { job_id: jobId, error: err instanceof Error ? err.message : String(err) })
+        }
       }
 
       await liveLab.updateAiJob(jobId, {
