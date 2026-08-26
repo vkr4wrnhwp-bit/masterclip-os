@@ -32,10 +32,26 @@ export interface GeneratedOption {
   description: string
 }
 
+/**
+ * What the provider measured, in its own units.
+ *
+ * Deliberately units rather than money: the platform's ledger records what a
+ * provider reported and reconciles cost later, and a price table hardcoded
+ * into product logic is exactly what that design refuses.
+ */
+export interface GenerationUsage {
+  unit: string
+  inputUnits: number
+  outputUnits: number
+  providerRequestId?: string
+}
+
 export interface SceneGenerationResult {
   options: GeneratedOption[]
   model: string
   costMicros: number
+  /** Absent for a provider that bought nothing — the local synthesizer. */
+  usage?: GenerationUsage
 }
 
 export interface AudioIntelligenceProvider {

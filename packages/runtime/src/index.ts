@@ -166,6 +166,10 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
       // has one, so a configured ElevenLabs key serves the scene builder too
       // rather than Live Lab keeping a second, parallel provider stack.
       musicComposer: resolveMusicComposer(audioLayer, logger),
+      // And its spend lands in the same ledger as every other audio purchase,
+      // so an org's month-to-date figure is the whole truth rather than
+      // everything except Live Lab.
+      usageLedger: audioLayer.repos.usage,
     }),
     async close() {
       await db.close()
