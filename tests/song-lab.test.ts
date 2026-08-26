@@ -582,6 +582,131 @@ describe('structure', () => {
   })
 })
 
+describe('melodic and register analysis', () => {
+  it('persists a register band per section and serves it with the arrangement', async () => {
+    const session = await signup('register@example.com', 'Register Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const response = await call(session, 'GET', `/api/song-lab/projects/${projectId}/arrangement`)
+    expect(response.statusCode).toBe(200)
+    const body = response.json() as {
+      registerBands: Array<{ label: string; sectionType: string; median: number | null; low: number | null; high: number | null; contour: number[] }>
+      register: { verseRegister: number | null; chorusRegister: number | null; chorusRegisterLift: number | null; melodicContourRepetition: number | null }
+      consecutive: Array<{ rhythmicDelta: number; registerDelta: number | null; contourSimilarity: number | null }>
+    }
+
+    expect(body.registerBands.length).toBeGreaterThan(1)
+    const chorus = body.registerBands.find((band) => band.sectionType === 'chorus')!
+    expect(chorus.median).not.toBeNull()
+    expect(chorus.low!).toBeLessThanOrEqual(chorus.median!)
+    expect(chorus.high!).toBeGreaterThanOrEqual(chorus.median!)
+    expect(body.register.chorusRegisterLift).not.toBeNull()
+    expect(body.consecutive.some((entry) => entry.contourSimilarity !== null)).toBe(true)
+  })
+
+  it('reports no register for a section with no vocal, rather than a zero', async () => {
+    const session = await signup('noregister@example.com', 'No Register Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const body = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/arrangement`)).json() as {
+      registerBands: Array<{ sectionType: string; median: number | null; confidence: number }>
+    }
+    const intro = body.registerBands.find((band) => band.sectionType === 'intro')!
+    expect(intro.median).toBeNull()
+    // The distinction the whole product rests on: unmeasured is null, not zero.
+    expect(intro.median).not.toBe(0)
+  })
+
+  it('puts the melodic metrics in the feature vector with their own method', async () => {
+    const session = await signup('vector@example.com', 'Vector Org')
+    await grantSongLab(session.orgId)
+    const { projectId, analysisId } = await seedProject(session)
+
+    const analysis = await runtime.songLab.repos.analyses.get(session.orgId, analysisId)
+    const metrics = analysis.featureVector!.metrics
+    expect(metrics.chorus_register_lift).toBeDefined()
+    expect(metrics.chorus_register_lift!.analysisMethod).toBe('verse_chorus_register_delta')
+    expect(metrics.melodic_contour_repetition).toBeDefined()
+    expect(metrics.rhythmic_contrast).toBeDefined()
+
+    // And Producer View surfaces them, with the method visible.
+    const producer = await call(session, 'GET', `/api/song-lab/projects/${projectId}/producer`)
+    const rows = (producer.json() as { features: Array<{ key: string; method: string }> }).features
+    expect(rows.some((row) => row.key === 'chorus_register_lift')).toBe(true)
+    expect(rows.some((row) => row.key === 'vocal_register_range')).toBe(true)
+  })
+
+  it('carries melodic contrast into the hook architecture profile', async () => {
+    const session = await signup('hookmelodic@example.com', 'Hook Melodic Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const body = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/hook`)).json() as {
+      profile: { rows: Array<{ metric: string; finding: string }> }
+    }
+    const metrics = body.profile.rows.map((row) => row.metric)
+    expect(metrics).toContain('Melodic contrast')
+    expect(metrics).toContain('Rhythmic contrast')
+    // Present with a real figure rather than as an empty row.
+    expect(body.profile.rows.find((row) => row.metric === 'Melodic contrast')!.finding).not.toBe('Not enough information')
+  })
+
+  it('recomputes the register lift from a corrected structure', async () => {
+    const session = await signup('registercorrect@example.com', 'Register Correct Org')
+    await grantSongLab(session.orgId)
+    const { projectId, analysisId } = await seedProject(session)
+
+    const before = (await runtime.songLab.repos.analyses.get(session.orgId, analysisId)).featureVector!.metrics.chorus_register_lift!
+    const structure = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/structure`)).json() as {
+      sections: Array<{ id: string; sectionType: string; label: string }>
+    }
+    // Calling the bridge a chorus pulls the song's highest register into the
+    // chorus average, so the lift has to move with the user's structure rather
+    // than being carried over from the detection.
+    const bridge = structure.sections.find((section) => section.sectionType === 'bridge')!
+    await call(session, 'PATCH', `/api/song-lab/projects/${projectId}/structure`, {
+      corrections: [{ id: bridge.id, sectionType: 'chorus', label: 'Chorus 3' }],
+    })
+
+    const after = (await runtime.songLab.repos.analyses.get(session.orgId, analysisId)).featureVector!.metrics.chorus_register_lift!
+    expect(after.value).toBeGreaterThan(before.value!)
+    // A human-confirmed structure is not a guess, and the provenance says so.
+    expect(after.provider).toBe('human-confirmed')
+  })
+
+  it('raises the register finding on the demo record, in the vocabulary the product uses', async () => {
+    const session = await signup('registerdemo@example.com', 'Register Demo Org')
+    const { seedSongLabDemo } = await import('@masterclip/song-lab-engine')
+    const demo = await seedSongLabDemo(runtime.songLab, {
+      orgId: session.orgId,
+      userId: session.userId,
+      entitlements: runtime.entitlements,
+    })
+
+    const observations = await runtime.songLab.repos.observations.listForProject(session.orgId, demo.projectId!)
+    const melodic = observations.filter((observation) => observation.observationType === 'melodic_contrast')
+    expect(melodic.length).toBeGreaterThan(0)
+
+    // The register finding specifically — identified by the metric behind it
+    // rather than by position, since the melodic category also carries the
+    // cohort-relative contour comparison.
+    const register = melodic.find((observation) => observation.sourceMetricKeys.includes('chorus_register_lift'))
+    expect(register).toBeDefined()
+    expect(register!.description.toLowerCase()).toContain('register')
+    // The recommendation is a note for the writer; nothing here renders audio.
+    expect(register!.recommendations!.every((recommendation) => !recommendation.experimentSupported)).toBe(true)
+
+    // Never a verdict, and never a claim of transcribed pitch — across every
+    // melodic observation the demo produces, not just the register one.
+    const text = melodic.map((observation) => `${observation.title} ${observation.description}`).join(' ').toLowerCase()
+    for (const forbidden of ['wrong', 'too low', 'will perform better', 'g5', 'bad ']) {
+      expect(text).not.toContain(forbidden)
+    }
+  })
+})
+
 describe('experiments', () => {
   it('never modifies the source audio', async () => {
     const session = await signup('nondestructive@example.com', 'Nondestructive Org')

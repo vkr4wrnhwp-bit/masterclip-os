@@ -1760,4 +1760,22 @@ CREATE TABLE IF NOT EXISTS song_lab_handoffs (
 CREATE INDEX IF NOT EXISTS idx_song_lab_handoffs ON song_lab_handoffs(org_id, song_lab_project_id, created_at);
 `,
   },
+  {
+    // Melodic and register analysis. Added rather than folded into 0005 so a
+    // deployment that already ran 0005 picks the columns up: forward-only
+    // migrations are recorded by id and never re-run.
+    //
+    // Every column is nullable. A section with no detectable lead vocal, an
+    // instrumental, or a row written before this migration all read as "not
+    // measured", which is the honest answer and the one the UI already knows
+    // how to render.
+    id: '0006_song_lab_register',
+    sql: `
+ALTER TABLE song_section_features ADD COLUMN register_median REAL;
+ALTER TABLE song_section_features ADD COLUMN register_low REAL;
+ALTER TABLE song_section_features ADD COLUMN register_high REAL;
+ALTER TABLE song_section_features ADD COLUMN register_confidence REAL;
+ALTER TABLE song_section_features ADD COLUMN melodic_contour TEXT;
+`,
+  },
 ]

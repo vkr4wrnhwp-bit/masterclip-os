@@ -191,6 +191,35 @@ export interface SectionContrast {
   lowFrequencyDelta: number
   transientDelta: number
   arrangementDelta: number
+  rhythmicDelta: number
+  registerDelta: number | null
+  contourSimilarity: number | null
+}
+
+/** Melodic and register analysis. Every figure is nullable — see RegisterPanel. */
+export interface RegisterMetrics {
+  vocalRegisterRange: number | null
+  verseRegister: number | null
+  chorusRegister: number | null
+  chorusRegisterLift: number | null
+  peakRegisterPosition: number | null
+  melodicContourRepetition: number | null
+  rhythmicContrast: number | null
+  confidence: number
+}
+
+export interface SectionRegisterBand {
+  orderIndex: number
+  label: string
+  sectionType: string
+  startMs: number
+  endMs: number
+  median: number | null
+  low: number | null
+  high: number | null
+  confidence: number
+  isHook: boolean
+  contour: number[]
 }
 
 export interface BuildAnalysis {
@@ -260,6 +289,8 @@ export interface HookProfile {
 export interface ProducerFeatureRow {
   key: string
   label: string
+  /** The raw measurement. Null means "not enough information", never zero. */
+  value: number | string | null
   display: string
   confidence: number
   confidenceLabel: string
@@ -362,7 +393,13 @@ export const songLabApi = {
       stepSeconds: number
     }>(`/api/song-lab/projects/${id}/energy`),
   arrangement: (id: string) =>
-    get<{ consecutive: SectionContrast[]; repeats: SectionContrast[]; builds: BuildAnalysis[] }>(`/api/song-lab/projects/${id}/arrangement`),
+    get<{
+      consecutive: SectionContrast[]
+      repeats: SectionContrast[]
+      builds: BuildAnalysis[]
+      register: RegisterMetrics
+      registerBands: SectionRegisterBand[]
+    }>(`/api/song-lab/projects/${id}/arrangement`),
   hook: (id: string) => get<{ profile: HookProfile }>(`/api/song-lab/projects/${id}/hook`),
   tempo: (id: string) =>
     get<{
@@ -379,6 +416,7 @@ export const songLabApi = {
       sections: SongSection[]
       contrasts: SectionContrast[]
       builds: BuildAnalysis[]
+      registerBands: SectionRegisterBand[]
       providers: Record<string, { provider: string; modelVersion: string }>
       engineVersion: string
       sourceChecksum: string

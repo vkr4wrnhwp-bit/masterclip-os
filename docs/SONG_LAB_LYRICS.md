@@ -93,15 +93,43 @@ before the title · repeat the title · add a response vocal · shorten one line
 
 All of these are writing and performance choices. None is generated here.
 
-## Register
+## Register and melodic shape
 
 Reported as a normalized band from the spectral centroid of voiced frames, never as
-note names, and capped by the vocal detector's own confidence.
+note names, and capped by the vocal detector's own confidence — so a register
+figure never outranks the detection it came from.
+
+Measured **per section**, as a 10th/50th/90th percentile triple. From those bands
+come the verse register, the chorus register, and the difference between them:
+
+```
+VERSE 1        ├──────▌────────┤          0.34
+CHORUS 1          ├──────▌────────┤       0.38
+
+Chorus register lift  +0.04
+```
 
 > The chorus occupies nearly the same vocal register as Verse 1, which may
 > contribute to lower perceived section contrast.
 
-Not: "your chorus is unsingable". Pitch alone does not support that judgement.
+Not: "your chorus is unsingable". Pitch alone does not support that judgement. The
+observation is raised only when the lift measures under 0.05 *and* the register
+was measured with enough confidence to stand behind — otherwise nothing is said,
+because a finding drawn from a shaky measurement is worse than no finding.
+
+Options: try the chorus melody a third or fourth higher · hold the top note longer ·
+keep the verse lower so the chorus has somewhere to go. Writing and performance
+choices, every one. Song Lab measures the register; it does not write the melody.
+
+Alongside the band, a **melodic contour** — the voiced centroid resampled to eight
+points and normalized to shape rather than absolute register, so two choruses sung
+a tone apart trace the same contour. That separation is deliberate: the band
+answers "the same area of the voice", the contour answers "the same melodic
+shape", and a song can differ on one without differing on the other.
+
+A section with too little voiced content has no band and no contour. Comparing
+against it yields `null`, never `0` — "not measured" and "completely different"
+are different statements, and only one of them is true.
 
 ## The provider seam
 

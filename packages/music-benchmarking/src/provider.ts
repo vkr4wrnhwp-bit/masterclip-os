@@ -133,6 +133,12 @@ const REFERENCE_SHAPES: Record<string, ReferenceShape> = {
   transient_density: { centre: 0.49, spread: 0.12, min: 0.1, max: 0.95 },
   low_frequency_density: { centre: 0.35, spread: 0.1, min: 0.05, max: 0.75 },
   chorus_similarity: { centre: 78, spread: 11, min: 40, max: 99 },
+  // Scale-free shape quantities, siblings of dynamic_contrast and
+  // chorus_similarity above: a mean delta over a 0–1 density, and a 0–100
+  // similarity. The absolute register metrics deliberately have no shape here —
+  // see the note below REFERENCE_SHAPES.
+  rhythmic_contrast: { centre: 0.14, spread: 0.06, min: 0.01, max: 0.45 },
+  melodic_contour_repetition: { centre: 74, spread: 13, min: 30, max: 99 },
   vocal_occupancy: { centre: 58, spread: 12, min: 15, max: 92 },
   verse_vocal_occupancy: { centre: 66, spread: 12, min: 20, max: 95 },
   chorus_vocal_occupancy: { centre: 71, spread: 11, min: 25, max: 97 },
@@ -146,6 +152,20 @@ const REFERENCE_SHAPES: Record<string, ReferenceShape> = {
   verse_chorus_vocabulary_overlap: { centre: 21, spread: 9, min: 2, max: 60 },
   lyric_repetition: { centre: 26, spread: 11, min: 0, max: 70 },
 }
+
+/**
+ * Deliberately absent: `verse_register`, `chorus_register`,
+ * `vocal_register_range`, `peak_register_position` and `chorus_register_lift`.
+ *
+ * A register here is a position on *this analyser's* normalized centroid scale,
+ * not a pitch. A synthetic "cohort median register" would therefore be a number
+ * about Song Lab's own DSP rather than about any body of records, and inventing
+ * one would be exactly the fabricated comparison this module refuses to make.
+ * Register findings come from the recording itself — the verse-to-chorus lift is
+ * measured within one song, where the scale cancels — and a licensed provider
+ * that genuinely holds register distributions can supply these keys without any
+ * change here: the comparison and observation paths for them already exist.
+ */
 
 /** Documented, coarse genre tendencies. Applied to a handful of metrics only. */
 const GENRE_SHIFTS: Record<string, Partial<Record<string, number>>> = {

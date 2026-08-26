@@ -77,6 +77,26 @@ export interface DetectedSection {
   orderIndex: number
 }
 
+/**
+ * Where a section's vocal sits, as a normalized band rather than note names.
+ *
+ * Deriving lead-vocal pitch from a full mix is not reliable enough to print
+ * "your chorus tops out at G5". Whether two sections occupy the *same* register
+ * is answerable, and it is the question that matters for section contrast, so
+ * that is the only claim made here.
+ */
+export interface SectionRegister {
+  median: number | null
+  low: number | null
+  high: number | null
+  /** 0 whenever the values are null — an unmeasured band is not a confident one. */
+  confidence: number
+}
+
+export function emptyRegister(): SectionRegister {
+  return { median: null, low: null, high: null, confidence: 0 }
+}
+
 export interface SectionFeatures {
   /** 0–1 composite energy. */
   energy: number
@@ -89,6 +109,10 @@ export interface SectionFeatures {
   rhythmicDensity: number
   /** Fixed-length descriptor used for section-to-section similarity. */
   similarityVector: number[]
+  /** Vocal register band within this section. */
+  register: SectionRegister
+  /** Normalized melodic shape, empty when the section has too little voiced content. */
+  melodicContour: number[]
 }
 
 export interface StructureAnalysisResult {

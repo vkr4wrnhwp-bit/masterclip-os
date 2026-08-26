@@ -67,7 +67,7 @@ Song Lab sits **before** Remix Lab: diagnose the record, then decide what to do 
 | `/song-lab/projects/:id/lyrics` | Syllable architecture, title placement |
 | `/song-lab/projects/:id/energy` | Energy curve and per-section energy |
 | `/song-lab/projects/:id/tempo` | Tempo Lab |
-| `/song-lab/projects/:id/arrangement` | Section contrast, Build Intelligence |
+| `/song-lab/projects/:id/arrangement` | Section contrast, vocal register, Build Intelligence |
 | `/song-lab/projects/:id/benchmark` | Cohort selection and percentile comparison |
 | `/song-lab/projects/:id/experiments` | What If? engine and A/B playback |
 | `/song-lab/projects/:id/producer` | Producer View — every raw feature with its method |
@@ -85,7 +85,7 @@ so Signal, Remix Lab, Live Lab and internal A&R tooling can reuse it.
 |---|---|
 | `@masterclip/song-feature-vectors` | The `Measured<T>` envelope, the metric registry, the versioned feature vector |
 | `@masterclip/song-analysis` | PCM decoding, FFT, tempo, key, loudness, vocal activity, provider interfaces |
-| `@masterclip/song-structure` | Section detection, structural metrics, contrast, Build Intelligence, Chant Finder |
+| `@masterclip/song-structure` | Section detection, structural metrics, contrast, register and melodic analysis, Build Intelligence, Chant Finder |
 | `@masterclip/lyric-analysis` | Syllables, phrases, title/hook repetition, density |
 | `@masterclip/music-benchmarking` | Cohorts, percentiles, comparison, observation generation |
 | `@masterclip/audio-experiments` | Edit decision lists, builders, renderers |
@@ -107,6 +107,7 @@ Song Lab never says a song is wrong. The vocabulary is fixed:
 `Structure Outlier` · `Worth Testing` · `Earlier Than Cohort` · `Later Than Cohort`
 `Higher Density` · `Lower Contrast` · `Similar To Cohort` · `Unusual By Design`
 `Needs Review` · `Potential Opportunity` · `Low Sample Size` · `Not Enough Information`
+`Higher Register` · `Lower Register` · `Bigger Lift` · `Smaller Lift`
 
 Direction words come from the metric's own definition, so a slow track reads
 *"Slower Than Cohort"* and a late chorus reads *"Later Than Cohort"* — never a
@@ -121,7 +122,9 @@ recording, no mixing console, no mastering.
 
 Not a generative tool: it does not invent melodies, voices, lyrics or arrangement
 elements. Build Intelligence *suggests* "add a backing-vocal layer in bars 7–8" and
-renders it only where the artist's own separated stems already exist.
+renders it only where the artist's own separated stems already exist. Register
+analysis measures where the chorus sits against the verse and says a lift is worth
+trying; it does not write the higher melody.
 
 Not a decision maker: it cannot sign, reject, fund or promise anything to an artist.
 The A&R draft cannot leave `draft` status without a named human.

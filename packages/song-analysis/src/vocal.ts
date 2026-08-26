@@ -193,3 +193,65 @@ export function registerProfile(activity: VocalActivity, frames: AnalysisFrames,
     method: 'voiced_centroid_percentiles',
   }
 }
+
+/**
+ * Melodic contour.
+ *
+ * The same caveat as `registerProfile` applies — this is the voiced spectral
+ * centroid, not a transcribed melody — so the contour is normalized to shape
+ * rather than kept in absolute terms. Shape is the comparable quantity: two
+ * choruses sung a tone apart trace the same contour, and *that* is what
+ * "melodic contour similarity" is asking about.
+ *
+ * Values are peak-normalized into -1..1 around the window's own mean, so a
+ * contour is comparable across sections of different length and register.
+ */
+export const MELODIC_CONTOUR_POINTS = 8
+
+/** Below this many voiced frames a window has no comparable shape. */
+const MIN_CONTOUR_FRAMES = 12
+
+export function melodicContour(
+  activity: VocalActivity,
+  frames: AnalysisFrames,
+  fromFrame = 0,
+  toFrame = frames.count,
+  points = MELODIC_CONTOUR_POINTS,
+): number[] {
+  const voiced: number[] = []
+  for (let i = Math.max(0, fromFrame); i < Math.min(frames.count, toFrame); i++) {
+    if (activity.active[i]) voiced.push(frames.centroid[i]!)
+  }
+  if (voiced.length < MIN_CONTOUR_FRAMES) return []
+
+  // Resample by bucket mean rather than by picking frames: a sung note lasts
+  // many frames, and averaging keeps the note rather than whichever frame the
+  // sampling grid happened to land on.
+  const buckets: number[] = []
+  for (let p = 0; p < points; p++) {
+    const from = Math.floor((p / points) * voiced.length)
+    const to = Math.max(from + 1, Math.floor(((p + 1) / points) * voiced.length))
+    buckets.push(mean(voiced.slice(from, to)))
+  }
+
+  const centre = mean(buckets)
+  const spread = Math.max(...buckets.map((value) => Math.abs(value - centre)))
+  // A dead-flat window has a real shape — flat — and normalizing it by a zero
+  // spread would invent movement that is not there.
+  if (spread < 1e-6) return buckets.map(() => 0)
+  return buckets.map((value) => Math.round(((value - centre) / spread) * 1000) / 1000)
+}
+
+/**
+ * How alike two contours are, 0–1. `null` when either window had too little
+ * voiced content to have a shape — never 0, which would read as "completely
+ * different" rather than "not measured".
+ */
+export function contourSimilarity(a: number[], b: number[]): number | null {
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) return null
+  let total = 0
+  for (let i = 0; i < a.length; i++) total += Math.abs(a[i]! - b[i]!)
+  // Both contours live in -1..1, so the worst possible mean difference is 2.
+  const similarity = 1 - total / a.length / 2
+  return Math.round(Math.max(0, Math.min(1, similarity)) * 1000) / 1000
+}

@@ -3,6 +3,7 @@ import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import {
   DecodeUnavailableError,
   HOOK_SECTION_TYPES,
+  emptyRegister,
   type AudioSource,
   type DetectedSection,
   type MusicFeatureResult,
@@ -13,6 +14,7 @@ import {
 import {
   chorusEnergyLift,
   dynamicContrast,
+  registerMetrics,
   repeatedSectionContrasts,
   sectionContrasts,
   structuralMetrics,
@@ -25,7 +27,7 @@ import {
   type Measured,
   type SongFeatureVector,
 } from '@masterclip/song-feature-vectors'
-import type { SongAnalysisRecord, SongSectionRecord } from '@masterclip/song-lab-domain'
+import type { SongAnalysisRecord, SongSectionFeatureRecord, SongSectionRecord } from '@masterclip/song-lab-domain'
 import type { Actor, SongLabDeps } from './deps.js'
 
 /**
@@ -389,7 +391,7 @@ export function toDetected(section: SongSectionRecord): DetectedSection {
   }
 }
 
-export function toSectionFeatures(record: { energy: number; vocalOccupancy: number | null; arrangementDensity: number; spectralDensity: number; transientDensity: number; lowFrequencyDensity: number; stereoWidth: number | null; rhythmicDensity: number; similarityVector: number[] } | undefined): SectionFeatures {
+export function toSectionFeatures(record: SongSectionFeatureRecord | undefined): SectionFeatures {
   if (!record) return emptyFeatures()
   return {
     energy: record.energy,
@@ -401,6 +403,8 @@ export function toSectionFeatures(record: { energy: number; vocalOccupancy: numb
     stereoWidth: record.stereoWidth,
     rhythmicDensity: record.rhythmicDensity,
     similarityVector: record.similarityVector,
+    register: record.register,
+    melodicContour: record.melodicContour,
   }
 }
 
@@ -415,6 +419,8 @@ function emptyFeatures(): SectionFeatures {
     stereoWidth: null,
     rhythmicDensity: 0,
     similarityVector: [],
+    register: emptyRegister(),
+    melodicContour: [],
   }
 }
 
@@ -431,6 +437,8 @@ function toFeatureRecord(features: SectionFeatures | undefined) {
     stereoWidth: value.stereoWidth,
     rhythmicDensity: value.rhythmicDensity,
     similarityVector: value.similarityVector,
+    register: value.register,
+    melodicContour: value.melodicContour,
   }
 }
 
@@ -527,7 +535,53 @@ export function buildFeatureVector(input: {
   set('hook_repetition', measured(metrics.hookRepetition, structureConfidence, 'section_boundaries', structureSource))
 
   applyEnergyMetrics(vector, structure, structureSource, structureConfidence)
+  applyRegisterMetrics(vector, structure.sections, structure.features, structureSource)
   return vector
+}
+
+/**
+ * Melodic and register metrics.
+ *
+ * Confidence comes from the register measurement itself rather than from the
+ * structure detector, because that is the weaker of the two: a perfectly
+ * segmented song still has no defensible register if no lead vocal was
+ * detected. A song where nothing was measured contributes explicit unknowns —
+ * which is what stops the benchmark engine comparing a register that does not
+ * exist.
+ */
+function applyRegisterMetrics(
+  vector: SongFeatureVector,
+  sections: DetectedSection[],
+  features: SectionFeatures[],
+  source: { provider: string; modelVersion: string },
+): void {
+  const register = registerMetrics(sections, features)
+  const confidence = register.confidence
+
+  const set = (key: string, value: number | null, method: string, note: string, scale = 1, entryConfidence = confidence) => {
+    vector.metrics[key] =
+      value === null
+        ? unknown<number>(method, source, note)
+        : measured(Math.round(value * scale * 1000) / 1000, entryConfidence, method, source)
+  }
+
+  const noVocal = 'no lead vocal was detected reliably enough to measure a register'
+  set('vocal_register_range', register.vocalRegisterRange, 'voiced_centroid_percentiles', noVocal)
+  set('verse_register', register.verseRegister, 'section_voiced_centroid_median', 'no verse with detectable vocal was found')
+  set('chorus_register', register.chorusRegister, 'section_voiced_centroid_median', 'no chorus with detectable vocal was found')
+  set('chorus_register_lift', register.chorusRegisterLift, 'verse_chorus_register_delta', 'this song has no verse/chorus pair with a measurable register')
+  set('peak_register_position', register.peakRegisterPosition, 'highest_section_register', noVocal)
+  set('melodic_contour_repetition', register.melodicContourRepetition, 'section_contour_similarity', 'no section repeats with enough voiced content to compare shapes', 100)
+  // Rhythmic contrast is measured from the arrangement rather than the vocal,
+  // so it stands on the structure detector's confidence, not the register's.
+  set(
+    'rhythmic_contrast',
+    register.rhythmicContrast,
+    'mean_section_rhythmic_delta',
+    'this song has fewer than two sections to compare',
+    1,
+    vector.metrics.dynamic_contrast?.confidence ?? confidence,
+  )
 }
 
 function applyEnergyMetrics(
@@ -666,5 +720,9 @@ export function applyStructuralMetrics(
     humanSource,
     1,
   )
+  // Register follows the corrected boundaries too: moving a chorus edge moves
+  // which frames the chorus register was measured over, so the lift has to be
+  // recomputed rather than carried.
+  applyRegisterMetrics(rebuilt, sections, features, humanSource)
   return rebuilt
 }

@@ -134,9 +134,10 @@ credentials and no spend. Start at
 
 The song-diagnostic and experimentation module. Upload a recording the artist owns
 or is authorized to use; Song Lab works out its structure, tempo, key, energy shape,
-arrangement contrast and vocal density, compares those against a **comparison cohort
-the user chooses**, and lets them hear alternative versions — an earlier chorus, a
-shorter intro, +4 BPM — built non-destructively from their own audio.
+arrangement contrast, vocal density and vocal register, compares those against a
+**comparison cohort the user chooses**, and lets them hear alternative versions — an
+earlier chorus, a shorter intro, +4 BPM — built non-destructively from their own
+audio.
 
 Three rules are enforced in code, not in a style guide:
 

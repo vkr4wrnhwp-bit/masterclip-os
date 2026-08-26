@@ -45,8 +45,9 @@ peak, spectral balance, stereo width, silence, fades, first vocal.
 spectral flux, low/mid/high band shares, 12-bin chroma, stereo width.
 
 **Per section** — energy, vocal occupancy, arrangement density, spectral density,
-transient density, low-frequency density, stereo width, rhythmic density, and a
-similarity vector used for section-to-section comparison.
+transient density, low-frequency density, stereo width, rhythmic density, vocal
+register band, melodic contour, and a similarity vector used for section-to-section
+comparison.
 
 ## Method notes, and their limits
 
@@ -91,6 +92,36 @@ centroids, never as note names. Deriving lead-vocal pitch from a full mix is not
 reliable enough to print "your chorus tops out at G5". What is defensible is
 whether two sections occupy the same register, which is the question that matters
 for section contrast.
+
+The band is measured per section over the raw analysis frames rather than the
+pooled ones — a pool is three quarters of a second, long enough to average two
+sung notes into one that was never sung — and reported as a 10th/50th/90th
+percentile triple. A section with fewer than eight voiced frames reports `null`
+throughout, at confidence 0. Because the profile inherits vocal-activity
+confidence and caps at **0.5**, a register figure never outranks the detection it
+came from.
+
+From the per-section bands the engine derives `verse_register`,
+`chorus_register`, `chorus_register_lift`, `vocal_register_range` and
+`peak_register_position`. The lift is the one the product speaks in: a chorus
+that measures within 0.05 of the verse register raises *"low register contrast"* —
+worded as a possible contributor to lower perceived section contrast, never as a
+fault. Peak position is read from the section **tops** rather than the medians,
+because the section a listener hears as the top of the song is the one that
+reaches highest, not the one that sits highest on average.
+
+**Melodic contour** — the voiced centroid resampled to eight points per section by
+bucket mean, then peak-normalized into −1..1 around the window's own mean. That
+normalization is the point: two choruses sung a tone apart trace the *same*
+contour, so `contourSimilarity` answers "is this the same melodic shape" rather
+than "is this the same register" — the register band already answers that. A
+window with fewer than twelve voiced frames has no shape and returns an empty
+contour; comparing against it yields `null`, never `0`, because "not measured" and
+"completely different" are not the same statement.
+
+`melodic_contour_repetition` averages the shape agreement between repeats of the
+same section family — chorus to chorus, verse to verse — since that is where a
+listener expects to recognize a melody.
 
 ## Providers
 
