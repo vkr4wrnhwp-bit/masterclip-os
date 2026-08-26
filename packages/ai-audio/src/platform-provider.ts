@@ -6,7 +6,7 @@ import {
   type SceneGenerationInput,
   type SceneGenerationResult,
 } from './provider.js'
-import { durationMsOf } from './wav.js'
+import { durationMsOf, wavDurationMs } from './wav.js'
 
 /**
  * Bridges Live Lab's scene builder onto the platform's music-generation layer
@@ -90,7 +90,10 @@ export class PlatformMusicProvider implements AudioIntelligenceProvider {
       options.push({
         label: shape.label,
         wavBytes: result.audio.bytes,
-        durationMs: lengthMs,
+        // The requested length is a request, not a promise: the platform mock
+        // clamps to 3-30s and a hosted model returns what it returns. Reporting
+        // the ask would have the engine schedule audio that is not there.
+        durationMs: wavDurationMs(result.audio.bytes),
         // Stated on every option, because it is the one thing a generative
         // model cannot promise and a live show depends on: the length is
         // requested exactly, the *grid alignment* is not guaranteed. Preview

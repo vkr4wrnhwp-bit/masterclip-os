@@ -409,18 +409,30 @@ merging Live Lab from `main`).
 
 ## Street Banker Live Lab (audited 2026-08-25)
 
-Same vocabulary, same standard. Verification run at `5e8f77e`: `pnpm typecheck`
-**36/36 clean** · `pnpm lint` **clean** · `pnpm test` **419 passed / 419** ·
-`pnpm test:e2e` **22 passed / 22** (whole repo). Additionally booted through
-`scripts/serve.mjs` against the bundled `dist/` in production mode — including
-an upgrade of an existing `0001–0003` database to `0004` with its Live Lab data
-intact.
+Same vocabulary, same standard. Verification run at `b03cc17`: `pnpm typecheck`
+**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **591 passed / 591** ·
+`pnpm test:e2e` **45 passed / 45** (whole repo).
+
+Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in
+production mode, on a database built by the *previous* release rather than a
+fresh one: an existing `0004` database carrying the Live Lab demo set was
+upgraded to `0005` by the new build. Every Live Lab row survived byte-identical
+— a content hash over projects, set items, scenes and mappings was unchanged —
+the Song Lab tables were created, and the keyboard-zone endpoint was exercised
+against that upgraded data, including its refusal to overwrite occupied keys.
+
+What that boot does **not** establish: the deployed instance was unreachable
+from this environment (egress policy denied `masterclip.onrender.com:443`), so
+**which commit is actually serving production is unverified here.** The health
+endpoint reports `commit` for exactly this question; read it from a network
+that can reach the service.
 
 The distinction that matters most here: **scheduling logic is unit-tested
 against a manual clock; the browser audio path is not testable that way.** A
 `TestAudioBackend` records what was scheduled and when, so quantization,
-transitions and follow actions are verified precisely. Whether Chromium's
-`AudioContext` actually emits the right sound on a stage rig is a different
+transitions and follow actions are verified precisely. The browser path is
+covered separately, in real Chromium, by the browser suite described below.
+Whether that graph actually emits the right sound on a stage rig is a third
 claim, and this build has not made it.
 
 | Area | Status | Notes |
@@ -429,14 +441,15 @@ claim, and this build has not made it.
 | Transport, setlist, scenes, clips, follow actions | **REAL** | incl. edit-during-playback (the engine swaps project data in place without stopping the show) |
 | Stem deck (mute/solo resolution, gain, pan) | **REAL** | solo/mute precedence tested; cross-song stem targets no-op rather than throw |
 | 16-pad grid + pad states | **REAL** | states derived from real engine state, incl. `error` for uncached audio |
-| Web Audio backend (buffer sources, buses, ramps, meters) | **DEV-LABELED** | no `AudioContext` in Node, so it is exercised only through the browser build; **no audio has been verified audibly, on any device, from this environment** |
-| AudioWorklet click | **DEV-LABELED** | processor source is loaded via Blob URL and falls back to scheduled oscillators; never heard |
+| Web Audio backend (buffer sources, buses, ramps, meters) | **DEV-LABELED** | now driven in real Chromium by the browser suite: a generated scene WAV decodes through `decodeAudioData`, and an `OfflineAudioContext` render of the shipping graph proves gain is applied proportionally and that zero gain is silence rather than "quiet" (both assertions fail when `play()` is mutated to ignore gain). **Ramps, meters and audibility on a real device remain unverified — no audio has been heard, on any device, from this environment** |
+| AudioWorklet click | **DEV-LABELED** | the browser suite confirms the Blob-URL module parses and `registerProcessor` runs under a real `AudioWorkletGlobalScope`, returning a live `AudioWorkletNode`; falls back to scheduled oscillators where the worklet is absent. Still **never heard** |
 | MIDI parsing, Learn, mapping application, duplicate detection | **REAL** | unit-tested plus an end-to-end Playwright flow that emits real MIDI bytes through a mock device |
+| Keyboard zone mapping (bulk note → scene/pad) | **REAL** | one call maps a run of consecutive notes onto a song's scenes in performance order, or the sixteen pads; targets are validated before any write and colliding keys are reported rather than silently overwritten (both tested) |
 | Web MIDI against physical hardware | **DEV-LABELED** | implemented against the spec; **no controller has ever been plugged into this build** |
 | Offline performance package (manifest, checksums, verification) | **REAL** | server-side and device-reported verification both tested; a missing or corrupted cached file provably prevents READY |
-| IndexedDB show cache in a browser | **DEV-LABELED** | the `CacheStore` contract is tested via the memory implementation; the IndexedDB one has not been run in a browser test |
-| Performance Mode running with the network down | **PARTIAL** | the code path reads only from cache and is structurally incapable of a network fetch during playback; **not yet demonstrated on a real device with the network actually disabled** |
-| Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio |
+| IndexedDB show cache in a browser | **REAL** | run in real Chromium against real IndexedDB and real WebCrypto: byte-identical round-trip, store digest agreeing with a digest of the source bytes, a single flipped byte changing that digest, a non-WAV refused as undecodable, and **a cached show surviving a page reload** — the property the offline package actually depends on |
+| Performance Mode running with the network down | **REAL** | demonstrated in Chromium with `context.setOffline(true)` — the network genuinely off, verified unreachable inside the test before the show is started. The demonstration found a real defect: audio was cached but the *show* was not, so Performance Mode fetched its setlist, scenes and manifest over the network and rendered "Request failed" at a venue with no connection. The bundle is now stored on the device when the package is built, and the offline start is regression-tested |
+| Crash recovery (snapshot, offer, restore) | **REAL** | tested incl. that a restore survives the next song change and never auto-starts audio, and demonstrated **offline in a real browser**: reload with the network down, the app loads from the service-worker shell cache, the session survives an unreachable `/api/auth/me`, RESTORE PERFORMANCE is offered, and the transport reads stopped afterwards. Reaching that offer offline needed all three — shell, session, bundle — and none of them worked before |
 | Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
 | AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
@@ -444,16 +457,28 @@ claim, and this build has not made it.
 | Live Set Builder (suggestions + approval-gated apply) | **REAL** | approval gating, subset application, click routing, pad mapping and idempotent re-planning tested |
 | Stage Control handoff | **REAL** as an interface | export/import is versioned and tested; there is **no Stage Control system in this repo to talk to** |
 | Remix/release import | **REAL** | imports org project audio and cross-project Live Lab assets, org- and project-checked |
+| Duplicating a set | **REAL** | scenes, clips, stems and assets are re-created and every reference to them rewritten — pads repoint at the copies, pads whose target did not survive are cleared to `empty`, and follow targets are remapped (a `target` follow that cannot be resolved falls back to `stop`). Verbatim copying of the pad map, and a source resolved only after the new project existed, were both fixed and are regression-tested |
 | Multi-device output routing (per-stem sends, FOH) | **PARTIAL** | logical outputs, cue/click buses and whole-mix `setSinkId` selection exist; per-stem *device* routing is the desktop backend's job |
-| Keyboard sampler, custom macros | **NOT BUILT** | zones are mapping conventions only, deliberately (V1 scope) |
+| Keyboard sampler, custom macros | **NOT BUILT** | deliberately (V1 scope). `cue` and `macro` are in the mapping vocabulary but dispatch to nothing and are not offered in the Learn UI — forward-compatible surface, not a working feature. Chromatic sampling is a desktop-phase item |
 | Desktop app, Ableton Link, MIDI Clock, Stage Bridge | **NOT BUILT** | `docs/LIVE_LAB_DESKTOP.md` is a migration plan, not an implementation |
 | Experimental NEXT SCENE generation | **NOT BUILT** | deliberately. Its safety constraint is already enforced: generated audio is triggerable only once cached and verified |
 
 ### What would change these statuses
 
-One rehearsal on real hardware settles most of the DEV-LABELED rows at once:
-plug in a controller, build a show package, pull the network cable, and run
-Performance Mode for a few minutes. That single session would move Web Audio,
-the AudioWorklet click, Web MIDI, the IndexedDB cache and offline playback from
-"spec-correct" to "verified running" — or find the bugs that only real audio
-hardware finds.
+A browser suite (`tests/e2e/live-lab-browser.spec.ts`) now runs the shipping
+cache and audio classes in real Chromium, which is what moved the IndexedDB row
+to REAL and narrowed the two audio rows. It injects a separately bundled
+fixture rather than exposing anything on `window` in production, and its
+assertions were checked by mutation — ignoring `opts.gain` and making the
+digest content-blind each turn a test red.
+
+Pulling the network cable turned out to be one a browser *can* settle, and
+doing it found a defect no amount of reading the code had: the offline path
+was never reachable offline. That is the argument for running these rather
+than reasoning about them.
+
+What a browser still cannot settle, and a rehearsal on real hardware can:
+plug in a controller and listen. That session is what remains for Web MIDI
+against physical hardware and — the one no test can make — that the show is
+*audible*. Rendering the right samples and driving a loudspeaker are
+different claims, and only the second one matters on stage.

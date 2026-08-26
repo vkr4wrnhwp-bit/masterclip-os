@@ -196,6 +196,61 @@ export function synthesizeWav(spec: SynthesisSpec): Uint8Array {
   return encodeWavPcm16(synthesize(spec))
 }
 
+/**
+ * Duration of a PCM WAV, read from its own header.
+ *
+ * Returns null for anything it cannot read — a hosted model may return mp3, and
+ * a guess is worse than an admission here: the engine schedules against this
+ * number, so a scene claimed longer than its audio runs into silence on stage.
+ */
+export function wavDurationMs(bytes: Uint8Array): number | null {
+  try {
+    return readWavDurationMs(bytes)
+  } catch {
+    // Unreadable is a real answer for this function, and the only safe one:
+    // audio arrives here from a provider today and from uploads tomorrow.
+    return null
+  }
+}
+
+function readWavDurationMs(bytes: Uint8Array): number | null {
+  if (bytes.length < 44) return null
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const ascii = (offset: number, text: string): boolean => {
+    for (let i = 0; i < text.length; i++) if (view.getUint8(offset + i) !== text.charCodeAt(i)) return false
+    return true
+  }
+  if (!ascii(0, 'RIFF') || !ascii(8, 'WAVE')) return null
+
+  // Walk the chunk list rather than assuming a 44-byte canonical header: real
+  // encoders insert LIST/fact chunks before the data.
+  let channels = 0
+  let sampleRate = 0
+  let bitsPerSample = 0
+  let offset = 12
+  while (offset + 8 <= bytes.length) {
+    const size = view.getUint32(offset + 4, true)
+    if (ascii(offset, 'fmt ')) {
+      // The loop only guarantees the 8-byte chunk header is present, while a
+      // fmt chunk is read through offset + 23. A file truncated inside its own
+      // fmt chunk would otherwise throw out of a function documented to return
+      // null for anything it cannot read.
+      if (offset + 24 > bytes.length) return null
+      channels = view.getUint16(offset + 10, true)
+      sampleRate = view.getUint32(offset + 12, true)
+      bitsPerSample = view.getUint16(offset + 22, true)
+    } else if (ascii(offset, 'data')) {
+      const bytesPerFrame = (channels * bitsPerSample) / 8
+      if (!sampleRate || !bytesPerFrame) return null
+      // A truncated file reports more data than it carries; trust the bytes.
+      const dataBytes = Math.min(size, bytes.length - (offset + 8))
+      return Math.round((dataBytes / bytesPerFrame / sampleRate) * 1000)
+    }
+    offset += 8 + size + (size % 2)
+  }
+  return null
+}
+
 export function durationMsOf(spec: Pick<SynthesisSpec, 'bpm' | 'bars' | 'beatsPerBar'>): number {
   const beatsPerBar = spec.beatsPerBar ?? 4
   return Math.round(spec.bars * beatsPerBar * (60 / spec.bpm) * 1000)

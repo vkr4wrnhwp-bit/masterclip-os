@@ -125,6 +125,7 @@ export type IdPrefix =
   | 'sar' // song A&R review
   | 'sout' // song outcome link
   | 'shof' // song lab handoff
+  | 'vst' // song lab vocal stem
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`

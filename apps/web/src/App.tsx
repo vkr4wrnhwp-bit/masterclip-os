@@ -1,5 +1,5 @@
 import React from 'react'
-import { api, type User } from './api.js'
+import { ApiError, api, type User } from './api.js'
 import { Callout, Card, Field, useAsync } from './ui.jsx'
 import { Dashboard } from './views/Dashboard.jsx'
 import { ProjectView } from './views/Project.jsx'
@@ -90,6 +90,31 @@ export function navigate(path: string): void {
   window.location.hash = path
 }
 
+/**
+ * The signed-in identity, remembered locally so an unreachable server does not
+ * read as a signed-out user. Identity only — no token, no secret; the session
+ * cookie remains the only thing that authorizes anything.
+ */
+const REMEMBERED_USER = 'masterclip.user'
+
+function rememberUser(user: User | null): void {
+  try {
+    if (user) window.localStorage.setItem(REMEMBERED_USER, JSON.stringify(user))
+    else window.localStorage.removeItem(REMEMBERED_USER)
+  } catch {
+    // Private mode or a full store: the app simply needs a network to start.
+  }
+}
+
+function rememberedUser(): User | null {
+  try {
+    const raw = window.localStorage.getItem(REMEMBERED_USER)
+    return raw ? (JSON.parse(raw) as User) : null
+  } catch {
+    return null
+  }
+}
+
 export function App() {
   const route = useRoute()
   const [user, setUser] = React.useState<User | null>(null)
@@ -113,13 +138,39 @@ export function App() {
   React.useEffect(() => {
     api
       .me()
-      .then((r) => setUser(r.user))
-      .catch(() => setUser(null))
+      .then((r) => {
+        setUser(r.user)
+        rememberUser(r.user)
+      })
+      .catch((err: unknown) => {
+        // A server that answers "no" signs you out. A server that cannot be
+        // reached does not: at a venue with no network the show is already on
+        // this device, and dropping to a sign-in form nobody can complete
+        // would strand the performer mid-set.
+        //
+        // This grants nothing. Every API call still needs a real session
+        // cookie, so a remembered identity opens no server door; the only
+        // thing it unlocks is data this same user already cached here.
+        if (err instanceof ApiError && err.status >= 400) {
+          setUser(null)
+          rememberUser(null)
+          return
+        }
+        setUser(rememberedUser())
+      })
       .finally(() => setChecking(false))
   }, [])
 
   if (checking) return <div className="spinner">loading…</div>
-  if (!user) return <LoginScreen onAuthenticated={setUser} />
+  if (!user)
+    return (
+      <LoginScreen
+        onAuthenticated={(authenticated) => {
+          rememberUser(authenticated)
+          setUser(authenticated)
+        }}
+      />
+    )
 
   const projectId = route.params.projectId ?? localStorage.getItem('masterclip.lastProject') ?? ''
   if (route.params.projectId) localStorage.setItem('masterclip.lastProject', route.params.projectId)
@@ -235,6 +286,7 @@ export function App() {
               className="small"
               style={{ marginTop: 8 }}
               onClick={() => {
+                rememberUser(null)
                 void api.logout().then(() => window.location.reload())
               }}
             >

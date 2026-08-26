@@ -113,6 +113,9 @@ export class MockVocalAnalysisProvider implements VocalAnalysisProvider {
     const activity = Array.from({ length: activitySteps }, (_, i) => (i * 0.5 >= firstVocal && random() > 0.25 ? 0.8 : 0.2))
 
     return {
+      // Synthetic numbers describe no recording at all, so no stem could make
+      // them a stem measurement. Always the weaker basis.
+      basis: 'full_mix',
       occupancy: measured(0.55 + random() * 0.2, MAX_CONFIDENCE, 'deterministic_placeholder', SOURCE, SYNTHETIC),
       firstVocalSeconds: measured(Math.round(firstVocal * 10) / 10, MAX_CONFIDENCE, 'deterministic_placeholder', SOURCE, SYNTHETIC),
       averagePhraseSeconds: measured(1.8 + random() * 0.8, MAX_CONFIDENCE, 'deterministic_placeholder', SOURCE, SYNTHETIC),

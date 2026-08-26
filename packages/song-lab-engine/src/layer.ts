@@ -25,6 +25,7 @@ import {
   SongBenchmarkResultRepo,
   SongExperimentRepo,
   SongLabHandoffRepo,
+  SongVocalStemRepo,
   SongLabProjectRepo,
   SongLyricRepo,
   SongObservationRepo,
@@ -34,6 +35,7 @@ import {
 } from '@masterclip/song-lab-domain'
 import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo } from '@masterclip/audio-domain'
 import type { AudioAssetService } from '@masterclip/audio-engine'
+import type { AudioProviderRegistry } from '@masterclip/audio-core'
 import { SongLabAccessControl } from './access.js'
 import { SongAnalysisService } from './analysis.js'
 import { SongBenchmarkService } from './benchmark.js'
@@ -42,6 +44,7 @@ import { SongLyricService } from './lyrics.js'
 import { SongLabViewService } from './views.js'
 import { SongArService } from './ar.js'
 import { SongLabIntegrationService } from './integrations.js'
+import { SongVocalStemService } from './vocal-stems.js'
 import { SongOutcomeService } from './outcomes.js'
 import { SongLabProjectService } from './projects.js'
 import type { SongLabDeps, SongLabProviders, SongLabRepos } from './deps.js'
@@ -67,6 +70,7 @@ export interface SongLabLayer {
   ar: SongArService
   integrations: SongLabIntegrationService
   outcomes: SongOutcomeService
+  vocalStems: SongVocalStemService
 }
 
 export interface CreateSongLabLayerOptions {
@@ -83,6 +87,8 @@ export interface CreateSongLabLayerOptions {
     consents: ConsentRepo
     operatorDesk: OperatorDeskRepo
     remix: RemixRepo
+    /** Resolved for stem separation only; Song Lab registers nothing in it. */
+    providerRegistry: AudioProviderRegistry
   }
   /** Registers only deterministic providers. Used by fast tests. */
   mockOnly?: boolean
@@ -125,6 +131,7 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
     arReviews: new SongArReviewRepo(opts.db, clock),
     outcomes: new SongOutcomeRepo(opts.db, clock),
     handoffs: new SongLabHandoffRepo(opts.db, clock),
+    vocalStems: new SongVocalStemRepo(opts.db, clock),
   }
 
   const deps: SongLabDeps = {
@@ -144,6 +151,7 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
       operatorDesk: opts.audio.operatorDesk,
       remix: opts.audio.remix,
       entitlements: opts.entitlements,
+      providerRegistry: opts.audio.providerRegistry,
     },
   }
 
@@ -160,5 +168,6 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
     ar: new SongArService(deps),
     integrations: new SongLabIntegrationService(deps),
     outcomes: new SongOutcomeService(deps),
+    vocalStems: new SongVocalStemService(deps),
   }
 }
