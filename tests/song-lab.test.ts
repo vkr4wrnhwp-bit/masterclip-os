@@ -1460,6 +1460,83 @@ describe('vocal stem separation', () => {
     expect(original.vocalAnalysis.basis).toBe('full_mix')
   })
 
+  /**
+   * The defect this suite did not catch for two releases.
+   *
+   * Every test above proved the stem was produced correctly, and the
+   * confidence test proved the measurement improves — but it improved it by
+   * calling `reanalyze` by hand. Nothing in the product did that, so an artist
+   * paid for a separation, watched the card keep saying Full Mix, and was
+   * offered a button reading "try separating the vocal again" for a separation
+   * that had already succeeded.
+   *
+   * Deliberately does *not* call reanalyze. If the chain regresses, the basis
+   * stays `full_mix` and this fails.
+   */
+  it('re-measures on its own once the stem is ready, without being asked', async () => {
+    const session = await bootstrapFlagship()
+    const { LocalVocalAnalysisProvider } = await import('@masterclip/song-analysis')
+    runtime.songLab.providers.vocals = new LocalVocalAnalysisProvider()
+
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    const before = await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)
+    const mixAnalysis = before.find((row) => row.status === 'complete')!
+    expect(mixAnalysis.vocalAnalysis.basis).toBe('full_mix')
+
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    // Separation queued a fresh analysis rather than leaving the old one to
+    // stand. Compared as a set, so this cannot pass on row ordering.
+    const after = await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)
+    const seen = new Set(before.map((row) => row.id))
+    const added = after.filter((row) => !seen.has(row.id))
+    expect(added.length).toBe(1)
+
+    await runtime.songLab.analysis.run(added[0]!.id, session.orgId)
+    const remeasured = await runtime.songLab.repos.analyses.get(session.orgId, added[0]!.id)
+    expect(remeasured.vocalAnalysis.basis).toBe('isolated_stem')
+
+    // And the mix-based row is still there, unchanged.
+    expect((await runtime.songLab.repos.analyses.get(session.orgId, mixAnalysis.id)).vocalAnalysis.basis).toBe('full_mix')
+  })
+
+  /**
+   * A new master uploaded while separation was running makes the stem a stem of
+   * the *previous* recording. Reanalysing the current version would pay for a
+   * full analysis to discover the stem does not apply to it.
+   */
+  it('does not re-measure a version the project has already moved past', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    // The project moves to a different current version before the job runs.
+    const version = await runtime.songLab.repos.versions.get(session.orgId, versionId)
+    const supersede = await runtime.songLab.repos.versions.create({
+      orgId: session.orgId,
+      songLabProjectId: projectId,
+      parentVersionId: versionId,
+      versionType: 'human_revision',
+      versionLabel: 'Master 2',
+      sourceAssetId: version.sourceAssetId,
+      createdBy: session.userId,
+    })
+    await runtime.songLab.repos.projects.setSource(session.orgId, projectId, version.sourceAssetId!, supersede.id)
+
+    const analysesBefore = (await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)).length
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    // The stem is kept — returning to that version finds it again — but no
+    // analysis was queued for a version it cannot describe.
+    expect((await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)).length).toBe(analysesBefore)
+    const asset = await runtime.audio.repos.assets.get(session.orgId, version.sourceAssetId!)
+    expect(await runtime.songLab.repos.vocalStems.readyForVersion(session.orgId, versionId, asset.checksum)).not.toBeNull()
+  })
+
   it('records unsupported separately from failed when no stem is a vocal', async () => {
     const session = await bootstrapFlagship()
     const { projectId, versionId } = await seedWithVersion(session)

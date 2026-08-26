@@ -82,6 +82,15 @@ Confidence caps at **0.45** from a full mix and rises to **0.85** when an isolat
 vocal stem is supplied. A dense guitar record will score higher than it should, and
 the UI says so.
 
+Supplying that stem is a queued job, not a synchronous one, so a separation finishes
+*after* the analysis that would have used it. Separation therefore ends by queueing
+a reanalysis of its own — otherwise the organization pays a provider for a stem and
+the figures on screen never move off the 0.45 proxy. That reanalysis is additive
+like every other: a new row, the previous one still readable, confirmed sections
+carried forward. It is skipped in exactly one case — a newer version became current
+while separation was running, which makes the stem a stem of the previous recording.
+The stem is kept, so returning to that version finds it again.
+
 **Energy** — a composite, not LUFS. Loudness 0.40, transient activity 0.20,
 spectral spread 0.15, low-end weight 0.15, brightness 0.10. Normalized *within one
 song*, so values compare sections to each other and never one song to another.

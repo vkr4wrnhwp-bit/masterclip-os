@@ -3,6 +3,7 @@ import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import type { StemSeparationProvider } from '@masterclip/audio-core'
 import type { SongVocalStemRecord } from '@masterclip/song-lab-domain'
 import type { Actor, SongLabDeps } from './deps.js'
+import type { SongLabProjectService } from './projects.js'
 
 /**
  * Vocal-stem separation for measurement.
@@ -27,6 +28,12 @@ import type { Actor, SongLabDeps } from './deps.js'
  *     stay on the mix-based proxy where they belong.
  *   - Reuse a stem across recordings. The source checksum is pinned, so an
  *     edited version re-separates rather than inheriting its parent's vocal.
+ *
+ * A ready stem changes nothing on its own. The vocal figures live on an
+ * analysis row, and that row was computed before the stem existed, so
+ * separation finishes by queueing a reanalysis — otherwise the organization
+ * pays a provider for a measurement that is never taken. See `applyToAnalysis`
+ * for the two cases where it deliberately does not.
  */
 
 /**
@@ -70,7 +77,10 @@ export function findVocalStem<T extends { name: string }>(stems: readonly T[]): 
 }
 
 export class SongVocalStemService {
-  constructor(private readonly deps: SongLabDeps) {}
+  constructor(
+    private readonly deps: SongLabDeps,
+    private readonly projects: SongLabProjectService,
+  ) {}
 
   /**
    * Queues separation for a version, or returns the attempt already covering it.
@@ -185,12 +195,64 @@ export class SongVocalStemService {
 
       await this.deps.repos.vocalStems.markReady(record.id, { stemAssetId: stored.id, stemName: vocal.name })
       this.deps.logger.info('song_lab.vocal_stem_ready', { vocal_stem_id: record.id, asset_id: stored.id, provider: provider.providerId })
+      await this.applyToAnalysis(record)
       return this.deps.repos.vocalStems.get(record.orgId, record.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       await this.deps.repos.vocalStems.markFailed(record.id, 'failed', message)
       this.deps.logger.error('song_lab.vocal_stem_failed', { vocal_stem_id: record.id, err: message })
       throw err
+    }
+  }
+
+  /**
+   * Re-measures the song now that the voice can actually be heard.
+   *
+   * The vocal figures are stored on an analysis row, and that row was computed
+   * from the mix before this stem existed. Nothing re-reads it, so without this
+   * the organization pays for a separation whose result is never measured, and
+   * the project keeps reporting `full_mix` at proxy confidence with no
+   * indication that better numbers are available for the asking.
+   *
+   * Reanalysis is safe to do unprompted because it is additive: it writes a new
+   * row, leaves the previous one readable, and carries forward every section a
+   * person confirmed.
+   *
+   * Two cases where it deliberately does nothing:
+   *
+   *   - **The version moved on.** A new master uploaded while separation ran
+   *     makes this stem a stem of the previous recording. Reanalysing the
+   *     current version would spend a full analysis to discover no stem
+   *     applies. The stem is kept: reverting to that version finds it again.
+   *   - **Queueing fails.** The stem itself is stored and correct, so failing
+   *     the job would be a lie about what happened — and retrying it would
+   *     short-circuit on the now-ready row without re-attempting this. The
+   *     error is logged and the UI still offers re-measuring by hand.
+   */
+  private async applyToAnalysis(record: SongVocalStemRecord): Promise<void> {
+    try {
+      const project = await this.deps.repos.projects.get(record.orgId, record.songLabProjectId)
+      if (project.currentVersionId !== record.songVersionId) {
+        this.deps.logger.info('song_lab.vocal_stem_superseded', {
+          vocal_stem_id: record.id,
+          stem_version_id: record.songVersionId,
+          current_version_id: project.currentVersionId,
+        })
+        return
+      }
+
+      const analysisId = await this.projects.queueAnalysis(
+        { orgId: record.orgId, userId: record.createdBy, orgRole: 'owner' },
+        record.songLabProjectId,
+        record.songVersionId,
+        record.sourceChecksum,
+      )
+      this.deps.logger.info('song_lab.vocal_stem_remeasure_queued', { vocal_stem_id: record.id, analysis_id: analysisId })
+    } catch (err) {
+      this.deps.logger.error('song_lab.vocal_stem_remeasure_failed', {
+        vocal_stem_id: record.id,
+        err: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 

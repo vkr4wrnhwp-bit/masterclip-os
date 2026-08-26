@@ -215,6 +215,24 @@ function VocalBasisPanel({
   }
 
   const current = stems.data?.vocalStems.find((stem) => stem.songVersionId === versionId) ?? null
+  // A stem exists for this recording but the figures on screen were still
+  // measured from the mix. Separation queues the re-measurement itself, so this
+  // is normally the few seconds before that job lands — but it is also where a
+  // project sits if that queueing failed, which is why the manual path stays.
+  const awaitingRemeasure = current?.status === 'ready' && !isolated
+
+  const remeasure = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await songLabApi.reanalyze(projectId)
+      reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Card title="Vocal measurement" action={<ClassificationChip label={isolated ? 'Isolated Vocal' : 'Full Mix'} />}>
@@ -226,7 +244,15 @@ function VocalBasisPanel({
           : 'Vocal occupancy, time to first vocal, phrase length and rest ratio are estimated from the full mix. The detector infers where the voice is from band energy and tonality, so a dense arrangement reads as more vocal than it is. These figures carry lower confidence for that reason.'}
       </p>
 
-      {current?.status === 'pending' && <Callout tone="info">Separating the lead vocal. The next analysis will measure it.</Callout>}
+      {current?.status === 'pending' && (
+        <Callout tone="info">Separating the lead vocal. Re-measuring starts on its own as soon as it finishes.</Callout>
+      )}
+      {awaitingRemeasure && (
+        <Callout tone="info">
+          The lead vocal was separated{current?.stemName ? ` (${current.stemName})` : ''}. The figures above are still the
+          mix-based estimate until the re-measurement finishes.
+        </Callout>
+      )}
       {current?.status === 'unsupported' && (
         <Callout tone="info">
           {current.provider} could not return an isolated lead vocal, so the vocal figures stay measured from the mix.
@@ -235,7 +261,13 @@ function VocalBasisPanel({
       )}
       {current?.status === 'failed' && <Callout tone="warn">Separation failed: {current.failureReason ?? 'unknown reason'}</Callout>}
 
-      {!isolated && current?.status !== 'pending' && (
+      {awaitingRemeasure && (
+        <button className="small" onClick={remeasure} disabled={busy}>
+          Re-measure from the separated vocal
+        </button>
+      )}
+
+      {!isolated && current?.status !== 'pending' && current?.status !== 'ready' && (
         <button className="small" onClick={separate} disabled={busy || !versionId}>
           {current ? 'Try separating the vocal again' : 'Separate the vocal and re-measure'}
         </button>

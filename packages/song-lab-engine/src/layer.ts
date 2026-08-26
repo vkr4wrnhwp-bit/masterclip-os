@@ -163,12 +163,14 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
   }
 
   const lyrics = new SongLyricService(deps)
+  // Hoisted because separation finishes by queueing a reanalysis through it.
+  const projects = new SongLabProjectService(deps)
 
   return {
     repos,
     providers,
     access: new SongLabAccessControl(opts.config, opts.db, opts.entitlements),
-    projects: new SongLabProjectService(deps),
+    projects,
     analysis: new SongAnalysisService(deps),
     benchmark: new SongBenchmarkService(deps),
     experiments: new SongExperimentService(deps),
@@ -177,7 +179,7 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
     ar: new SongArService(deps),
     integrations: new SongLabIntegrationService(deps),
     outcomes: new SongOutcomeService(deps),
-    vocalStems: new SongVocalStemService(deps),
+    vocalStems: new SongVocalStemService(deps, projects),
     lyricTranscription: new SongLyricTranscriptionService(deps, lyrics),
   }
 }

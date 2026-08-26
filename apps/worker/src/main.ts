@@ -186,14 +186,6 @@ async function main(): Promise<void> {
       await songLab.analysis.run(analysisId, orgId)
     })
 
-    /**
-     * Vocal separation.
-     *
-     * Completes rather than throws when the provider returns no identifiable
-     * vocal: the row records `unsupported` and the vocal figures stay on the
-     * mix-based proxy. Dead-lettering that would be wrong — nothing is broken,
-     * the provider simply cannot do it.
-     */
     worker.register<{ transcriptId: string; orgId: string; userId: string; projectId: string; versionId: string }>(
       JOB_TYPES.songLabTranscribeLyrics,
       async (payload, ctx) => {
@@ -203,6 +195,17 @@ async function main(): Promise<void> {
       },
     )
 
+    /**
+     * Vocal separation.
+     *
+     * Completes rather than throws when the provider returns no identifiable
+     * vocal: the row records `unsupported` and the vocal figures stay on the
+     * mix-based proxy. Dead-lettering that would be wrong — nothing is broken,
+     * the provider simply cannot do it.
+     *
+     * A successful separation queues a reanalysis of its own, so this handler
+     * settles the stem and the follow-on measurement arrives as a separate job.
+     */
     worker.register<{ vocalStemId: string; orgId: string }>(JOB_TYPES.songLabSeparateVocal, async ({ vocalStemId, orgId }, ctx) => {
       await ctx.heartbeat()
       const stem = await songLab.vocalStems.run(vocalStemId, orgId)
