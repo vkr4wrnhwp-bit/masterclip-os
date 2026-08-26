@@ -84,7 +84,7 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     ...(opts.workerId ? { workerId: opts.workerId } : {}),
   })
 
-  const deps = { logger, sandbox: config.isSandbox, publicBaseUrl: config.PUBLIC_BASE_URL, now: () => clock.now() }
+  const deps = { logger, sandbox: config.isSandbox, publicBaseUrl: config.publicBaseUrl, now: () => clock.now() }
   const registry = new ProviderRegistry(logger)
 
   // The mock provider is always registered: it is what makes the whole factory

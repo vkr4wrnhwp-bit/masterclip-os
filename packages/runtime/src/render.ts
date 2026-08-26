@@ -284,8 +284,8 @@ export class RenderService {
     }
 
     const webhookUrl =
-      this.rt.config.PUBLIC_BASE_URL && this.rt.config.WEBHOOK_SECRET
-        ? signCallbackUrl(this.rt.config.WEBHOOK_SECRET, this.rt.config.PUBLIC_BASE_URL, input.providerId, input.requestId)
+      this.rt.config.publicBaseUrl && this.rt.config.WEBHOOK_SECRET
+        ? signCallbackUrl(this.rt.config.WEBHOOK_SECRET, this.rt.config.publicBaseUrl, input.providerId, input.requestId)
         : ''
 
     const firstFrame = await resolve(input.spec.first_frame_asset)

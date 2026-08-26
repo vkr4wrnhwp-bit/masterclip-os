@@ -46,6 +46,18 @@ services:
         generateValue: true
       - key: ASSET_SIGNING_SECRET
         generateValue: true
+      # Signs the provider callback URLs this deployment hands out, so a
+      # webhook claiming to be a finished render can be proven to be one we
+      # asked for. Without it no callback URL is issued at all and every
+      # provider result has to be polled for.
+      #
+      # The other half of that pair is the externally reachable origin, which
+      # is deliberately absent here: this service's URL is not knowable when
+      # the blueprint is written, so the application falls back to Render's own
+      # RENDER_EXTERNAL_URL at runtime. Set PUBLIC_BASE_URL explicitly only
+      # when a custom domain should be used instead.
+      - key: WEBHOOK_SECRET
+        generateValue: true
       # The owner account, created at boot before anything is listening.
       # Render prompts for both when the blueprint is synced.
       - key: SEED_EMAIL

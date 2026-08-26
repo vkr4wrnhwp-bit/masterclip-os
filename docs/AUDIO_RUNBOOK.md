@@ -23,7 +23,10 @@ No credentials are required for any of the above. To go live:
 - The worker owns retention sweeps and brief schedules; a deployment that
   runs only the API will accept work and never perform it (`scripts/serve.mjs`
   runs both, same as the render factory).
-- `PUBLIC_BASE_URL` must be set for provider webhooks to reach you.
+- `PUBLIC_BASE_URL` must resolve for provider webhooks to reach you. On a
+  host that publishes its own external origin (Render sets
+  `RENDER_EXTERNAL_URL`) it resolves by itself; set `PUBLIC_BASE_URL`
+  explicitly only to point at a custom domain instead.
 - Migrations run automatically at boot (`0003_audio_intelligence`), on both
   SQLite and PostgreSQL.
 
