@@ -257,6 +257,26 @@ function assertProductionSecrets(env: RawEnv): void {
   }
 }
 
+/**
+ * The audio capability flags, as opposed to the product flags above them.
+ *
+ * A product flag hides a whole surface; these seven each gate one thing a
+ * provider can be asked to do, and a request for a switched-off one is refused
+ * at the gate with a code that reads like a bug to anyone who does not know the
+ * flag exists. `masterclip doctor` names the off ones for exactly that reason,
+ * and reads them from here so a flag added later cannot be silently missed —
+ * the test in this package fails if the list and the schema drift apart.
+ */
+export const AUDIO_CAPABILITY_FLAGS = [
+  ['music generation', 'MUSIC_GENERATION_ENABLED'],
+  ['music inpainting', 'MUSIC_INPAINTING_ENABLED'],
+  ['voice cloning', 'VOICE_CLONING_ENABLED'],
+  ['dubbing', 'DUBBING_ENABLED'],
+  ['stem separation', 'STEM_SEPARATION_ENABLED'],
+  ['voice isolation', 'VOICE_ISOLATION_ENABLED'],
+  ['sound effects', 'SOUND_EFFECTS_ENABLED'],
+] as const satisfies ReadonlyArray<readonly [string, keyof RawEnv]>
+
 export interface AppConfig extends RawEnv {
   liveSpendCapMicros: MicroUsd
   isSandbox: boolean

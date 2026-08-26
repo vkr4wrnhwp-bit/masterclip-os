@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { applyEnvFile, formatUsd, loadConfig, maskSecret } from '@masterclip/shared'
+import { applyEnvFile, AUDIO_CAPABILITY_FLAGS, formatUsd, loadConfig, maskSecret } from '@masterclip/shared'
 import { migrationStatus } from '@masterclip/database'
 import { checkTools } from '@masterclip/media-tools'
 import { contractSummary, runProviderContract, type CanonicalRenderRequest, type PriceQuote } from '@masterclip/provider-core'
@@ -180,6 +180,70 @@ async function cmdDoctor(ctx: Ctx): Promise<number> {
       name: 'claude agent layer',
       ok: true,
       detail: runtime.agents.available ? `enabled (${config.ANTHROPIC_MODEL} / ${config.ANTHROPIC_QC_MODEL})` : 'disabled — no ANTHROPIC_API_KEY',
+      required: false,
+    })
+
+    // Everything above predates Audio Intelligence, Live Lab and Song Lab, so
+    // `doctor` reported a fully configured render factory while three whole
+    // product areas were unconfigured and invisible. A maintainer asking "what
+    // does this deployment still need?" should get one answer, not one per
+    // product they happen to remember to check.
+    for (const health of await runtime.audio.registry.health()) {
+      checks.push({
+        name: `audio:${health.providerId}`,
+        ok: health.status === 'healthy' || health.status === 'unconfigured',
+        detail: `${health.status} — ${health.message}`,
+        required: false,
+      })
+    }
+
+    // The audio provider signs its callbacks with its own secret, separate from
+    // the one we sign ours with, so a deployment can have working render
+    // callbacks and dead audio ones.
+    checks.push({
+      name: 'audio webhooks',
+      ok: Boolean(config.publicBaseUrl && config.ELEVENLABS_WEBHOOK_SECRET),
+      detail: !config.publicBaseUrl
+        ? 'no public origin — audio jobs will be polled'
+        : config.ELEVENLABS_WEBHOOK_SECRET
+          ? `${config.publicBaseUrl} (secret ${maskSecret(config.ELEVENLABS_WEBHOOK_SECRET)})`
+          : 'ELEVENLABS_WEBHOOK_SECRET is not set — deliveries cannot be verified, so they are refused',
+      required: false,
+    })
+
+    // Zero retention is a claim about the provider account, not about our code.
+    // Never label a job zero-retention on the strength of a config flag alone.
+    checks.push({
+      name: 'audio zero retention',
+      ok: true,
+      detail: config.ELEVENLABS_ZERO_RETENTION_CAPABLE
+        ? 'attested for this account — orgs requiring it can process'
+        : 'not attested — orgs whose policy requires it will refuse work rather than downgrade',
+      required: false,
+    })
+
+    checks.push({
+      name: 'song lab analysis',
+      ok: true,
+      detail: `${config.SONG_LAB_ANALYSIS_PROVIDER}${config.SONG_LAB_ANALYSIS_PROVIDER === 'local-dsp' ? ' — no credentials or network needed' : ''}`,
+      required: false,
+    })
+
+    checks.push({
+      name: 'live lab audio',
+      ok: true,
+      detail: `${config.LIVE_AI_PROVIDER}${config.LIVE_AI_PROVIDER === 'mock-audio' ? ' — local synthesis, free and deterministic' : ''}`,
+      required: false,
+    })
+
+    // A capability that is switched off refuses work at the gate with a code
+    // that reads like a bug to anyone who does not know the flag exists.
+    // Naming them here is the difference between a one-line answer and an hour.
+    const offByFlag = AUDIO_CAPABILITY_FLAGS.filter(([, key]) => !config[key]).map(([name]) => name)
+    checks.push({
+      name: 'disabled capabilities',
+      ok: true,
+      detail: offByFlag.length ? `${offByFlag.join(', ')} — requests are refused at the gate` : 'none — every audio capability flag is on',
       required: false,
     })
   } finally {
@@ -602,7 +666,8 @@ function printHelp(): void {
   process.stdout.write(`masterclip — cinematic AI-video render factory
 
   init                     create local directories, .env, and apply migrations
-  doctor                   check ffmpeg, database, queue, storage, providers, spend allowance
+  doctor                   check ffmpeg, database, queue, storage, providers, spend allowance,
+                           audio/song-lab/live-lab configuration and disabled capabilities
   providers list           list registered provider adapters
   providers health         live health check for every provider
   providers contract       run the provider contract battery  [--provider mock] [--submit]
