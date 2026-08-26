@@ -266,8 +266,13 @@ docker run -p 4310:4310 \
 
 The repository root's `render.yaml` describes the same thing as a Render
 Blueprint; syncing it prompts for `SEED_EMAIL` and `SEED_PASSWORD` and generates
-the two secrets. A paid instance is required only for the persistent disk —
+the three secrets. A paid instance is required only for the persistent disk —
 without it the database and every rendered clip are lost on each restart.
+
+The externally reachable origin is not in the blueprint, because the service's
+URL does not exist until the service does. It resolves from the host at runtime
+instead, so provider callbacks work on a fresh deploy with nothing configured;
+set `PUBLIC_BASE_URL` only to point at a custom domain.
 
 Three things about a deployment that are not obvious:
 
