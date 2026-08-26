@@ -215,6 +215,11 @@ export class SongSectionRepo {
           stereo_width: section.features.stereoWidth,
           rhythmic_density: section.features.rhythmicDensity,
           similarity_vector: JSON.stringify(section.features.similarityVector),
+          register_median: section.features.register.median,
+          register_low: section.features.register.low,
+          register_high: section.features.register.high,
+          register_confidence: section.features.register.confidence,
+          melodic_contour: JSON.stringify(section.features.melodicContour),
           created_at: now,
         })
       }
@@ -431,5 +436,14 @@ export function mapSectionFeature(row: Row): SongSectionFeatureRecord {
     stereoWidth: toNumOrNull(row.stereo_width),
     rhythmicDensity: toNum(row.rhythmic_density),
     similarityVector: parseJsonColumn<number[]>(row.similarity_vector, []),
+    // Rows written before migration 0006 have no register columns at all. They
+    // read as unmeasured rather than as zero, which is what they are.
+    register: {
+      median: toNumOrNull(row.register_median),
+      low: toNumOrNull(row.register_low),
+      high: toNumOrNull(row.register_high),
+      confidence: toNumOrNull(row.register_confidence) ?? 0,
+    },
+    melodicContour: parseJsonColumn<number[]>(row.melodic_contour, []),
   }
 }

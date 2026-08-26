@@ -1,6 +1,14 @@
 import React from 'react'
 import { Badge, Callout } from '../ui.jsx'
-import { clock, type BenchmarkResult, type Measured, type SongObservation, type SongSection } from './api.js'
+import {
+  clock,
+  type BenchmarkResult,
+  type Measured,
+  type RegisterMetrics,
+  type SectionRegisterBand,
+  type SongObservation,
+  type SongSection,
+} from './api.js'
 
 /**
  * Song Lab's shared display pieces.
@@ -257,6 +265,101 @@ export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string
       ))}
       {current && !current.url && <Callout tone="warn">No audio is available for this version.</Callout>}
       {current?.note && <p className="faint" style={{ marginTop: 6 }}>{current.note}</p>}
+    </div>
+  )
+}
+
+/**
+ * The register panel.
+ *
+ * Draws each section's vocal register as a band rather than a single value,
+ * because the low-to-high span is the part a producer reads: two sections whose
+ * medians differ but whose bands overlap completely are, to a listener, the same
+ * part of the voice.
+ *
+ * Deliberately unlabelled in note names. The measurement is a normalized band
+ * derived from the voiced signal, not a transcribed melody, and printing "G5"
+ * would claim a precision that is not there.
+ */
+/**
+ * `metrics` is the engine's own `RegisterMetrics`, so every figure here is on
+ * the engine's scale: registers and lifts are raw normalized values, and
+ * `melodicContourRepetition` is a 0–1 ratio. The feature vector stores that last
+ * one pre-scaled to a percentage, so a caller reading it from there converts
+ * back rather than handing this component two different scales.
+ */
+export function RegisterPanel({ bands, metrics }: { bands: SectionRegisterBand[]; metrics: RegisterMetrics }) {
+  const measured = bands.filter((band) => band.median !== null)
+  if (measured.length === 0) {
+    return (
+      <div className="empty">
+        No lead vocal was detected reliably enough to measure a register. Nothing is estimated in its place.
+      </div>
+    )
+  }
+
+  // Scale to the song's own measured span so the bands fill the panel, with a
+  // little headroom so the extremes are not flush against the edges.
+  const lows = measured.map((band) => band.low ?? band.median!)
+  const highs = measured.map((band) => band.high ?? band.median!)
+  const floor = Math.min(...lows)
+  const ceiling = Math.max(...highs)
+  const span = Math.max(1e-6, ceiling - floor)
+  const pct = (value: number) => ((value - floor) / span) * 100
+
+  return (
+    <div className="sl-register">
+      {bands.map((band) => (
+        <div className="sl-register-row" key={`${band.orderIndex}-${band.label}`}>
+          <span className="sl-register-label">{band.label.toUpperCase()}</span>
+          {band.median === null ? (
+            <span className="sl-register-track">
+              <span className="sl-register-none">not enough information</span>
+            </span>
+          ) : (
+            <span className="sl-register-track">
+              <span
+                className={band.isHook ? 'sl-register-band sl-register-hook' : 'sl-register-band'}
+                style={{
+                  left: `${pct(band.low ?? band.median)}%`,
+                  width: `${Math.max(2, pct(band.high ?? band.median) - pct(band.low ?? band.median))}%`,
+                }}
+              />
+              <span className="sl-register-median" style={{ left: `${pct(band.median)}%` }} />
+            </span>
+          )}
+          <span className="sl-register-value">{band.median === null ? '—' : band.median.toFixed(2)}</span>
+        </div>
+      ))}
+
+      <dl className="sl-register-summary">
+        <RegisterFigure label="Verse register" value={metrics.verseRegister} />
+        <RegisterFigure label="Chorus register" value={metrics.chorusRegister} />
+        <RegisterFigure label="Chorus lift" value={metrics.chorusRegisterLift} signed />
+        <RegisterFigure label="Contour repetition" value={metrics.melodicContourRepetition} ratio />
+      </dl>
+      <p className="faint">
+        A normalized register band derived from the voiced signal, not a transcribed melody. Read it as "the same area of the voice",
+        not as note names. {metrics.confidence < 0.25 ? "Confidence here is low — treat the bands as indicative." : null}
+      </p>
+    </div>
+  )
+}
+
+/** `ratio` renders a 0–1 value as a percentage; everything else is a raw index. */
+function RegisterFigure({ label, value, signed, ratio }: { label: string; value: number | null; signed?: boolean; ratio?: boolean }) {
+  const display =
+    value === null
+      ? 'not enough information'
+      : ratio
+        ? `${Math.round(value * 100)}%`
+        : signed && value > 0
+          ? `+${value.toFixed(3)}`
+          : value.toFixed(3)
+  return (
+    <div className="sl-register-figure">
+      <dt>{label}</dt>
+      <dd className={value === null ? 'faint' : undefined}>{display}</dd>
     </div>
   )
 }

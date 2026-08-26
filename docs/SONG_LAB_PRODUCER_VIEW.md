@@ -26,6 +26,33 @@ dynamic range, low-frequency density, vocal occupancy, arrangement density, sect
 similarity, repetition index, transition strength, loudness progression,
 silence/rest architecture, and stem-level analysis where stems exist.
 
+## The register panel
+
+Producer View draws the vocal register as a **band per section** rather than a
+single value, because the low-to-high span is the part a producer reads: two
+sections whose medians differ but whose bands overlap completely are, to a
+listener, the same part of the voice.
+
+```
+INTRO           not enough information                       —
+VERSE 1         ├──────▌────────┤                          0.34
+PRE-CHORUS 1              ├──────▌────────┤                0.41
+CHORUS 1            ├──────▌────────┤                      0.38
+BRIDGE                             ├──────▌────────┤       0.52
+FINAL CHORUS               ├──────▌────────┤               0.44
+
+Verse register 0.345 · Chorus register 0.403 · Chorus lift +0.058 · Contour repetition 96%
+```
+
+Alongside it, the melodic contours as sparklines — the raw shape, since Producer
+View is the mode where a shape is more useful than a summary number. Sections with
+too little voiced content to have a shape are listed rather than hidden: a gap in
+the grid is information about the record.
+
+The panel refuses to render a scale when nothing was measured. A song with no
+detectable lead vocal shows one line — *no lead vocal was detected reliably enough
+to measure a register* — and no bands.
+
 ## Provenance
 
 The engine version, the source checksum, and each stage's provider and model
@@ -53,8 +80,11 @@ being usable. Hiding them from a producer is how it stops being trusted.
 Producer View shows the *rate* of harmonic change, which is defensible, rather than
 a chart that would look authoritative and be wrong.
 
-**Absolute pitch claims.** Vocal register is a normalized band, not note names.
+**Absolute pitch claims.** Vocal register is a normalized band, not note names, and
+the melodic contour is normalized to shape rather than kept in absolute terms. The
+band answers "the same area of the voice"; the contour answers "the same melodic
+shape". Neither answers "which note", and neither pretends to.
 
-**A single quality score.** Hook Intelligence is a seven-row profile, not a number.
-Compressing seven independent measurements with different confidences into one
+**A single quality score.** Hook Intelligence is a nine-row profile, not a number.
+Compressing nine independent measurements with different confidences into one
 figure would hide exactly the disagreements worth looking at.

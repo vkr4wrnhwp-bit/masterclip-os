@@ -1,5 +1,17 @@
 import { confidenceLabel, formatClock, metricDefinition, type Measured } from '@masterclip/song-feature-vectors'
-import { analyzeBuilds, repeatedSectionContrasts, sectionContrasts, structuralMetrics, type BuildAnalysis, type SectionContrast, type StructuralMetrics } from '@masterclip/song-structure'
+import {
+  analyzeBuilds,
+  registerBands,
+  registerMetrics,
+  repeatedSectionContrasts,
+  sectionContrasts,
+  structuralMetrics,
+  type BuildAnalysis,
+  type RegisterMetrics,
+  type SectionContrast,
+  type SectionRegisterBand,
+  type StructuralMetrics,
+} from '@masterclip/song-structure'
 import type { SongAnalysisRecord, SongSectionRecord } from '@masterclip/song-lab-domain'
 import { toDetected, toSectionFeatures } from './analysis.js'
 import type { Actor, SongLabDeps } from './deps.js'
@@ -91,7 +103,13 @@ export class SongLabViewService {
   async arrangement(
     actor: Actor,
     analysisId: string,
-  ): Promise<{ consecutive: SectionContrast[]; repeats: SectionContrast[]; builds: BuildAnalysis[] }> {
+  ): Promise<{
+    consecutive: SectionContrast[]
+    repeats: SectionContrast[]
+    builds: BuildAnalysis[]
+    register: RegisterMetrics
+    registerBands: SectionRegisterBand[]
+  }> {
     const sections = await this.deps.repos.sections.list(actor.orgId, analysisId)
     const featureMap = await this.deps.repos.sections.features(actor.orgId, analysisId)
     const detected = sections.map(toDetected)
@@ -101,6 +119,8 @@ export class SongLabViewService {
     return {
       consecutive,
       repeats: repeatedSectionContrasts(detected, features),
+      register: registerMetrics(detected, features),
+      registerBands: registerBands(detected, features),
       builds: analyzeBuilds({
         sections: detected,
         features,
@@ -154,20 +174,29 @@ export class SongLabViewService {
       { key: 'hook_repetition', label: 'Chorus repetition' },
       { key: 'chorus_share', label: 'Chorus share of runtime' },
       { key: 'chorus_similarity', label: 'Chorus-to-chorus similarity' },
+      { key: 'chorus_register_lift', label: 'Melodic contrast' },
+      { key: 'rhythmic_contrast', label: 'Rhythmic contrast' },
       { key: 'vocal_density_contrast', label: 'Vocal-density contrast' },
       { key: 'final_chorus_contrast', label: 'Final-chorus evolution' },
     ]
 
+    const cohortSelected = Boolean(project.selectedBenchmarkCohortId)
     for (const dimension of dimensions) {
       const measurement = analysis.featureVector.metrics[dimension.key]
       const benchmark = byMetric.get(dimension.key)
+      const value = measurement?.value ?? null
+      const unmeasured = value === null
       rows.push({
         metric: dimension.label,
-        finding:
-          measurement?.value === null || measurement === undefined
-            ? 'Not enough information'
-            : formatValue(dimension.key, measurement.value),
-        classification: benchmark?.classificationLabel ?? (measurement?.value === null || measurement === undefined ? 'Not Enough Information' : 'No cohort selected'),
+        finding: unmeasured ? 'Not enough information' : formatValue(dimension.key, value),
+        // Three different absences, and conflating them misleads. The song was
+        // never measured; a cohort was never chosen; or a cohort was chosen and
+        // holds no distribution for this metric — which is the honest state for
+        // anything the benchmark provider does not carry, and reads as a broken
+        // picker if it is reported as "no cohort selected".
+        classification:
+          benchmark?.classificationLabel ??
+          (unmeasured ? 'Not Enough Information' : cohortSelected ? 'No Cohort Data' : 'No cohort selected'),
         confidence: measurement?.confidence ?? 0,
         confidenceLabel: confidenceLabel(measurement),
       })
@@ -175,7 +204,13 @@ export class SongLabViewService {
 
     const observations = await this.deps.repos.observations.listForProject(actor.orgId, projectId)
     const experiments = observations
-      .filter((observation) => observation.category === 'hook' || observation.category === 'timing' || observation.category === 'lyric')
+      .filter(
+        (observation) =>
+          observation.category === 'hook' ||
+          observation.category === 'timing' ||
+          observation.category === 'lyric' ||
+          observation.category === 'melodic',
+      )
       .flatMap((observation) =>
         (observation.recommendations ?? []).map((recommendation) => ({
           title: recommendation.title,
@@ -207,6 +242,7 @@ export class SongLabViewService {
     sections: SongSectionRecord[]
     contrasts: SectionContrast[]
     builds: BuildAnalysis[]
+    registerBands: SectionRegisterBand[]
     providers: Record<string, { provider: string; modelVersion: string }>
     engineVersion: string
     sourceChecksum: string
@@ -241,6 +277,7 @@ export class SongLabViewService {
       sections,
       contrasts: arrangement.consecutive,
       builds: arrangement.builds,
+      registerBands: arrangement.registerBands,
       providers: analysis.providers,
       engineVersion: analysis.engineVersion,
       sourceChecksum: analysis.sourceChecksum,

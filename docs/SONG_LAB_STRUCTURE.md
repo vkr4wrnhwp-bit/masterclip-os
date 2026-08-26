@@ -75,13 +75,24 @@ compared with a cohort.
 Consecutive-section contrast answers "does anything change here?". Repeated-section
 contrast answers "is chorus 2 the same as chorus 1?" — cosine similarity over the
 seven-element section similarity vector, plus per-dimension deltas for energy,
-spectral balance, vocal occupancy, stereo width, low frequency, transients and
-arrangement density.
+spectral balance, vocal occupancy, stereo width, low frequency, transients,
+rhythmic density, arrangement density and **vocal register**, and the melodic-shape
+agreement between the two sections.
+
+Two of those are nullable and stay that way. A section with no measured register
+reports a register delta of `null`, and a section with too little voiced content to
+have a melodic shape reports a contour similarity of `null` — never `0`, which
+would read as "completely different" rather than "not measured".
 
 Similarity at or above **88%** between two repeats raises a *Low section contrast*
 observation. It is measured directly from the audio rather than against a cohort,
 so it carries higher confidence (0.6) than a cohort-relative finding — and it is a
 note for a producer, not something the engine can render.
+
+A verse-to-chorus register lift under **0.05** raises a *Low register contrast*
+observation on the same basis: measured from this recording alone, worded as a
+possible contributor to lower perceived section contrast, and never rendered —
+a melody is a writing and performance decision.
 
 ## Build Intelligence
 

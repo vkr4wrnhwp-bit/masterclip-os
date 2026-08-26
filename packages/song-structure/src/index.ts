@@ -1,5 +1,6 @@
 export * from './detect.js'
 export * from './provider.js'
 export * from './metrics.js'
+export * from './register.js'
 export * from './builds.js'
 export * from './chant.js'

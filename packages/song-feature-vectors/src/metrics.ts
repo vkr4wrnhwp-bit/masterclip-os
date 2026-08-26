@@ -22,6 +22,7 @@ export type MetricGroup =
   | 'energy'
   | 'arrangement'
   | 'vocal'
+  | 'melodic'
   | 'lyric'
 
 export interface MetricDefinition {
@@ -95,6 +96,20 @@ export const METRICS: MetricDefinition[] = [
   { key: 'average_phrase_seconds', label: 'Average phrase length', group: 'vocal', unit: 'seconds', direction: { above: 'Longer Phrases', below: 'Shorter Phrases' }, description: 'Mean length of a continuous vocal phrase.', requires: 'vocals' },
   { key: 'longest_phrase_seconds', label: 'Longest phrase', group: 'vocal', unit: 'seconds', direction: { above: 'Longer', below: 'Shorter' }, description: 'Longest continuous vocal phrase.', requires: 'vocals' },
   { key: 'rest_ratio', label: 'Vocal rest ratio', group: 'vocal', unit: 'percent', direction: { above: 'More Space', below: 'Less Space' }, description: 'Share of runtime with no vocal.', requires: 'vocals' },
+
+  // ----- melodic ------------------------------------------------------------
+  //
+  // A normalized register band, not note names. Deriving lead-vocal pitch from
+  // a full mix is not reliable enough to print "your chorus tops out at G5";
+  // whether two sections occupy the same register is answerable, and it is the
+  // question section contrast actually turns on.
+  { key: 'vocal_register_range', label: 'Vocal register range', group: 'melodic', unit: 'index', direction: { above: 'Wider Range', below: 'Narrower Range' }, description: 'Span between the lowest and highest measured vocal register across the song.', requires: 'vocals' },
+  { key: 'verse_register', label: 'Verse register', group: 'melodic', unit: 'index', direction: { above: 'Higher Register', below: 'Lower Register' }, description: 'Median vocal register across the verses.', requires: 'vocals' },
+  { key: 'chorus_register', label: 'Chorus register', group: 'melodic', unit: 'index', direction: { above: 'Higher Register', below: 'Lower Register' }, description: 'Median vocal register across the choruses.', requires: 'vocals' },
+  { key: 'chorus_register_lift', label: 'Chorus register lift', group: 'melodic', unit: 'index', direction: { above: 'Bigger Lift', below: 'Smaller Lift' }, description: 'How far the chorus register sits above the verse register.', requires: 'vocals' },
+  { key: 'peak_register_position', label: 'Peak-register position', group: 'melodic', unit: 'ratio', direction: { above: 'Later Peak', below: 'Earlier Peak' }, description: 'Where the highest-register section sits in the runtime.', requires: 'vocals' },
+  { key: 'melodic_contour_repetition', label: 'Melodic contour repetition', group: 'melodic', unit: 'percent', direction: { above: 'More Repetition', below: 'Less Repetition' }, description: 'How closely repeats of the same section trace the same melodic shape.', requires: 'vocals' },
+  { key: 'rhythmic_contrast', label: 'Rhythmic contrast', group: 'melodic', unit: 'index', direction: { above: 'Higher Contrast', below: 'Lower Contrast' }, description: 'Mean rhythmic-density change between consecutive sections.' },
 
   // ----- lyric --------------------------------------------------------------
   { key: 'syllables_per_second', label: 'Syllable density', group: 'lyric', unit: 'ratio', direction: { above: 'Denser', below: 'Sparser' }, description: 'Syllables per second across the lyric.', requires: 'lyrics' },

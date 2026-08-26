@@ -292,6 +292,80 @@ describe('observations', () => {
     expect(drafts).toHaveLength(0)
   })
 
+  it('raises low register contrast from this recording alone, with no cohort involved', () => {
+    const comparison = compareToCohort({ vector: vector({}), cohort, cohortValues: { values: {} }, metricKeys: [] })
+    const drafts = generateObservations({
+      comparison,
+      registerContrast: {
+        verseLabel: 'Verse 1',
+        chorusLabel: 'Chorus 1',
+        verseRegister: 0.34,
+        chorusRegister: 0.36,
+        lift: 0.02,
+        confidence: 0.45,
+      },
+    })
+    const draft = drafts.find((entry) => entry.observationType === 'melodic_contrast')!
+    expect(draft).toBeDefined()
+    expect(draft.description).toContain('Verse 1')
+    expect(draft.sourceMetricKeys).toContain('chorus_register_lift')
+    // A melody is a writing and performance decision. Nothing here renders.
+    expect(draft.recommendations[0]!.experimentSupported).toBe(false)
+    // The claim is about a normalized band, and the text has to say so rather
+    // than implying transcribed pitch.
+    expect(draft.description.toLowerCase()).toContain('not a transcribed melody')
+  })
+
+  it('says nothing about register when the chorus genuinely lifts away from the verse', () => {
+    const comparison = compareToCohort({ vector: vector({}), cohort, cohortValues: { values: {} }, metricKeys: [] })
+    const drafts = generateObservations({
+      comparison,
+      registerContrast: {
+        verseLabel: 'Verse 1',
+        chorusLabel: 'Chorus 1',
+        verseRegister: 0.31,
+        chorusRegister: 0.52,
+        lift: 0.21,
+        confidence: 0.45,
+      },
+    })
+    expect(drafts).toHaveLength(0)
+  })
+
+  it('will not raise a register finding it is not confident enough to support', () => {
+    const comparison = compareToCohort({ vector: vector({}), cohort, cohortValues: { values: {} }, metricKeys: [] })
+    const drafts = generateObservations({
+      comparison,
+      registerContrast: {
+        verseLabel: 'Verse 1',
+        chorusLabel: 'Chorus 1',
+        verseRegister: 0.34,
+        chorusRegister: 0.35,
+        lift: 0.01,
+        // Below MIN_OBSERVATION_CONFIDENCE: measured, but not firmly enough to
+        // put in front of an artist as a finding.
+        confidence: 0.1,
+      },
+    })
+    expect(drafts).toHaveLength(0)
+  })
+
+  it('phrases a below-cohort register lift as a comparison, never as a fault', () => {
+    const comparison = compareToCohort({
+      vector: vector({ chorus_register_lift: 0.01 }),
+      cohort,
+      cohortValues: { values: { chorus_register_lift: Array.from({ length: 60 }, (_, i) => 0.05 + i * 0.004) } },
+      metricKeys: ['chorus_register_lift'],
+    })
+    const draft = generateObservations({ comparison }).find((entry) => entry.observationType === 'melodic_contrast')!
+    expect(draft).toBeDefined()
+    expect(draft.severity).toBe('potential_opportunity')
+    const text = `${draft.title} ${draft.description}`.toLowerCase()
+    expect(text).not.toContain('too low')
+    expect(text).not.toContain('weak')
+    expect(text).toContain('cohort')
+  })
+
   it('returns fewer than three headline items rather than padding', () => {
     expect(topThingsWorthTesting([], 3)).toHaveLength(0)
   })

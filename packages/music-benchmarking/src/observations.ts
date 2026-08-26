@@ -17,6 +17,7 @@ export type ObservationType =
   | 'tempo_outlier'
   | 'timing_outlier'
   | 'low_section_contrast'
+  | 'melodic_contrast'
   | 'hook_architecture'
   | 'vocal_density'
   | 'lyric_density'
@@ -64,6 +65,22 @@ export interface ObservationInput {
   comparison: BenchmarkComparison
   /** Repeated-section similarity, e.g. chorus 1 → chorus 2. */
   repeatedSimilarities?: Array<{ fromLabel: string; toLabel: string; similarity: number }>
+  /**
+   * Verse-to-chorus register, measured from this recording alone.
+   *
+   * Supplied separately from the cohort comparison because it does not need
+   * one: "the chorus sits in the same register as the verse" is a statement
+   * about this song, and it holds whether or not a benchmark cohort was
+   * selected.
+   */
+  registerContrast?: {
+    verseLabel: string
+    chorusLabel: string
+    verseRegister: number
+    chorusRegister: number
+    lift: number
+    confidence: number
+  }
   /** Section labels by order index, for readable recommendation text. */
   sectionLabels?: Record<number, string>
   /** Whether the project has confirmed structure, which raises confidence. */
@@ -72,6 +89,13 @@ export interface ObservationInput {
 
 /** Similarity above this between two repeats is worth surfacing. */
 const HIGH_SIMILARITY = 0.88
+/**
+ * A verse-to-chorus register lift smaller than this reads as "the same
+ * register". Registers are normalized 0–1 bands, so this is roughly a twentieth
+ * of the measurable range — small enough that a listener would not hear the
+ * chorus as going anywhere new.
+ */
+const LOW_REGISTER_LIFT = 0.05
 /** Below this, a comparison is too weakly supported to raise as an observation. */
 const MIN_OBSERVATION_CONFIDENCE = 0.2
 
@@ -112,6 +136,34 @@ export function generateObservations(input: ObservationInput): SongObservationDr
             'generate the element — this is a note for the producer.',
           experimentSupported: false,
           confidence: 0.5,
+        },
+      ],
+    })
+  }
+
+  const register = input.registerContrast
+  if (register && register.confidence >= MIN_OBSERVATION_CONFIDENCE && Math.abs(register.lift) < LOW_REGISTER_LIFT) {
+    drafts.push({
+      observationType: 'melodic_contrast',
+      category: 'melodic',
+      title: `Low register contrast — ${register.chorusLabel}`,
+      description:
+        `${register.chorusLabel} occupies nearly the same vocal register as ${register.verseLabel} — a measured lift of ` +
+        `${register.lift >= 0 ? '+' : ''}${register.lift.toFixed(3)} on a normalized register band. That may contribute to lower perceived ` +
+        'section contrast, or it may be exactly the intimacy this record wants. Register here is a normalized band derived from the ' +
+        'voiced signal, not a transcribed melody, so read it as "the same area of the voice" rather than as note names.',
+      severity: 'potential_opportunity',
+      confidence: register.confidence,
+      sourceMetricKeys: ['chorus_register_lift', 'verse_register', 'chorus_register'],
+      recommendations: [
+        {
+          recommendationType: 'vocal_change',
+          title: 'Options worth trying for register contrast',
+          description:
+            'Try the chorus melody a third or fourth higher, hold the top note longer, or keep the verse lower so the chorus has ' +
+            'somewhere to go. All performance and writing choices — Song Lab measures the register, it does not write the melody.',
+          experimentSupported: false,
+          confidence: register.confidence,
         },
       ],
     })
@@ -305,6 +357,28 @@ function observationForMetric(result: BenchmarkMetricResult, input: ObservationI
         ],
       }
 
+    case 'chorus_register_lift':
+      if (later) return null
+      return {
+        ...shared,
+        observationType: 'melodic_contrast',
+        title: 'Chorus register lift below cohort',
+        description:
+          `${evidence} The chorus sits closer to the verse register than most records in this comparison group. Register is a ` +
+          'normalized band derived from the voiced signal, not a transcribed melody.',
+        severity: 'potential_opportunity',
+        recommendations: [
+          {
+            recommendationType: 'vocal_change',
+            title: 'Test whether the chorus has somewhere to go',
+            description:
+              'Try the chorus melody higher, or hold the verse lower. A performance and writing decision — no melody is generated here.',
+            experimentSupported: false,
+            confidence: result.confidence,
+          },
+        ],
+      }
+
     case 'vocal_density_contrast':
       if (later) return null
       return {
@@ -327,12 +401,19 @@ function observationForMetric(result: BenchmarkMetricResult, input: ObservationI
       }
 
     case 'chorus_share':
+    case 'melodic_contour_repetition':
+    case 'rhythmic_contrast':
     case 'arrangement_density':
     case 'dynamic_contrast':
     case 'energy_range':
       return {
         ...shared,
-        observationType: result.metricKey === 'chorus_share' ? 'hook_architecture' : 'energy_shape',
+        observationType:
+          result.metricKey === 'chorus_share'
+            ? 'hook_architecture'
+            : result.metricKey === 'melodic_contour_repetition' || result.metricKey === 'rhythmic_contrast'
+              ? 'melodic_contrast'
+              : 'energy_shape',
         title: `${definition.label} — ${directionWord(definition, later)}`,
         description: `${evidence} Recorded so it is visible; it may be exactly what this record intends.`,
         severity: 'informational',
