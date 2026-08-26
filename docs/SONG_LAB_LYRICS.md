@@ -178,15 +178,50 @@ If the stem exists but cannot be decoded, the analysis falls back to the mix and
 reports `full_mix`. The failure mode worth guarding against is not the fallback
 — it is falling back while still claiming stem-level confidence.
 
-## Register
+## Register and melodic shape
 
 Reported as a normalized band from the spectral centroid of voiced frames, never as
-note names, and capped by the vocal detector's own confidence.
+note names, and capped by the vocal detector's own confidence — so a register
+figure never outranks the detection it came from.
+
+The cap follows the basis, exactly as the vocal figures above do: **0.5** from the
+mix, **0.7** from a separated stem. Separation removes the doubt about *whether
+those frames are the voice*; it does not make a spectral centroid into pitch, so
+the stem ceiling stays below the 0.85 that detection itself earns. Sections are
+still bounded from the mix — a vocal stem is silent through an instrumental break
+— and only their registers are re-measured against the stem.
+
+Measured **per section**, as a 10th/50th/90th percentile triple. From those bands
+come the verse register, the chorus register, and the difference between them:
+
+```
+VERSE 1        ├──────▌────────┤          0.34
+CHORUS 1          ├──────▌────────┤       0.38
+
+Chorus register lift  +0.04
+```
 
 > The chorus occupies nearly the same vocal register as Verse 1, which may
 > contribute to lower perceived section contrast.
 
-Not: "your chorus is unsingable". Pitch alone does not support that judgement.
+Not: "your chorus is unsingable". Pitch alone does not support that judgement. The
+observation is raised only when the lift measures under 0.05 *and* the register
+was measured with enough confidence to stand behind — otherwise nothing is said,
+because a finding drawn from a shaky measurement is worse than no finding.
+
+Options: try the chorus melody a third or fourth higher · hold the top note longer ·
+keep the verse lower so the chorus has somewhere to go. Writing and performance
+choices, every one. Song Lab measures the register; it does not write the melody.
+
+Alongside the band, a **melodic contour** — the voiced centroid resampled to eight
+points and normalized to shape rather than absolute register, so two choruses sung
+a tone apart trace the same contour. That separation is deliberate: the band
+answers "the same area of the voice", the contour answers "the same melodic
+shape", and a song can differ on one without differing on the other.
+
+A section with too little voiced content has no band and no contour. Comparing
+against it yields `null`, never `0` — "not measured" and "completely different"
+are different statements, and only one of them is true.
 
 ## The provider seam
 

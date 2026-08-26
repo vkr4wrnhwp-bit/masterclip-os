@@ -1,8 +1,11 @@
 import {
   cosineSimilarity,
+  emptyRegister,
   energyCurve,
   mean,
+  melodicContour,
   normalize,
+  registerProfile,
   smooth,
   standardDeviation,
   type AnalysisFrames,
@@ -50,6 +53,8 @@ export interface DetectOptions {
 interface PooledFrames {
   stepSeconds: number
   count: number
+  /** Analysis frames per pool, so a pool range maps back to a frame range. */
+  perPool: number
   /** Per-pool descriptor used for similarity: chroma + bands + energy. */
   descriptors: number[][]
   energy: number[]
@@ -95,7 +100,7 @@ export function detectStructure(frames: AnalysisFrames, opts: DetectOptions = {}
   const clusters = clusterSegments(segments, pooled)
   const labelled = assignRoles(segments, clusters, pooled, durationSeconds)
 
-  const features = segments.map((segment) => featuresFor(segment, pooled))
+  const features = segments.map((segment) => featuresFor(segment, pooled, frames, opts.vocal ?? null))
   const confidence = segmentationConfidence(novelty, segments.length, durationSeconds)
 
   return {
@@ -118,6 +123,7 @@ function poolFrames(frames: AnalysisFrames, vocal: VocalActivity | null): Pooled
   const pooled: PooledFrames = {
     stepSeconds: perPool * frames.frameSeconds,
     count,
+    perPool,
     descriptors: [],
     energy: [],
     lowBand: [],
@@ -448,7 +454,7 @@ function segmentationConfidence(novelty: number[], sectionCount: number, duratio
 
 // -------------------------------------------------------------- features ----
 
-function featuresFor(segment: Segment, pooled: PooledFrames): SectionFeatures {
+function featuresFor(segment: Segment, pooled: PooledFrames, frames: AnalysisFrames, activity: VocalActivity | null): SectionFeatures {
   const slice = (values: number[]) => values.slice(segment.fromPool, segment.toPool)
   const energy = mean(slice(pooled.energy))
   const low = mean(slice(pooled.lowBand))
@@ -458,6 +464,13 @@ function featuresFor(segment: Segment, pooled: PooledFrames): SectionFeatures {
   const flux = mean(slice(pooled.flux))
   const vocal = mean(slice(pooled.vocal))
   const width = pooled.stereoWidth.some((value) => value > 0) ? mean(slice(pooled.stereoWidth)) : null
+
+  // Register and contour are measured on the raw frames rather than the pooled
+  // ones: a pool is three quarters of a second, which is long enough to average
+  // two sung notes into one that was never sung.
+  const fromFrame = segment.fromPool * pooled.perPool
+  const toFrame = Math.min(frames.count, segment.toPool * pooled.perPool)
+  const register = activity ? registerProfile(activity, frames, fromFrame, toFrame) : null
 
   return {
     energy: round(energy),
@@ -472,6 +485,10 @@ function featuresFor(segment: Segment, pooled: PooledFrames): SectionFeatures {
     stereoWidth: width === null ? null : round(width),
     rhythmicDensity: round(Math.min(1, flux * 5)),
     similarityVector: [energy, low, mid, high, flatness, vocal, width ?? 0].map(round),
+    register: register
+      ? { median: register.medianRegister, low: register.lowRegister, high: register.highRegister, confidence: register.confidence }
+      : emptyRegister(),
+    melodicContour: activity ? melodicContour(activity, frames, fromFrame, toFrame) : [],
   }
 }
 
@@ -486,6 +503,8 @@ function emptyFeatures(): SectionFeatures {
     stereoWidth: null,
     rhythmicDensity: 0,
     similarityVector: [],
+    register: emptyRegister(),
+    melodicContour: [],
   }
 }
 

@@ -93,6 +93,17 @@ authoritative and feed straight back into the builders.
 creates a new analysis row and preserves the old one. Human-confirmed sections carry
 forward automatically.
 
+**"The register panel is empty on an older project."** Register and melodic contour
+arrived in migration `0007_song_lab_register`. Sections analysed before it have no
+register columns, so they read as *not measured* — which is honest, not broken.
+Reanalyse the project to measure them; the previous analysis stays readable.
+
+**"No lead vocal was detected reliably enough to measure a register."** Expected on
+an instrumental, and common on a dense mix where the detector cannot separate a
+lead. Register is inferred from a full mix, so its confidence caps at 0.5 and it
+reports nothing rather than guessing. Supplying an isolated vocal stem raises both
+the detection and the register that follows from it.
+
 ## Replacing the benchmark provider
 
 1. Implement `BenchmarkProvider` — one method, `queryCohort`, returning per-metric

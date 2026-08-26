@@ -489,6 +489,24 @@ ol.setlist li:hover .setlist-actions { opacity: 1; }
 .sl-energy-fill { display: block; height: 100%; background: var(--accent-dim); }
 .sl-energy-value { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--text-dim); }
 
+/* Register bands. A band, not a bar: the span is the readable part. */
+.sl-register { display: flex; flex-direction: column; gap: 5px; }
+.sl-register-row { display: grid; grid-template-columns: 130px 1fr 44px; gap: 10px; align-items: center; }
+.sl-register-label { font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); }
+.sl-register-track { position: relative; height: 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; }
+.sl-register-band { position: absolute; top: 1px; bottom: 1px; background: var(--accent-dim); opacity: 0.55; border-radius: 1px; }
+.sl-register-hook { opacity: 0.9; }
+.sl-register-median { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--accent); }
+.sl-register-none { position: absolute; left: 6px; top: -3px; font-size: 10px; color: var(--text-faint); }
+.sl-register-value { font-family: var(--mono); font-size: 11px; text-align: right; color: var(--text-dim); }
+.sl-register-summary { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0 6px; }
+.sl-register-figure dt { font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; }
+.sl-register-figure dd { font-family: var(--mono); font-size: 13px; margin: 2px 0 0; }
+
+.sl-contours { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
+.sl-contour svg { width: 100%; height: 34px; display: block; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; }
+.sl-contour-label { display: block; font-size: 10px; letter-spacing: 0.1em; color: var(--text-dim); margin-top: 3px; }
+
 .sl-curve { margin-bottom: 6px; }
 .sl-curve svg { width: 100%; height: 90px; display: block; background: var(--bg-input); border: 1px solid var(--border); border-radius: 2px; }
 .sl-curve-axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 3px; }

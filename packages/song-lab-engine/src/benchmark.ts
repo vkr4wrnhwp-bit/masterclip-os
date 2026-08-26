@@ -12,7 +12,8 @@ import {
   type CohortSourceDefinition,
   type SongObservationDraft,
 } from '@masterclip/music-benchmarking'
-import { repeatedSectionContrasts } from '@masterclip/song-structure'
+import { registerMetrics, repeatedSectionContrasts } from '@masterclip/song-structure'
+import type { SectionFeatures, DetectedSection } from '@masterclip/song-analysis'
 import type { BenchmarkCohortRecord, SongObservationRecord } from '@masterclip/song-lab-domain'
 import type { Actor, SongLabDeps } from './deps.js'
 import { toDetected, toSectionFeatures } from './analysis.js'
@@ -176,14 +177,14 @@ export class SongBenchmarkService {
     const analysis = await this.deps.repos.analyses.get(orgId, analysisId)
     const sections = await this.deps.repos.sections.list(orgId, analysisId)
     const featureMap = await this.deps.repos.sections.features(orgId, analysisId)
-    const repeats = repeatedSectionContrasts(
-      sections.map(toDetected),
-      sections.map((section) => toSectionFeatures(featureMap.get(section.id))),
-    )
+    const detected = sections.map(toDetected)
+    const features = sections.map((section) => toSectionFeatures(featureMap.get(section.id)))
+    const repeats = repeatedSectionContrasts(detected, features)
 
     const drafts: SongObservationDraft[] = generateObservations({
       comparison,
       repeatedSimilarities: repeats.map((entry) => ({ fromLabel: entry.fromLabel, toLabel: entry.toLabel, similarity: entry.similarity })),
+      registerContrast: registerContrastFor(detected, features),
       structureConfirmed: sections.some((section) => section.humanConfirmed),
     })
 
@@ -231,5 +232,31 @@ export class SongBenchmarkService {
     return top
       .map((draft) => observations.find((observation) => observation.title === draft.title))
       .filter((observation): observation is SongObservationRecord => Boolean(observation))
+  }
+}
+
+/**
+ * The verse-to-chorus register comparison, when both ends were measured.
+ *
+ * Returns undefined rather than a zero lift when either side is unmeasured: a
+ * song with no detectable lead vocal has no register contrast to report, and
+ * saying "no lift" would be a claim the analysis cannot support.
+ */
+function registerContrastFor(sections: DetectedSection[], features: SectionFeatures[]) {
+  const metrics = registerMetrics(sections, features)
+  if (metrics.verseRegister === null || metrics.chorusRegister === null || metrics.chorusRegisterLift === null) return undefined
+
+  const labelFor = (types: string[]) =>
+    [...sections]
+      .sort((a, b) => a.startMs - b.startMs)
+      .find((section) => types.includes(section.sectionType) && features[section.orderIndex]?.register.median !== null)?.label
+
+  return {
+    verseLabel: labelFor(['verse']) ?? 'the verse',
+    chorusLabel: labelFor(['chorus', 'final_chorus']) ?? 'the chorus',
+    verseRegister: metrics.verseRegister,
+    chorusRegister: metrics.chorusRegister,
+    lift: metrics.chorusRegisterLift,
+    confidence: metrics.confidence,
   }
 }

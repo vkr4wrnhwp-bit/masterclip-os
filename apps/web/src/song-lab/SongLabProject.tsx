@@ -10,10 +10,11 @@ import {
   EnergyCurve,
   LowSampleWarning,
   ObservationCard,
+  RegisterPanel,
   StructureTimeline,
   Tabs,
 } from './components.jsx'
-import { clock, seconds, songLabApi, type SongSection } from './api.js'
+import { clock, seconds, songLabApi, type ProducerFeatureRow, type SectionRegisterBand, type SongSection } from './api.js'
 
 /**
  * The project workspace.
@@ -433,7 +434,7 @@ function HookTab({ projectId }: { projectId: string }) {
         <>
           <Card title="Hook architecture">
             <p className="faint">
-              A profile, not a score. Seven independent measurements, each with its own confidence — compressing them into one number would
+              A profile, not a score. Nine independent measurements, each with its own confidence — compressing them into one number would
               hide exactly the disagreements worth looking at.
             </p>
             <table>
@@ -954,6 +955,8 @@ function ArrangementTab({ projectId }: { projectId: string }) {
                     Energy {signed(contrast.energyDelta)} · spectral {signed(contrast.spectralDelta)} · low end {signed(contrast.lowFrequencyDelta)} ·
                     transients {signed(contrast.transientDelta)}
                     {contrast.vocalDelta !== null && ` · vocal ${signed(contrast.vocalDelta)}`}
+                    {contrast.registerDelta !== null && ` · register ${signed(contrast.registerDelta)}`}
+                    {contrast.contourSimilarity !== null && ` · melodic shape ${Math.round(contrast.contourSimilarity * 100)}%`}
                   </p>
                   {contrast.similarity >= 0.88 && (
                     <p>
@@ -963,6 +966,16 @@ function ArrangementTab({ projectId }: { projectId: string }) {
                   )}
                 </div>
               ))
+            )}
+          </Card>
+
+          <Card title="Vocal register">
+            <RegisterPanel bands={data.registerBands} metrics={data.register} />
+            {data.register.chorusRegisterLift !== null && Math.abs(data.register.chorusRegisterLift) < 0.05 && (
+              <p>
+                The chorus occupies nearly the same vocal register as the verse. That may contribute to lower perceived section
+                contrast, or it may be exactly the intimacy this record wants — worth listening for, not a fault.
+              </p>
             )}
           </Card>
 
@@ -1005,7 +1018,10 @@ function ArrangementTab({ projectId }: { projectId: string }) {
                   <th>Spectral Δ</th>
                   <th>Low Δ</th>
                   <th>Transient Δ</th>
+                  <th>Rhythmic Δ</th>
                   <th>Vocal Δ</th>
+                  <th>Register Δ</th>
+                  <th>Contour</th>
                 </tr>
               </thead>
               <tbody>
@@ -1019,7 +1035,10 @@ function ArrangementTab({ projectId }: { projectId: string }) {
                     <td className="num">{signed(contrast.spectralDelta)}</td>
                     <td className="num">{signed(contrast.lowFrequencyDelta)}</td>
                     <td className="num">{signed(contrast.transientDelta)}</td>
+                    <td className="num">{signed(contrast.rhythmicDelta)}</td>
                     <td className="num">{contrast.vocalDelta === null ? '—' : signed(contrast.vocalDelta)}</td>
+                    <td className="num">{contrast.registerDelta === null ? '—' : signed(contrast.registerDelta)}</td>
+                    <td className="num">{contrast.contourSimilarity === null ? '—' : `${Math.round(contrast.contourSimilarity * 100)}%`}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1368,6 +1387,32 @@ function ProducerTab({ projectId }: { projectId: string }) {
             </table>
           </Card>
 
+          <Card
+            title="Vocal register and melodic shape"
+            action={<span className="faint">normalized band, not note names</span>}
+          >
+            <RegisterPanel
+              bands={data.registerBands}
+              metrics={{
+                // The summary figures live in the feature vector, which the
+                // Raw-features table above already prints in full — this panel
+                // draws the bands, so it only needs the two it annotates.
+                verseRegister: numeric(data.features, 'verse_register'),
+                chorusRegister: numeric(data.features, 'chorus_register'),
+                chorusRegisterLift: numeric(data.features, 'chorus_register_lift'),
+                // The vector stores this one as a percentage; RegisterPanel
+                // works in the engine's 0–1 ratio, so convert rather than
+                // handing the same component two scales.
+                melodicContourRepetition: ratioOf(numeric(data.features, 'melodic_contour_repetition')),
+                vocalRegisterRange: numeric(data.features, 'vocal_register_range'),
+                peakRegisterPosition: numeric(data.features, 'peak_register_position'),
+                rhythmicContrast: numeric(data.features, 'rhythmic_contrast'),
+                confidence: data.features.find((feature) => feature.key === 'chorus_register_lift')?.confidence ?? 0,
+              }}
+            />
+            <ContourGrid bands={data.registerBands} />
+          </Card>
+
           <Card title="Transition strength">
             <table>
               <thead>
@@ -1395,6 +1440,53 @@ function ProducerTab({ projectId }: { projectId: string }) {
         </>
       )}
     </AsyncBlock>
+  )
+}
+
+/** A percentage from the feature vector, back on the engine's 0–1 scale. */
+function ratioOf(percent: number | null): number | null {
+  return percent === null ? null : percent / 100
+}
+
+/** A feature-vector value by key, or null when it was not measured. */
+function numeric(features: ProducerFeatureRow[], key: string): number | null {
+  const value = features.find((feature) => feature.key === key)?.value
+  return typeof value === 'number' ? value : null
+}
+
+/**
+ * The melodic contours, drawn as sparklines.
+ *
+ * Producer View is the mode where a raw shape is more useful than a summary
+ * number, so the contours are shown as themselves. Sections with too little
+ * voiced content to have a shape are listed, not hidden — a gap in the grid is
+ * information about the record.
+ */
+function ContourGrid({ bands }: { bands: SectionRegisterBand[] }) {
+  const withContour = bands.filter((band) => band.contour.length > 1)
+  if (withContour.length === 0) return null
+  return (
+    <div className="sl-contours">
+      {withContour.map((band) => {
+        const points = band.contour
+          .map((value, index) => {
+            const x = (index / Math.max(1, band.contour.length - 1)) * 100
+            // Contours run -1..1 and SVG y grows downward, so a rising melody
+            // has to be flipped to read as rising.
+            const y = 20 - ((value + 1) / 2) * 20
+            return `${x.toFixed(1)},${y.toFixed(1)}`
+          })
+          .join(' ')
+        return (
+          <div className="sl-contour" key={`${band.orderIndex}-${band.label}`}>
+            <svg viewBox="0 0 100 20" preserveAspectRatio="none" role="img" aria-label={`Melodic contour for ${band.label}`}>
+              <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <span className="sl-contour-label">{band.label.toUpperCase()}</span>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

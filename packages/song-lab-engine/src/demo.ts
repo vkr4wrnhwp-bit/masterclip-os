@@ -23,17 +23,33 @@ export const DEMO_BPM = 92
 export const DEMO_DURATION_MS = 227_000 // 3:47
 
 /** Section plan, in seconds. First chorus lands at 0:56, per the brief. */
-const DEMO_SECTIONS: Array<{ type: string; label: string; start: number; end: number; energy: number; vocal: number }> = [
-  { type: 'intro', label: 'Intro', start: 0, end: 13, energy: 0.31, vocal: 0.02 },
-  { type: 'verse', label: 'Verse 1', start: 13, end: 42, energy: 0.51, vocal: 0.83 },
-  { type: 'pre_chorus', label: 'Pre-Chorus 1', start: 42, end: 56, energy: 0.72, vocal: 0.86 },
-  { type: 'chorus', label: 'Chorus 1', start: 56, end: 83, energy: 0.83, vocal: 0.88 },
-  { type: 'verse', label: 'Verse 2', start: 83, end: 112, energy: 0.64, vocal: 0.85 },
-  { type: 'pre_chorus', label: 'Pre-Chorus 2', start: 112, end: 126, energy: 0.73, vocal: 0.86 },
-  { type: 'chorus', label: 'Chorus 2', start: 126, end: 154, energy: 0.84, vocal: 0.88 },
-  { type: 'bridge', label: 'Bridge', start: 154, end: 177, energy: 0.7, vocal: 0.61 },
-  { type: 'final_chorus', label: 'Final Chorus', start: 177, end: 211, energy: 0.89, vocal: 0.9 },
-  { type: 'outro', label: 'Outro', start: 211, end: 227, energy: 0.35, vocal: 0.08 },
+/**
+ * `register` is the fictional vocal register band and `contour` its melodic
+ * shape. The verses and choruses are deliberately written a hair apart — a
+ * chorus register lift of about 0.02 — so the demo carries a worked example of
+ * the register finding, the same way its choruses are written similar enough to
+ * carry the arrangement-contrast one.
+ */
+const DEMO_SECTIONS: Array<{
+  type: string
+  label: string
+  start: number
+  end: number
+  energy: number
+  vocal: number
+  register: number | null
+  contour: number[]
+}> = [
+  { type: 'intro', label: 'Intro', start: 0, end: 13, energy: 0.31, vocal: 0.02, register: null, contour: [] },
+  { type: 'verse', label: 'Verse 1', start: 13, end: 42, energy: 0.51, vocal: 0.83, register: 0.34, contour: [-0.7, -0.3, 0.2, 0.7, 0.4, -0.1, -0.5, -0.9] },
+  { type: 'pre_chorus', label: 'Pre-Chorus 1', start: 42, end: 56, energy: 0.72, vocal: 0.86, register: 0.4, contour: [-0.4, 0.1, 0.6, 1, 0.8, 0.4, 0.1, -0.3] },
+  { type: 'chorus', label: 'Chorus 1', start: 56, end: 83, energy: 0.83, vocal: 0.88, register: 0.36, contour: [0.8, 0.4, -0.1, -0.6, 0.7, 0.3, -0.2, -0.8] },
+  { type: 'verse', label: 'Verse 2', start: 83, end: 112, energy: 0.64, vocal: 0.85, register: 0.35, contour: [-0.65, -0.25, 0.25, 0.72, 0.42, -0.08, -0.48, -0.88] },
+  { type: 'pre_chorus', label: 'Pre-Chorus 2', start: 112, end: 126, energy: 0.73, vocal: 0.86, register: 0.41, contour: [-0.38, 0.12, 0.62, 1, 0.78, 0.38, 0.08, -0.32] },
+  { type: 'chorus', label: 'Chorus 2', start: 126, end: 154, energy: 0.84, vocal: 0.88, register: 0.37, contour: [0.82, 0.42, -0.08, -0.58, 0.72, 0.32, -0.18, -0.78] },
+  { type: 'bridge', label: 'Bridge', start: 154, end: 177, energy: 0.7, vocal: 0.61, register: 0.53, contour: [0.1, 0.5, 1, 0.8, 0.2, -0.4, -0.8, -1] },
+  { type: 'final_chorus', label: 'Final Chorus', start: 177, end: 211, energy: 0.89, vocal: 0.9, register: 0.41, contour: [0.9, 0.5, 0, -0.5, 0.8, 0.4, -0.1, -0.7] },
+  { type: 'outro', label: 'Outro', start: 211, end: 227, energy: 0.35, vocal: 0.08, register: null, contour: [] },
 ]
 
 /** A fictional lyric written for this seed. Short, so the density metrics move. */
@@ -154,6 +170,11 @@ export async function seedSongLabDemo(songLab: SongLabLayer, input: SeedSongLabD
         stereoWidth: round(0.19 + section.energy * 0.18),
         rhythmicDensity: round(0.34 + section.energy * 0.4),
         similarityVector: [section.energy, 0.3, 0.4, 0.25, 0.45, section.vocal, 0.21].map(round),
+        register:
+          section.register === null
+            ? { median: null, low: null, high: null, confidence: 0 }
+            : { median: section.register, low: round(section.register - 0.08), high: round(section.register + 0.12), confidence: 0.45 },
+        melodicContour: section.contour,
       },
     })),
   )
@@ -238,10 +259,26 @@ export async function seedSongLabDemo(songLab: SongLabLayer, input: SeedSongLabD
         // Chorus 2 measures 94% similar to Chorus 1 — the brief's example.
         chorus_similarity: measured(94, 0.65, 'demo'),
         final_chorus_contrast: measured(0.06, 0.65, 'demo'),
+        // Melodic and register. The figures follow from DEMO_SECTIONS above:
+        // verses at 0.34/0.35 against choruses at 0.36/0.37/0.41 leave a lift
+        // of about 0.03, which is the worked example of low register contrast.
+        verse_register: measured(0.345, 0.45, 'demo'),
+        chorus_register: measured(0.38, 0.45, 'demo'),
+        chorus_register_lift: measured(0.035, 0.45, 'demo'),
+        vocal_register_range: measured(0.39, 0.45, 'demo'),
+        peak_register_position: measured(0.678, 0.45, 'demo'),
+        melodic_contour_repetition: measured(97, 0.45, 'demo'),
+        rhythmic_contrast: measured(0.13, 0.72, 'demo'),
       },
     },
     energyCurve: { values: demoEnergyCurve(), stepSeconds: 1 },
-    vocalAnalysis: { occupancy: measured(0.64, 0.45, 'demo'), phrases: [], activity: [], activityStepSeconds: 1, register: { median: null, low: null, high: null, confidence: 0 } },
+    vocalAnalysis: {
+      occupancy: measured(0.64, 0.45, 'demo'),
+      phrases: [],
+      activity: [],
+      activityStepSeconds: 1,
+      register: { median: 0.38, low: 0.29, high: 0.68, confidence: 0.45 },
+    },
     providers: { features: source, structure: source, vocals: source },
   })
 
