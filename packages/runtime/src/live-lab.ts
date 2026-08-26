@@ -40,6 +40,15 @@ export interface LiveLabServiceDeps {
    */
   musicComposer?: MusicComposer | null
   /**
+   * Prices a generation using the operator's configured rate card.
+   *
+   * A function rather than the rate card itself, so this service never learns
+   * what anything costs: the platform prices its own music the same way for
+   * every other feature, and an operator who has configured no rate gets zero
+   * here exactly as they do everywhere else.
+   */
+  estimateSceneCostMicros?: ((tracks: number) => number) | null
+  /**
    * The platform's usage ledger, when this build has one.
    *
    * Structurally typed for the same reason the composer is: Live Lab must
@@ -196,6 +205,11 @@ export class LiveLabService {
       // synthesizer generates for free and does not belong in a purchase
       // ledger.
       if (result.usage && this.deps.usageLedger) {
+        // Priced by the platform's own rate card, so Live Lab counts toward an
+        // org's month-to-date spend like every other audio purchase. Recording
+        // the units alone left it at zero, which read as "free" to the budget
+        // layer rather than as "not yet priced".
+        const estimatedCostMicros = this.deps.estimateSceneCostMicros?.(result.options.length) ?? 0
         try {
           await this.deps.usageLedger.record({
             orgId: job.organizationId,
@@ -208,7 +222,7 @@ export class LiveLabService {
             unit: result.usage.unit,
             inputUnits: result.usage.inputUnits,
             outputUnits: result.usage.outputUnits,
-            estimatedCostMicros: 0,
+            estimatedCostMicros,
             finalCostMicros: result.costMicros,
             currency: 'USD',
             providerRequestId: result.usage.providerRequestId ?? null,

@@ -410,7 +410,7 @@ merging Live Lab from `main`).
 ## Street Banker Live Lab (audited 2026-08-25)
 
 Same vocabulary, same standard. Verification run at `dd2d95f`: `pnpm typecheck`
-**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **617 passed / 617** ·
+**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **618 passed / 618** ·
 `pnpm test:e2e` **46 passed / 46** (whole repo).
 
 Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in
@@ -454,7 +454,7 @@ claim, and this build has not made it.
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
 | AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
 | A real AI audio provider for Live Lab | **DEV-LABELED** | Live Lab now composes through the platform's music slot (`PlatformMusicProvider`), so a configured ElevenLabs key serves the scene builder with no further wiring — tested end to end against the platform *mock*, and **never run against a live music model** |
-| Live Lab spend in the platform ledger | **PARTIAL** | a platform generation now records what the provider measured into `audio_usage_ledger`, attributed to `live_lab` with the project and job; it previously left **no trace at all**, so the spend was unattributable and invisible to any later reconciliation. The local synthesizer records nothing, because it buys nothing. **What this does not do:** month spend sums `final_cost_micros` (falling back to the estimate), and both are zero on these rows, so Live Lab still contributes **nothing to budget decisions**. Making it do so needs the `final_cost` backfill already listed as NOT BUILT, or a pricing decision. Live Lab is also still not *gated* by the audio budget — `live_lab.max_ai_generations_per_month` bounds it instead, and whether an exhausted audio budget should refuse a scene is an open policy question |
+| Live Lab spend in the platform ledger | **REAL** | a platform generation records what the provider measured into `audio_usage_ledger`, attributed to `live_lab` with the project and job, and is priced through the operator's configured `AUDIO_RATE_CARD` — the same rate card and the same `estimateMicros('music')` the audio layer prices its own jobs with, so nothing here knows what anything costs. Live Lab therefore counts toward `monthSpendMicros`, the figure budgets read; it previously left no trace at all, then briefly recorded units at zero cost, which read as *free* rather than *not yet priced*. An unconfigured rate card yields zero, exactly as it does for every other feature, and the local synthesizer records nothing because it buys nothing. **Live Lab is still not *gated* by the audio budget** — `live_lab.max_ai_generations_per_month` bounds it, and whether an exhausted audio budget should refuse a scene is an open policy question |
 | Live Set Builder (suggestions + approval-gated apply) | **REAL** | approval gating, subset application, click routing, pad mapping and idempotent re-planning tested |
 | Stage Control handoff | **REAL** as an interface | export/import is versioned and tested; there is **no Stage Control system in this repo to talk to** |
 | Remix/release import | **REAL** | imports org project audio and cross-project Live Lab assets, org- and project-checked |
