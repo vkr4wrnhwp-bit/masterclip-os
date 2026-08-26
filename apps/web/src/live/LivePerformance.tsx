@@ -51,8 +51,16 @@ export function LivePerformance({ projectId }: { projectId: string }) {
   // Persist state + record analytics on every engine event.
   React.useEffect(() => {
     const unsubscribe = live.engine.on((event) => {
-      const record = (eventType: string, payload: Record<string, unknown>) =>
+      const record = (eventType: string, payload: Record<string, unknown>) => {
         eventsRef.current.push({ eventType, payload, localTimestamp: new Date().toISOString() })
+        // Capped here rather than only after a failed sync: syncAnalytics
+        // returns early while offline, so the cap in its catch never ran
+        // during exactly the long offline show it was written for. The oldest
+        // events go first — the end of a set is what anyone looks at.
+        if (eventsRef.current.length > EVENT_BUFFER_LIMIT) {
+          eventsRef.current.splice(0, eventsRef.current.length - EVENT_BUFFER_LIMIT)
+        }
+      }
       if (event.type === 'scene_launched') record('scene_launched', { sceneId: event.sceneId })
       if (event.type === 'pad_triggered') record('pad_triggered', { index: event.index, mode: event.mode })
       if (event.type === 'song_changed') record('song_started', { itemId: event.itemId })

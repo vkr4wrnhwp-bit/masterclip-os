@@ -418,13 +418,32 @@ export function loadStoredShowBundle(projectId: string): LiveProjectBundle | nul
  * picked up when there is a connection to pick it up from. The stored copy is
  * the floor, not the default.
  */
+/**
+ * How long the network gets before the stored show wins.
+ *
+ * A venue's wifi does not usually fail cleanly: a captive portal accepts the
+ * connection and then never answers. Only an instant failure reached the
+ * fallback below, so that case hung Performance Mode on a spinner with a
+ * verified show sitting on the device.
+ */
+const BUNDLE_NETWORK_TIMEOUT_MS = 4000
+
 export async function loadShowBundle(projectId: string): Promise<LiveProjectBundle> {
+  const stored = loadStoredShowBundle(projectId)
   try {
-    const fresh = await liveApi.project(projectId)
+    const fresh = await (stored
+      ? Promise.race([
+          liveApi.project(projectId),
+          new Promise<never>((_, reject) =>
+            window.setTimeout(() => reject(new Error('network timed out; using the packaged show')), BUNDLE_NETWORK_TIMEOUT_MS),
+          ),
+        ])
+      : // With nothing stored there is nothing to fall back to, so waiting is
+        // strictly better than failing early.
+        liveApi.project(projectId))
     storeShowBundle(projectId, fresh)
     return fresh
   } catch (err) {
-    const stored = loadStoredShowBundle(projectId)
     if (stored) return stored
     throw err
   }
