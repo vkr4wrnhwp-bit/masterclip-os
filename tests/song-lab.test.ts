@@ -9,6 +9,7 @@ import { loadConfig, silentLogger } from '@masterclip/shared'
 import { JOB_TYPES, QUEUES, QueueWorker } from '@masterclip/queue'
 import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { encodeWavPcm16, synthesize } from '@masterclip/ai-audio'
+import { REGISTER_CONFIDENCE_CEILING } from '@masterclip/song-analysis'
 import { FLAGSHIP_SONG_LAB_CAPABILITIES, PARTNER_SONG_LAB_CAPABILITIES } from '@masterclip/song-lab-domain'
 import { FLAGSHIP_CAPABILITIES } from '@masterclip/performance-project'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
@@ -579,6 +580,131 @@ describe('structure', () => {
     // The old result is still readable, which is what makes engine versions
     // comparable rather than silently superseded.
     expect(await runtime.songLab.repos.analyses.get(session.orgId, analysisId)).toBeTruthy()
+  })
+})
+
+describe('melodic and register analysis', () => {
+  it('persists a register band per section and serves it with the arrangement', async () => {
+    const session = await signup('register@example.com', 'Register Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const response = await call(session, 'GET', `/api/song-lab/projects/${projectId}/arrangement`)
+    expect(response.statusCode).toBe(200)
+    const body = response.json() as {
+      registerBands: Array<{ label: string; sectionType: string; median: number | null; low: number | null; high: number | null; contour: number[] }>
+      register: { verseRegister: number | null; chorusRegister: number | null; chorusRegisterLift: number | null; melodicContourRepetition: number | null }
+      consecutive: Array<{ rhythmicDelta: number; registerDelta: number | null; contourSimilarity: number | null }>
+    }
+
+    expect(body.registerBands.length).toBeGreaterThan(1)
+    const chorus = body.registerBands.find((band) => band.sectionType === 'chorus')!
+    expect(chorus.median).not.toBeNull()
+    expect(chorus.low!).toBeLessThanOrEqual(chorus.median!)
+    expect(chorus.high!).toBeGreaterThanOrEqual(chorus.median!)
+    expect(body.register.chorusRegisterLift).not.toBeNull()
+    expect(body.consecutive.some((entry) => entry.contourSimilarity !== null)).toBe(true)
+  })
+
+  it('reports no register for a section with no vocal, rather than a zero', async () => {
+    const session = await signup('noregister@example.com', 'No Register Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const body = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/arrangement`)).json() as {
+      registerBands: Array<{ sectionType: string; median: number | null; confidence: number }>
+    }
+    const intro = body.registerBands.find((band) => band.sectionType === 'intro')!
+    expect(intro.median).toBeNull()
+    // The distinction the whole product rests on: unmeasured is null, not zero.
+    expect(intro.median).not.toBe(0)
+  })
+
+  it('puts the melodic metrics in the feature vector with their own method', async () => {
+    const session = await signup('vector@example.com', 'Vector Org')
+    await grantSongLab(session.orgId)
+    const { projectId, analysisId } = await seedProject(session)
+
+    const analysis = await runtime.songLab.repos.analyses.get(session.orgId, analysisId)
+    const metrics = analysis.featureVector!.metrics
+    expect(metrics.chorus_register_lift).toBeDefined()
+    expect(metrics.chorus_register_lift!.analysisMethod).toBe('verse_chorus_register_delta')
+    expect(metrics.melodic_contour_repetition).toBeDefined()
+    expect(metrics.rhythmic_contrast).toBeDefined()
+
+    // And Producer View surfaces them, with the method visible.
+    const producer = await call(session, 'GET', `/api/song-lab/projects/${projectId}/producer`)
+    const rows = (producer.json() as { features: Array<{ key: string; method: string }> }).features
+    expect(rows.some((row) => row.key === 'chorus_register_lift')).toBe(true)
+    expect(rows.some((row) => row.key === 'vocal_register_range')).toBe(true)
+  })
+
+  it('carries melodic contrast into the hook architecture profile', async () => {
+    const session = await signup('hookmelodic@example.com', 'Hook Melodic Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session)
+
+    const body = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/hook`)).json() as {
+      profile: { rows: Array<{ metric: string; finding: string }> }
+    }
+    const metrics = body.profile.rows.map((row) => row.metric)
+    expect(metrics).toContain('Melodic contrast')
+    expect(metrics).toContain('Rhythmic contrast')
+    // Present with a real figure rather than as an empty row.
+    expect(body.profile.rows.find((row) => row.metric === 'Melodic contrast')!.finding).not.toBe('Not enough information')
+  })
+
+  it('recomputes the register lift from a corrected structure', async () => {
+    const session = await signup('registercorrect@example.com', 'Register Correct Org')
+    await grantSongLab(session.orgId)
+    const { projectId, analysisId } = await seedProject(session)
+
+    const before = (await runtime.songLab.repos.analyses.get(session.orgId, analysisId)).featureVector!.metrics.chorus_register_lift!
+    const structure = (await call(session, 'GET', `/api/song-lab/projects/${projectId}/structure`)).json() as {
+      sections: Array<{ id: string; sectionType: string; label: string }>
+    }
+    // Calling the bridge a chorus pulls the song's highest register into the
+    // chorus average, so the lift has to move with the user's structure rather
+    // than being carried over from the detection.
+    const bridge = structure.sections.find((section) => section.sectionType === 'bridge')!
+    await call(session, 'PATCH', `/api/song-lab/projects/${projectId}/structure`, {
+      corrections: [{ id: bridge.id, sectionType: 'chorus', label: 'Chorus 3' }],
+    })
+
+    const after = (await runtime.songLab.repos.analyses.get(session.orgId, analysisId)).featureVector!.metrics.chorus_register_lift!
+    expect(after.value).toBeGreaterThan(before.value!)
+    // A human-confirmed structure is not a guess, and the provenance says so.
+    expect(after.provider).toBe('human-confirmed')
+  })
+
+  it('raises the register finding on the demo record, in the vocabulary the product uses', async () => {
+    const session = await signup('registerdemo@example.com', 'Register Demo Org')
+    const { seedSongLabDemo } = await import('@masterclip/song-lab-engine')
+    const demo = await seedSongLabDemo(runtime.songLab, {
+      orgId: session.orgId,
+      userId: session.userId,
+      entitlements: runtime.entitlements,
+    })
+
+    const observations = await runtime.songLab.repos.observations.listForProject(session.orgId, demo.projectId!)
+    const melodic = observations.filter((observation) => observation.observationType === 'melodic_contrast')
+    expect(melodic.length).toBeGreaterThan(0)
+
+    // The register finding specifically — identified by the metric behind it
+    // rather than by position, since the melodic category also carries the
+    // cohort-relative contour comparison.
+    const register = melodic.find((observation) => observation.sourceMetricKeys.includes('chorus_register_lift'))
+    expect(register).toBeDefined()
+    expect(register!.description.toLowerCase()).toContain('register')
+    // The recommendation is a note for the writer; nothing here renders audio.
+    expect(register!.recommendations!.every((recommendation) => !recommendation.experimentSupported)).toBe(true)
+
+    // Never a verdict, and never a claim of transcribed pitch — across every
+    // melodic observation the demo produces, not just the register one.
+    const text = melodic.map((observation) => `${observation.title} ${observation.description}`).join(' ').toLowerCase()
+    for (const forbidden of ['wrong', 'too low', 'will perform better', 'g5', 'bad ']) {
+      expect(text).not.toContain(forbidden)
+    }
   })
 })
 
@@ -1535,6 +1661,114 @@ describe('vocal stem separation', () => {
     expect((await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)).length).toBe(analysesBefore)
     const asset = await runtime.audio.repos.assets.get(session.orgId, version.sourceAssetId!)
     expect(await runtime.songLab.repos.vocalStems.readyForVersion(session.orgId, versionId, asset.checksum)).not.toBeNull()
+  })
+
+  /**
+   * The register half of the same claim.
+   *
+   * Section *boundaries* have to come from the full mix — an instrumental break
+   * is a section change and a vocal stem is silent there — but the register of
+   * those sections is better measured from the stem. These pin that the two
+   * stay on their own signals.
+   */
+  it('re-measures each section register against the stem, and only then trusts it further', async () => {
+    const session = await bootstrapFlagship()
+    const { LocalVocalAnalysisProvider } = await import('@masterclip/song-analysis')
+    runtime.songLab.providers.vocals = new LocalVocalAnalysisProvider()
+    const actor = { userId: session.userId, orgId: session.orgId, orgRole: 'owner' as const }
+
+    const { projectId, versionId } = await seedWithVersion(session)
+    const before = await runtime.songLab.projects.reanalyze(actor, projectId)
+    await runtime.songLab.analysis.run(before, session.orgId)
+    const mixFeatures = await runtime.songLab.repos.sections.features(session.orgId, before)
+    const mixBest = Math.max(...[...mixFeatures.values()].map((feature) => feature.register.confidence))
+
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    const after = await runtime.songLab.projects.reanalyze(actor, projectId)
+    await runtime.songLab.analysis.run(after, session.orgId)
+    const stemFeatures = await runtime.songLab.repos.sections.features(session.orgId, after)
+    const measured = [...stemFeatures.values()].filter((feature) => feature.register.median !== null)
+
+    expect(measured.length).toBeGreaterThan(0)
+    const stemBest = Math.max(...measured.map((feature) => feature.register.confidence))
+    expect(stemBest).toBeGreaterThan(mixBest)
+    expect(stemBest).toBeGreaterThan(REGISTER_CONFIDENCE_CEILING.fullMix)
+    // Never past the ceiling: centroid is still not pitch on a stem.
+    expect(stemBest).toBeLessThanOrEqual(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+
+    // The earlier analysis keeps its mix-based bands, so the two remain
+    // comparable rather than one quietly overwriting the other.
+    const originalFeatures = await runtime.songLab.repos.sections.features(session.orgId, before)
+    expect(Math.max(...[...originalFeatures.values()].map((f) => f.register.confidence))).toBe(mixBest)
+  })
+
+  /** The overlay itself, without the database in the way. */
+  describe('stem register overlay', () => {
+    const sections = [
+      { sectionType: 'verse' as const, label: 'Verse 1', startMs: 0, endMs: 10_000, confidence: 0.7, orderIndex: 0 },
+      { sectionType: 'instrumental' as const, label: 'Instrumental', startMs: 10_000, endMs: 20_000, confidence: 0.7, orderIndex: 1 },
+    ]
+    const mixFeature = (median: number) => ({
+      energy: 0.5,
+      vocalOccupancy: 0.8,
+      arrangementDensity: 0.5,
+      spectralDensity: 0.5,
+      transientDensity: 0.5,
+      lowFrequencyDensity: 0.4,
+      stereoWidth: 0.2,
+      rhythmicDensity: 0.5,
+      similarityVector: [0.5],
+      register: { median, low: median - 0.05, high: median + 0.05, confidence: 0.45 },
+      melodicContour: [0.1, 0.2, 0.3, 0.4, 0.3, 0.2, 0.1, 0],
+    })
+    const structure = {
+      sections,
+      features: [mixFeature(0.3), mixFeature(0.4)],
+      confidence: 0.7,
+      provider: 'test',
+      modelVersion: '1',
+      method: 'test',
+    }
+    // Voiced across the first section, silent across the second — an
+    // instrumental, which is exactly where a separated vocal has nothing.
+    const curve = Array.from({ length: 200 }, (_, i) => (i < 100 ? 0.5 + Math.sin(i / 6) * 0.15 : null))
+    const vocals = (basis: 'full_mix' | 'isolated_stem', values: Array<number | null> = curve) => ({
+      basis,
+      occupancy: { value: 0.7, confidence: 0.85, analysisMethod: 'm', provider: 'p', modelVersion: '1' },
+      registerCurve: values,
+      registerCurveStepSeconds: 0.1,
+    })
+
+    it('leaves the mix path exactly as the detector measured it', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      // Same numbers, not merely equal ones: re-deriving a mix register here
+      // would be the same measurement with a fresh chance to disagree.
+      expect(withStemRegisters(structure as never, vocals('full_mix') as never)).toBe(structure)
+      expect(withStemRegisters(structure as never, vocals('isolated_stem', []) as never)).toBe(structure)
+    })
+
+    it('re-measures a voiced section from the stem and raises its confidence', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      const result = withStemRegisters(structure as never, vocals('isolated_stem') as never)
+      const verse = result.features[0]!
+
+      expect(verse.register.median).not.toBe(0.3)
+      expect(verse.register.confidence).toBe(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+      expect(result.method).toContain('isolated_stem_register')
+    })
+
+    it('keeps the mix band for a section the stem has nothing in', async () => {
+      const { withStemRegisters } = await import('@masterclip/song-lab-engine')
+      const result = withStemRegisters(structure as never, vocals('isolated_stem') as never)
+
+      // Separation can drop a passage the proxy still caught. Losing a band we
+      // already had would be a downgrade wearing an upgrade's clothes.
+      expect(result.features[1]!.register.median).toBe(0.4)
+      expect(result.features[1]!.register.confidence).toBe(0.45)
+    })
   })
 
   it('records unsupported separately from failed when no stem is a vocal', async () => {

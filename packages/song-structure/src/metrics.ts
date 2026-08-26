@@ -1,4 +1,13 @@
-import { HOOK_SECTION_TYPES, cosineSimilarity, mean, standardDeviation, type DetectedSection, type SectionFeatures, type SectionType } from '@masterclip/song-analysis'
+import {
+  HOOK_SECTION_TYPES,
+  contourSimilarity,
+  cosineSimilarity,
+  mean,
+  standardDeviation,
+  type DetectedSection,
+  type SectionFeatures,
+  type SectionType,
+} from '@masterclip/song-analysis'
 
 /**
  * Structural metrics.
@@ -133,6 +142,11 @@ export interface SectionContrast {
   lowFrequencyDelta: number
   transientDelta: number
   arrangementDelta: number
+  rhythmicDelta: number
+  /** Change in vocal register band. Null when either section has no measured register. */
+  registerDelta: number | null
+  /** 0–1 melodic-shape agreement. Null when either section has no comparable contour. */
+  contourSimilarity: number | null
 }
 
 /** Consecutive-section contrast — the "does anything change here?" measure. */
@@ -171,6 +185,12 @@ export function contrastBetween(
     lowFrequencyDelta: round(toFeatures.lowFrequencyDensity - fromFeatures.lowFrequencyDensity),
     transientDelta: round(toFeatures.transientDensity - fromFeatures.transientDensity),
     arrangementDelta: round(toFeatures.arrangementDensity - fromFeatures.arrangementDensity),
+    rhythmicDelta: round(toFeatures.rhythmicDensity - fromFeatures.rhythmicDensity),
+    registerDelta:
+      fromFeatures.register.median === null || toFeatures.register.median === null
+        ? null
+        : round(toFeatures.register.median - fromFeatures.register.median),
+    contourSimilarity: contourSimilarity(fromFeatures.melodicContour, toFeatures.melodicContour),
   }
 }
 

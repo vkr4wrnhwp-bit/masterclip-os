@@ -8,9 +8,15 @@ import {
   energyCurve,
   estimateKey,
   estimateTempo,
+  contourSimilarity,
   fft,
   isWav,
+  melodicContour,
+  MELODIC_CONTOUR_POINTS,
   peakDbfs,
+  REGISTER_CONFIDENCE_CEILING,
+  registerProfile,
+  registerProfileFromCurve,
   resample,
   toMono,
 } from '../src/index.js'
@@ -51,6 +57,17 @@ function encodeWav(channels: Float32Array[], sampleRate = SAMPLE_RATE): Uint8Arr
     }
   }
   return new Uint8Array(buffer)
+}
+
+/** Joins segments end to end, for building a signal that moves. */
+function concat(parts: Float32Array[]): Float32Array {
+  const out = new Float32Array(parts.reduce((total, part) => total + part.length, 0))
+  let offset = 0
+  for (const part of parts) {
+    out.set(part, offset)
+    offset += part.length
+  }
+  return out
 }
 
 function tone(hz: number, seconds: number, amplitude = 0.5): Float32Array {
@@ -283,5 +300,106 @@ describe('stereo width', () => {
     const width = analyzeStereoWidth(analyzeFrames(toMono(audio), audio), audio)
     expect(width.width).not.toBeNull()
     expect(width.width!).toBeGreaterThan(0.5)
+  })
+})
+
+describe('melodic contour', () => {
+  it('traces a rising melody as a rising shape', () => {
+    // Four ascending tones. Whatever the absolute centroid values are, the
+    // shape they trace has to come out monotonically increasing.
+    const audio = decodeWav(encodeWav([concat([tone(220, 1.2), tone(330, 1.2), tone(440, 1.2), tone(660, 1.2)])]))
+    const frames = analyzeFrames(toMono(audio), audio)
+    const contour = melodicContour(detectVocalActivity(frames), frames)
+
+    expect(contour.length).toBe(MELODIC_CONTOUR_POINTS)
+    expect(contour[contour.length - 1]!).toBeGreaterThan(contour[0]!)
+  })
+
+  it('is normalized to shape, so the same melody a register higher matches itself', () => {
+    const low = decodeWav(encodeWav([concat([tone(220, 1.2), tone(330, 1.2), tone(262, 1.2), tone(392, 1.2)])]))
+    const high = decodeWav(encodeWav([concat([tone(440, 1.2), tone(660, 1.2), tone(523, 1.2), tone(784, 1.2)])]))
+    const lowFrames = analyzeFrames(toMono(low), low)
+    const highFrames = analyzeFrames(toMono(high), high)
+
+    const similarity = contourSimilarity(
+      melodicContour(detectVocalActivity(lowFrames), lowFrames),
+      melodicContour(detectVocalActivity(highFrames), highFrames),
+    )
+    expect(similarity).not.toBeNull()
+    expect(similarity!).toBeGreaterThan(0.75)
+  })
+
+  it('returns no contour rather than a flat one when there is too little voiced content', () => {
+    const audio = decodeWav(encodeWav([tone(440, 0.2)]))
+    const frames = analyzeFrames(toMono(audio), audio)
+    expect(melodicContour(detectVocalActivity(frames), frames)).toEqual([])
+  })
+
+  it('reports similarity as unmeasured, not zero, when either contour is missing', () => {
+    expect(contourSimilarity([], [0.1, 0.2])).toBeNull()
+    expect(contourSimilarity([0.1, 0.2], [])).toBeNull()
+  })
+})
+
+describe('vocal register', () => {
+  it('places a higher-sung window in a higher register band', () => {
+    const audio = decodeWav(encodeWav([concat([tone(250, 3), tone(900, 3)])]))
+    const frames = analyzeFrames(toMono(audio), audio)
+    const activity = detectVocalActivity(frames)
+    const half = Math.floor(frames.count / 2)
+
+    const lower = registerProfile(activity, frames, 0, half)
+    const upper = registerProfile(activity, frames, half, frames.count)
+    expect(lower.medianRegister).not.toBeNull()
+    expect(upper.medianRegister).not.toBeNull()
+    expect(upper.medianRegister!).toBeGreaterThan(lower.medianRegister!)
+  })
+
+  it('caps its own confidence, because a register from a full mix is inferred', () => {
+    const audio = decodeWav(encodeWav([concat([tone(250, 2), tone(500, 2), tone(350, 2), tone(700, 2)])]))
+    const frames = analyzeFrames(toMono(audio), audio)
+    const profile = registerProfile(detectVocalActivity(frames), frames)
+    // A real band, so the ceiling is doing work rather than passing vacuously.
+    expect(profile.medianRegister).not.toBeNull()
+    expect(profile.confidence).toBeLessThanOrEqual(REGISTER_CONFIDENCE_CEILING.fullMix)
+  })
+
+  it('trusts a register measured from a separated vocal further than one from the mix', () => {
+    // The uplift is for the doubt separation removes — whether those frames are
+    // the voice — and only that one.
+    //
+    // A moving signal, because the detector scores centroid motion: a dead
+    // steady tone reads as machinery and yields no voiced frames to measure.
+    const audio = decodeWav(encodeWav([concat([tone(250, 2), tone(500, 2), tone(350, 2), tone(700, 2)])]))
+    const frames = analyzeFrames(toMono(audio), audio)
+
+    const fromMix = registerProfile(detectVocalActivity(frames), frames)
+    const fromStem = registerProfile(detectVocalActivity(frames, { isolatedVocal: true }), frames, 0, frames.count, {
+      isolatedVocal: true,
+    })
+
+    expect(fromStem.confidence).toBeGreaterThan(fromMix.confidence)
+    expect(fromStem.confidence).toBe(REGISTER_CONFIDENCE_CEILING.isolatedStem)
+    // Both describe the same signal, so the band itself must not move.
+    expect(fromStem.medianRegister).toBe(fromMix.medianRegister)
+    // And the method says which signal it read, so the number stays readable.
+    expect(fromStem.method).toBe('isolated_stem_centroid_percentiles')
+  })
+
+  it('still will not outrank the detection behind it, stem or not', () => {
+    // Centroid is not pitch, and separation does not make it pitch. A stem
+    // ceiling is a ceiling, never a floor applied to weak detection.
+    const curve = Array.from({ length: 40 }, (_, i) => 0.3 + i * 0.001)
+    const weak = registerProfileFromCurve(curve, 0, curve.length, { isolatedVocal: true, detectionConfidence: 0.2 })
+    expect(weak.confidence).toBe(0.2)
+    expect(REGISTER_CONFIDENCE_CEILING.isolatedStem).toBeLessThan(0.85)
+  })
+
+  it('reports no register rather than a guessed one for a window with no voiced frames', () => {
+    const audio = decodeWav(encodeWav([tone(400, 4)]))
+    const frames = analyzeFrames(toMono(audio), audio)
+    const profile = registerProfile(detectVocalActivity(frames), frames, 0, 3)
+    expect(profile.medianRegister).toBeNull()
+    expect(profile.confidence).toBe(0)
   })
 })

@@ -4,6 +4,7 @@ import {
   LOCAL_ANALYSIS_PROVIDER,
   LOCAL_ANALYSIS_VERSION,
   detectVocalActivity,
+  emptyRegister,
   estimateTempo,
   prepareAudio,
   seedFrom,
@@ -69,17 +70,22 @@ export function buildDeterministicStructure(
   provider: string,
   modelVersion: string,
 ): StructureAnalysisResult {
-  const plan: Array<{ type: SectionType; weight: number; energy: number; vocal: number }> = [
-    { type: 'intro', weight: 0.07, energy: 0.32, vocal: 0 },
-    { type: 'verse', weight: 0.14, energy: 0.51, vocal: 0.82 },
-    { type: 'pre_chorus', weight: 0.07, energy: 0.68, vocal: 0.86 },
-    { type: 'chorus', weight: 0.13, energy: 0.83, vocal: 0.88 },
-    { type: 'verse', weight: 0.13, energy: 0.62, vocal: 0.84 },
-    { type: 'pre_chorus', weight: 0.06, energy: 0.71, vocal: 0.85 },
-    { type: 'chorus', weight: 0.13, energy: 0.84, vocal: 0.88 },
-    { type: 'bridge', weight: 0.1, energy: 0.66, vocal: 0.6 },
-    { type: 'final_chorus', weight: 0.12, energy: 0.89, vocal: 0.9 },
-    { type: 'outro', weight: 0.05, energy: 0.35, vocal: 0.1 },
+  // `register` is the placeholder register band and `contour` its melodic
+  // shape. Both carry confidence 0 like everything else this provider emits —
+  // they exist so the register panel, the contrast table and the experiments
+  // that read them are all reachable on a deployment with no decoder, not
+  // because anything listened to the record.
+  const plan: Array<{ type: SectionType; weight: number; energy: number; vocal: number; register: number | null; contour: number[] }> = [
+    { type: 'intro', weight: 0.07, energy: 0.32, vocal: 0, register: null, contour: [] },
+    { type: 'verse', weight: 0.14, energy: 0.51, vocal: 0.82, register: 0.34, contour: [-0.6, -0.2, 0.3, 0.8, 0.4, -0.1, -0.5, -0.9] },
+    { type: 'pre_chorus', weight: 0.07, energy: 0.68, vocal: 0.86, register: 0.41, contour: [-0.4, 0.1, 0.5, 0.9, 1, 0.6, 0.2, -0.2] },
+    { type: 'chorus', weight: 0.13, energy: 0.83, vocal: 0.88, register: 0.38, contour: [0.9, 0.5, -0.1, -0.6, 0.7, 0.3, -0.3, -0.8] },
+    { type: 'verse', weight: 0.13, energy: 0.62, vocal: 0.84, register: 0.35, contour: [-0.55, -0.15, 0.35, 0.75, 0.45, -0.05, -0.45, -0.85] },
+    { type: 'pre_chorus', weight: 0.06, energy: 0.71, vocal: 0.85, register: 0.42, contour: [-0.35, 0.15, 0.55, 0.95, 1, 0.55, 0.15, -0.25] },
+    { type: 'chorus', weight: 0.13, energy: 0.84, vocal: 0.88, register: 0.39, contour: [0.88, 0.52, -0.08, -0.58, 0.72, 0.32, -0.28, -0.78] },
+    { type: 'bridge', weight: 0.1, energy: 0.66, vocal: 0.6, register: 0.52, contour: [0.2, 0.6, 1, 0.7, 0.1, -0.4, -0.8, -1] },
+    { type: 'final_chorus', weight: 0.12, energy: 0.89, vocal: 0.9, register: 0.44, contour: [0.95, 0.6, 0, -0.5, 0.8, 0.4, -0.2, -0.7] },
+    { type: 'outro', weight: 0.05, energy: 0.35, vocal: 0.1, register: null, contour: [] },
   ]
 
   const sections: DetectedSection[] = []
@@ -120,6 +126,11 @@ export function buildDeterministicStructure(
       similarityVector: [energy, entry.energy * 0.3, entry.energy * 0.4, entry.energy * 0.25, 0.45, entry.vocal, 0.2].map(
         (value) => Math.round(value * 1000) / 1000,
       ),
+      register:
+        entry.register === null
+          ? emptyRegister()
+          : { median: clamp(entry.register), low: clamp(entry.register - 0.09), high: clamp(entry.register + 0.11), confidence: 0 },
+      melodicContour: entry.contour,
     })
   })
 

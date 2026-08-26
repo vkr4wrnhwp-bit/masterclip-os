@@ -1,4 +1,4 @@
-import type { SectionType } from '@masterclip/song-analysis'
+import type { SectionRegister, SectionType } from '@masterclip/song-analysis'
 import type { ExperimentEdit, ExperimentType } from '@masterclip/audio-experiments'
 import type { CohortFilterDefinition, CohortSourceDefinition, CohortType, ObservationSeverity, ObservationStatus, ObservationType, RecommendationType } from '@masterclip/music-benchmarking'
 import type { SongFeatureVector } from '@masterclip/song-feature-vectors'
@@ -163,6 +163,10 @@ export interface SongSectionFeatureRecord {
   stereoWidth: number | null
   rhythmicDensity: number
   similarityVector: number[]
+  /** Vocal register band within the section. Null throughout when unmeasured. */
+  register: SectionRegister
+  /** Normalized melodic shape; empty when the section had too little voiced content. */
+  melodicContour: number[]
 }
 
 export interface SongLyricLineRecord {

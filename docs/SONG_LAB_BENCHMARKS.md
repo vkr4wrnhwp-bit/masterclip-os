@@ -53,6 +53,23 @@ Classification labels use the metric's own direction words:
 `Later Than Cohort` · `Slower Than Cohort` · `Higher Density` · `Similar To Cohort`
 · `Not Enough Information` — never a generic "high" or "low" that implies a target.
 
+## The metric registry
+
+A quantity is comparable only if it is in the registry, and it is in the registry
+only if it can be measured from a recording **and** compared against a cohort.
+That constraint is what keeps benchmarking honest — there is no way to introduce a
+percentile for something the analyser cannot measure.
+
+Groups: `global` · `timing` · `structure` · `hook` · `energy` · `arrangement` ·
+`vocal` · `melodic` · `lyric`. Each definition carries a unit, a description, and
+the two **direction words** used to phrase a difference in either direction — never
+"better" and "worse".
+
+Metrics marked `requires: 'vocals' | 'lyrics' | 'stereo'` are skipped rather than
+zeroed when their input is absent: a mono file gets no stereo-width percentile, an
+instrumental gets no register percentile, and a song with no attached lyric gets no
+title-repetition percentile.
+
 ## Sample size
 
 | Threshold | Behaviour |

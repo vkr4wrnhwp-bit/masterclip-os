@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SqliteDb, createTestDb, inClause, insertRow, migrationStatus, parseJsonColumn, runMigrations, toBool, toPositional, updateRow, upsertRow } from '../src/index.js'
+import { MIGRATIONS, SqliteDb, createTestDb, inClause, insertRow, migrationStatus, parseJsonColumn, runMigrations, toBool, toPositional, updateRow, upsertRow } from '../src/index.js'
 
 describe('placeholder rewriting', () => {
   it('numbers placeholders for PostgreSQL', () => {
@@ -27,6 +27,29 @@ describe('migrations', () => {
 
     const status = await migrationStatus(db)
     expect(status.every((m) => m.applied)).toBe(true)
+    await db.close()
+  })
+
+  it('adds a later migration to a database that already ran the earlier ones', async () => {
+    // The upgrade path, not the fresh-install one: a deployment that stopped at
+    // an earlier migration must pick up every one after it, including the
+    // ALTER TABLE additions, without the schema being rebuilt.
+    const db = new SqliteDb(':memory:')
+    const cutoff = MIGRATIONS.findIndex((migration) => migration.id === '0007_song_lab_register')
+    expect(cutoff).toBeGreaterThan(0)
+
+    await runMigrations(db, MIGRATIONS.slice(0, cutoff))
+    const before = await db.query<{ name: string }>('PRAGMA table_info(song_section_features)')
+    expect(before.map((row) => row.name)).not.toContain('register_median')
+
+    const upgrade = await runMigrations(db)
+    expect(upgrade.applied).toEqual(['0007_song_lab_register'])
+
+    const after = await db.query<{ name: string }>('PRAGMA table_info(song_section_features)')
+    const columns = after.map((row) => row.name)
+    for (const column of ['register_median', 'register_low', 'register_high', 'register_confidence', 'melodic_contour']) {
+      expect(columns).toContain(column)
+    }
     await db.close()
   })
 
