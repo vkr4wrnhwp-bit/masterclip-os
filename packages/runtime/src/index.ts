@@ -17,7 +17,7 @@ import type { MusicComposer } from '@masterclip/ai-audio'
 import type { AudioProviderBase } from '@masterclip/audio-core'
 import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
-import { createAudioLayer, type AudioLayer } from '@masterclip/audio-engine'
+import { createAudioLayer, estimateMicros, parseRateCard, type AudioLayer } from '@masterclip/audio-engine'
 import { createSongLabLayer, type SongLabLayer } from '@masterclip/song-lab-engine'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
 
@@ -170,6 +170,10 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
       // so an org's month-to-date figure is the whole truth rather than
       // everything except Live Lab.
       usageLedger: audioLayer.repos.usage,
+      // The platform already knows what music costs — it prices its own the
+      // same way. Live Lab asks rather than inventing a number, and an
+      // unconfigured rate card yields zero here as it does everywhere else.
+      estimateSceneCostMicros: (tracks) => estimateMicros(parseRateCard(config), 'music', { tracks }),
     }),
     async close() {
       await db.close()

@@ -95,6 +95,28 @@ export function navigate(path: string): void {
  * read as a signed-out user. Identity only — no token, no secret; the session
  * cookie remains the only thing that authorizes anything.
  */
+const LAST_PROJECT = 'masterclip.lastProject'
+
+/**
+ * Guarded like every other storage access here: private mode throws on access,
+ * and a convenience for reopening the last project must never blank the app.
+ */
+function rememberProject(projectId: string): void {
+  try {
+    window.localStorage.setItem(LAST_PROJECT, projectId)
+  } catch {
+    // Nothing is lost but the shortcut.
+  }
+}
+
+function rememberedProject(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_PROJECT)
+  } catch {
+    return null
+  }
+}
+
 const REMEMBERED_USER = 'masterclip.user'
 
 function rememberUser(user: User | null): void {
@@ -172,8 +194,8 @@ export function App() {
       />
     )
 
-  const projectId = route.params.projectId ?? localStorage.getItem('masterclip.lastProject') ?? ''
-  if (route.params.projectId) localStorage.setItem('masterclip.lastProject', route.params.projectId)
+  const projectId = route.params.projectId ?? rememberedProject() ?? ''
+  if (route.params.projectId) rememberProject(route.params.projectId)
 
   const mode = health.data?.mode ?? 'sandbox'
 

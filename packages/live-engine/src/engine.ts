@@ -254,6 +254,45 @@ export class LiveAudioEngine {
     this.emit({ type: 'song_changed', itemId })
   }
 
+  /**
+   * Put the set at a song without playing it.
+   *
+   * Crash recovery needs the position back but must not make a sound: the
+   * snapshot records where the performer was, and restoring that by calling
+   * startSong would begin playback on its own — the one thing recovery is not
+   * allowed to do. Without this the engine still sat at the first song after a
+   * restore, so the next NEXT SONG jumped to the second rather than continuing
+   * the set.
+   *
+   * Loads the song's stems so the deck shows the right channels, and leaves
+   * every gain and mute as restored. No handles, no clock, no sound.
+   */
+  selectSong(itemId: string): boolean {
+    const project = this.requireProject()
+    const item = project.items.find((i) => i.id === itemId)
+    if (!item) return false
+
+    this.currentItemId = itemId
+    this.bpm = item.bpm ?? project.masterTempo
+    const stems = project.stems.filter((s) => s.liveSetItemId === itemId)
+    this.stems.load(
+      stems.map((s) => {
+        const restored = this.restoredStemStates.get(s.id)
+        return {
+          id: s.id,
+          stemType: s.stemType,
+          label: s.label || s.stemType,
+          gain: restored?.gain ?? s.gain,
+          pan: restored?.pan ?? s.pan,
+          muted: restored?.muted ?? s.muted,
+          solo: restored?.solo ?? s.solo,
+        }
+      }),
+    )
+    this.emit({ type: 'song_changed', itemId })
+    return true
+  }
+
   nextSong(): void {
     this.moveSong(1)
   }

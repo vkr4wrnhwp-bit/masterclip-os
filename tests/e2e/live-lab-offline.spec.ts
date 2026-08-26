@@ -206,13 +206,20 @@ test('a deploy does not leave the previous bundle cached forever', async () => {
   await page.goto('/')
   await page.waitForLoadState('load')
 
-  const paths = await page.evaluate(async () => {
-    const names = await caches.keys()
-    const shell = names.find((name) => name.startsWith('masterclip-shell'))
-    if (!shell) return []
-    const cache = await caches.open(shell)
-    return (await cache.keys()).map((request) => new URL(request.url).pathname)
-  })
+  // Polled, not asserted once: the reconcile deliberately runs behind the
+  // response via waitUntil, so the document arrives before the cache settles.
+  // A single read here would pass on a fast machine and flake on a slow one.
+  const readShellPaths = async (): Promise<string[]> =>
+    page.evaluate(async () => {
+      const names = await caches.keys()
+      const shell = names.find((name) => name.startsWith('masterclip-shell'))
+      if (!shell) return []
+      const cache = await caches.open(shell)
+      return (await cache.keys()).map((request) => new URL(request.url).pathname)
+    })
+
+  await expect.poll(readShellPaths, { timeout: 15_000 }).not.toContain(staleKey)
+  const paths = await readShellPaths()
 
   // The old bundle is gone; the current one is still there. This origin's
   // storage is shared with the show audio, so shell growth is not free.

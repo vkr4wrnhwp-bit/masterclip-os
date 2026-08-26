@@ -377,6 +377,49 @@ describe('crash recovery', () => {
     engine.clearRestoredStemStates()
   })
 
+  it('selectSong puts the set where the performer was, in silence', () => {
+    const p = project({
+      items: [item('song1'), item('song2', { sortOrder: 1, title: 'SONG TWO' })],
+      stems: [stem('sA', 'song1', 'stemA'), stem('sB', 'song2', 'stemB')],
+    })
+    engine.loadProject(p)
+
+    // A fresh engine after a crash: nothing playing, sitting at no song.
+    expect(engine.isPlaying).toBe(false)
+    expect(engine.selectSong('song2')).toBe(true)
+
+    // Position restored...
+    expect(engine.currentItem?.id).toBe('song2')
+    // ...and that song's stems are on the deck, so the mixer shows the right
+    // channels rather than the previous song's.
+    expect(engine.stems.get('sB')).toBeDefined()
+    // ...but nothing is playing. Sound after a crash must be a deliberate act.
+    expect(engine.isPlaying).toBe(false)
+    expect(backend.plays).toHaveLength(0)
+  })
+
+  it('selectSong refuses a song that is not in the set rather than throwing', () => {
+    engine.loadProject(project({}))
+    // A snapshot can outlive the set it was taken from — an edited setlist
+    // must not make recovery explode.
+    expect(engine.selectSong('song-that-was-deleted')).toBe(false)
+    expect(engine.isPlaying).toBe(false)
+  })
+
+  it('continues the set from the restored song rather than the first', () => {
+    const p = project({
+      items: [item('song1'), item('song2', { sortOrder: 1, title: 'SONG TWO' }), item('song3', { sortOrder: 2, title: 'SONG THREE' })],
+      stems: [stem('sA', 'song1', 'stemA'), stem('sB', 'song2', 'stemB')],
+    })
+    engine.loadProject(p)
+    engine.selectSong('song2')
+
+    // The reason positional restore matters: NEXT SONG used to jump to song 2
+    // because the engine still believed it was on song 1.
+    engine.nextSong()
+    expect(engine.currentItem?.id).toBe('song3')
+  })
+
   it('persists and restores a snapshot without starting audio', async () => {
     const store = new MemorySnapshotStore()
     const snapshot = PerformanceSnapshot.parse({

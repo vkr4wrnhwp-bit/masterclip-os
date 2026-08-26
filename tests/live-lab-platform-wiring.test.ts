@@ -29,6 +29,9 @@ beforeEach(async () => {
       STORAGE_LOCAL_ROOT: storageRoot,
       SESSION_SECRET: 'platform-test-session',
       ASSET_SIGNING_SECRET: 'platform-test-asset',
+      // The operator's configured rates. Live Lab prices through these rather
+      // than knowing anything about money itself.
+      AUDIO_RATE_CARD: JSON.stringify({ music_per_track_usd: 0.25 }),
     },
     true,
   )
@@ -276,5 +279,52 @@ describe('platform spend is visible to the platform', () => {
 
     // Nothing was bought, so nothing is owed and nothing is recorded.
     expect(await runtime.audio.repos.usage.list(org.id)).toHaveLength(0)
+  })
+})
+
+describe('Live Lab spend counts toward the budget', () => {
+  it('prices a generation through the operator rate card and moves month spend', async () => {
+    const org = await runtime.projects.createOrg('Priced Org')
+    const user = await runtime.auth.createUser({
+      orgId: org.id,
+      email: `priced-${Math.random().toString(36).slice(2)}@example.com`,
+      password: 'a-sufficiently-long-password',
+      displayName: 'Artist',
+      orgRole: 'owner',
+    })
+    const project = await runtime.liveLab.createProject({ orgId: org.id, name: 'Priced Set', artistId: null, createdBy: user.id })
+
+    // Nothing spent yet.
+    expect(await runtime.audio.repos.usage.monthSpendMicros(org.id)).toBe(0)
+
+    const job = await runtime.liveLab.createAiJob({
+      orgId: org.id,
+      liveProjectId: project.id,
+      liveSetItemId: null,
+      sourceAssetId: null,
+      provider: platformProviderId(),
+      operation: 'scene_generation',
+      configuration: {
+        prompt: 'a driving section',
+        bars: 8,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'high',
+        instrumentation: ['drums'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+      createdBy: user.id,
+    })
+    await runtime.liveLabService.runAiJob(job.id)
+    expect((await runtime.liveLab.getAiJob(job.id)).status).toBe('ready')
+
+    // Three options at $0.25 each = $0.75 = 750,000 micros. The figure comes
+    // from the operator's rate card, not from anything Live Lab knows.
+    const entry = (await runtime.audio.repos.usage.list(org.id))[0]!
+    expect(entry.estimatedCostMicros).toBe(750_000)
+
+    // And it reaches the number budgets actually read.
+    expect(await runtime.audio.repos.usage.monthSpendMicros(org.id)).toBe(750_000)
   })
 })

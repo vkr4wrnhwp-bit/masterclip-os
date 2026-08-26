@@ -54,6 +54,31 @@ async function precacheShell() {
   }
 }
 
+/**
+ * Bring the cache in line with a freshly fetched document, out of band.
+ *
+ * Only fetches what is missing: asset names are content-hashed, so anything
+ * already cached under the same name is the same bytes, and re-downloading a
+ * whole bundle on every navigation is pure waste on a connection that may be
+ * paying for it.
+ */
+async function reconcileShell(cache, response) {
+  try {
+    const html = await response.text()
+    const wanted = assetsNamedBy(html)
+    await Promise.all(
+      [...wanted].map(async (url) => {
+        if (await cache.match(url)) return
+        await cache.add(url).catch(() => undefined)
+      }),
+    )
+    await pruneToDocument(cache, html)
+  } catch {
+    // A reconcile that fails leaves the previous shell in place, which is the
+    // safe outcome: the app still loads offline from what is already cached.
+  }
+}
+
 /** Same-origin, non-API URLs the document names — the fetch handler's boundary. */
 function assetsNamedBy(html) {
   const urls = new Set()
@@ -132,13 +157,12 @@ self.addEventListener('fetch', (event) => {
         if (response && response.ok && response.type === 'basic') {
           cache.put(request, response.clone()).catch(() => undefined)
           if (navigation) {
-            // A fresh document is the only reliable signal that a deploy
-            // landed, and the only trustworthy list of what is still in use.
-            // Cache the assets it names and drop the ones it does not.
-            const html = await response.clone().text()
-            const assets = assetsNamedBy(html)
-            await Promise.all([...assets].map((url) => cache.add(url).catch(() => undefined)))
-            await pruneToDocument(cache, html)
+            // Deliberately NOT awaited. A fresh document is the signal that a
+            // deploy landed, but reconciling the cache against it must happen
+            // behind the response: awaiting it here withheld the page until
+            // the whole bundle had been re-fetched, which on a venue
+            // connection is a blank screen for as long as that takes.
+            event.waitUntil(reconcileShell(cache, response.clone()))
           }
         }
         return response
