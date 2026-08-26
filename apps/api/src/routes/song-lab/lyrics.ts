@@ -52,6 +52,29 @@ export async function registerSongLabLyricRoutes(app: FastifyInstance, runtime: 
   })
 
   /** A user's title mark is authoritative over any detection. */
+  /**
+   * Transcribes the lyric off the recording, with timings.
+   *
+   * Gated on `audio.transcription` as well as Song Lab: transcription is an
+   * Audio Intelligence capability with its own retention and zero-retention
+   * rules, and starting it from a Song Lab screen does not make it a Song Lab
+   * capability.
+   */
+  app.post('/api/song-lab/projects/:id/lyrics/transcribe', async (request) => {
+    const actor = await requireSongLab(runtime, request, 'song_lab.lyrics')
+    await runtime.audio.access.authorize({ capability: 'audio.transcription', actor })
+    const { id } = request.params as { id: string }
+    const body = z
+      .object({
+        // Deliberately explicit: a lyric the artist typed is their own words,
+        // and a machine transcript replacing it silently would be a loss.
+        replaceUserSupplied: z.boolean().default(false),
+        languageCode: z.string().min(2).max(16).optional(),
+      })
+      .parse(request.body ?? {})
+    return songLab.lyricTranscription.request({ actor, projectId: id, ...body })
+  })
+
   app.post('/api/song-lab/projects/:id/lyrics/title', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.lyrics')
     const { id } = request.params as { id: string }

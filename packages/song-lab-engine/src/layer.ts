@@ -33,9 +33,10 @@ import {
   SongSectionRepo,
   SongVersionRepo,
 } from '@masterclip/song-lab-domain'
-import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo } from '@masterclip/audio-domain'
+import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo, TranscriptRepo } from '@masterclip/audio-domain'
 import type { AudioAssetService } from '@masterclip/audio-engine'
 import type { AudioProviderRegistry } from '@masterclip/audio-core'
+import type { TranscriptionService } from '@masterclip/audio-engine'
 import { SongLabAccessControl } from './access.js'
 import { SongAnalysisService } from './analysis.js'
 import { SongBenchmarkService } from './benchmark.js'
@@ -45,6 +46,7 @@ import { SongLabViewService } from './views.js'
 import { SongArService } from './ar.js'
 import { SongLabIntegrationService } from './integrations.js'
 import { SongVocalStemService } from './vocal-stems.js'
+import { SongLyricTranscriptionService } from './lyric-transcription.js'
 import { SongOutcomeService } from './outcomes.js'
 import { SongLabProjectService } from './projects.js'
 import type { SongLabDeps, SongLabProviders, SongLabRepos } from './deps.js'
@@ -71,6 +73,7 @@ export interface SongLabLayer {
   integrations: SongLabIntegrationService
   outcomes: SongOutcomeService
   vocalStems: SongVocalStemService
+  lyricTranscription: SongLyricTranscriptionService
 }
 
 export interface CreateSongLabLayerOptions {
@@ -89,6 +92,8 @@ export interface CreateSongLabLayerOptions {
     remix: RemixRepo
     /** Resolved for stem separation only; Song Lab registers nothing in it. */
     providerRegistry: AudioProviderRegistry
+    transcription: TranscriptionService
+    transcripts: TranscriptRepo
   }
   /** Registers only deterministic providers. Used by fast tests. */
   mockOnly?: boolean
@@ -152,8 +157,12 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
       remix: opts.audio.remix,
       entitlements: opts.entitlements,
       providerRegistry: opts.audio.providerRegistry,
+      transcription: opts.audio.transcription,
+      transcripts: opts.audio.transcripts,
     },
   }
+
+  const lyrics = new SongLyricService(deps)
 
   return {
     repos,
@@ -163,11 +172,12 @@ export function createSongLabLayer(opts: CreateSongLabLayerOptions): SongLabLaye
     analysis: new SongAnalysisService(deps),
     benchmark: new SongBenchmarkService(deps),
     experiments: new SongExperimentService(deps),
-    lyrics: new SongLyricService(deps),
+    lyrics,
     views: new SongLabViewService(deps),
     ar: new SongArService(deps),
     integrations: new SongLabIntegrationService(deps),
     outcomes: new SongOutcomeService(deps),
     vocalStems: new SongVocalStemService(deps),
+    lyricTranscription: new SongLyricTranscriptionService(deps, lyrics),
   }
 }
