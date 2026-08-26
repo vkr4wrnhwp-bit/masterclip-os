@@ -15,9 +15,16 @@ import { estimateMicros, parseRateCard } from './rates.js'
 
 export interface TranscriptionJobConfig {
   assetId: string
-  purpose: 'meeting' | 'dubbing' | 'library'
+  purpose: 'meeting' | 'dubbing' | 'library' | 'song_lab'
   meetingId?: string
   dubbingProjectId?: string
+  /**
+   * Set when `purpose` is `song_lab`, so the worker can hand the finished
+   * transcript back to the version whose lyric it is. Transcription itself
+   * stays ignorant of what Song Lab does with the words.
+   */
+  songLabProjectId?: string
+  songVersionId?: string
   languageCode?: string
   numSpeakers?: number
 }

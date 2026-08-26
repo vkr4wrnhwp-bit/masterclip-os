@@ -16,6 +16,49 @@ Lyrics attach to a **version**, not an analysis, so an edited lyric belongs to t
 song and survives reanalysis. Accepting an experiment carries the lyric onto the new
 version.
 
+## Getting the lyric in
+
+Two ways, and the difference matters more than convenience:
+
+| Route | Timings | Source | Confirmed |
+| --- | --- | --- | --- |
+| Pasted sheet | none, unless typed by hand | `user_supplied` | yes |
+| Transcribed from the recording | per line, from the transcriber | `transcribed` | no |
+
+```
+POST /api/song-lab/projects/:id/lyrics/transcribe
+```
+
+Timings are the reason to transcribe. Syllables per second, per-section density
+contrast and title placement in time are all functions of *when* a line lands,
+so a pasted sheet leaves them unmeasured until someone types timecodes in by
+hand. A transcript places every line inside a section on its own.
+
+The words, though, are a machine's guess, and the system holds that line:
+
+- Transcribed lines are stored as `transcribed`, never `user_supplied`, and land
+  **unconfirmed**. Correcting a line is what promotes it.
+- A segment the transcriber itself scores below 0.3 confidence is **dropped**
+  rather than kept. A gap is honest; an invented line gets its syllables
+  counted as though the record contained it.
+- If nothing clears that bar the request fails with `song_lab.transcript_empty`
+  rather than writing an empty lyric.
+
+**It will not overwrite a lyric you supplied.** A lyric someone typed is the
+artist's own words and a transcript is not an upgrade on it, so replacing one
+takes a second, explicit decision (`replaceUserSupplied: true`) and the first
+attempt refuses with `song_lab.lyrics_user_supplied`.
+
+Transcription prefers a [separated vocal stem](#what-the-vocal-numbers-were-measured-from)
+when one is ready for that exact recording — a transcriber hearing only the
+voice makes far fewer mistakes than one picking words out of a full mix — and
+the response says which it used.
+
+Requires `audio.transcription` as well as Song Lab. Transcription is an Audio
+Intelligence capability with its own retention and zero-retention rules, and it
+runs through the platform's own transcription pipeline rather than a second
+copy, so org policy, keyterms and usage accounting all apply unchanged.
+
 ## What is measured
 
 Syllable counts · line lengths · phrase lengths · title placement · title

@@ -4,8 +4,9 @@ import type { StorageDriver } from '@masterclip/asset-storage'
 import type { AuditLog, EntitlementService } from '@masterclip/domain'
 import type { AppConfig, Clock, Logger } from '@masterclip/shared'
 import type { AudioAssetService } from '@masterclip/audio-engine'
-import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo } from '@masterclip/audio-domain'
+import type { AudioAssetRepo, ConsentRepo, OperatorDeskRepo, RemixRepo, TranscriptRepo } from '@masterclip/audio-domain'
 import type { AudioProviderRegistry } from '@masterclip/audio-core'
+import type { TranscriptionService } from '@masterclip/audio-engine'
 import type { AudioExperimentRenderer } from '@masterclip/audio-experiments'
 import type { BenchmarkProvider } from '@masterclip/music-benchmarking'
 import type { LyricAnalysisProvider } from '@masterclip/lyric-analysis'
@@ -74,6 +75,15 @@ export interface SongLabPlatform {
    * org's configured default and fallback in force here as everywhere else.
    */
   providerRegistry: AudioProviderRegistry
+  /**
+   * The platform's transcription pipeline, for lyric transcription.
+   *
+   * Reused rather than re-implemented so the org's retention policy,
+   * zero-retention requirement, keyterms and usage accounting apply to a lyric
+   * transcript exactly as they do to any other.
+   */
+  transcription: TranscriptionService
+  transcripts: TranscriptRepo
 }
 
 export interface SongLabDeps {

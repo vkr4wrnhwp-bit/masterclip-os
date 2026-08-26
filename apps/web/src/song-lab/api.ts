@@ -324,6 +324,8 @@ export const songLabApi = {
   projects: () => get<{ projects: SongLabProject[] }>('/api/song-lab/projects'),
   project: (id: string) => get<ProjectDetail>(`/api/song-lab/projects/${id}`),
   vocalStems: (id: string) => get<{ vocalStems: SongVocalStem[] }>(`/api/song-lab/projects/${id}/vocal-stems`),
+  transcribeLyrics: (id: string, replaceUserSupplied = false) =>
+    post<{ jobId: string; source: 'isolated_stem' | 'full_mix' }>(`/api/song-lab/projects/${id}/lyrics/transcribe`, { replaceUserSupplied }),
   separateVocal: (id: string, versionId: string) =>
     post<{ vocalStem: SongVocalStem }>(`/api/song-lab/projects/${id}/versions/${versionId}/vocal-stem`, {}),
   createProject: (body: {

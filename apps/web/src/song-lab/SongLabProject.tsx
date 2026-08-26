@@ -525,6 +525,11 @@ function LyricsTab({ projectId }: { projectId: string }) {
   const [text, setText] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [notice, setNotice] = React.useState<string | null>(null)
+  // Separate from `error`: the two actions live in different cards, and the
+  // add-lyrics card is not rendered once a lyric exists.
+  const [transcribeError, setTranscribeError] = React.useState<string | null>(null)
+  const [confirmReplace, setConfirmReplace] = React.useState(false)
 
   const save = async () => {
     setBusy(true)
@@ -535,6 +540,32 @@ function LyricsTab({ projectId }: { projectId: string }) {
       state.reload()
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * `replace` is passed only from the second, explicit press. A transcript
+   * silently overwriting words the artist typed is the one genuinely
+   * destructive thing this screen could do.
+   */
+  const transcribe = async (replace = false) => {
+    setBusy(true)
+    setTranscribeError(null)
+    setNotice(null)
+    try {
+      const result = await songLabApi.transcribeLyrics(projectId, replace)
+      setNotice(
+        result.source === 'isolated_stem'
+          ? 'Transcribing the separated vocal. The lyric will appear here with timings when it finishes.'
+          : 'Transcribing the full mix. Separating the vocal first (Overview) usually gives a more accurate lyric.',
+      )
+      state.reload()
+    } catch (err) {
+      const message = (err as Error).message
+      if (message.includes('already has a lyric you supplied')) setConfirmReplace(true)
+      setTranscribeError(message)
     } finally {
       setBusy(false)
     }
@@ -554,6 +585,7 @@ function LyricsTab({ projectId }: { projectId: string }) {
                 <textarea rows={12} value={text} onChange={(event) => setText(event.target.value)} />
               </Field>
               {error && <Callout tone="danger">{error}</Callout>}
+              {notice && <Callout tone="info">{notice}</Callout>}
               <div className="button-row">
                 <button className="primary" onClick={save} disabled={busy || text.trim().length === 0}>
                   {busy ? 'analysing…' : 'Save and analyse'}
@@ -561,6 +593,37 @@ function LyricsTab({ projectId }: { projectId: string }) {
               </div>
             </Card>
           )}
+
+          {/*
+            Outside the add-lyrics card on purpose. That card only renders while
+            there is no lyric yet, and replacing an existing one is exactly the
+            case that needs this control — hiding it there would make the
+            replace path unreachable.
+          */}
+          <Card title="Transcribe from the recording">
+            <p className="faint">
+              A transcript arrives with timings, which is what lets syllable density and title placement be measured per section. A pasted
+              sheet has no timings, so those figures stay unmeasured until someone types timecodes by hand. The words are the
+              transcriber&rsquo;s guess until you confirm them.
+            </p>
+            {notice && <Callout tone="info">{notice}</Callout>}
+            {transcribeError && !confirmReplace && <Callout tone="danger">{transcribeError}</Callout>}
+            {confirmReplace && (
+              <Callout tone="warn">
+                This version already has a lyric you supplied. Transcribing replaces it with the transcriber&rsquo;s guess.
+              </Callout>
+            )}
+            <div className="button-row">
+              <button className="small" onClick={() => transcribe(false)} disabled={busy}>
+                {busy ? 'working…' : 'Transcribe from the recording'}
+              </button>
+              {confirmReplace && (
+                <button className="small" onClick={() => transcribe(true)} disabled={busy}>
+                  Replace my lyric with a transcript
+                </button>
+              )}
+            </div>
+          </Card>
 
           {data.analysis && (
             <>

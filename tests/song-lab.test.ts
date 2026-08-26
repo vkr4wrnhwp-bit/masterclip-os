@@ -1487,3 +1487,197 @@ describe('vocal stem separation', () => {
     expect(settled.stemAssetId).toBeNull()
   })
 })
+
+// ===========================================================================
+
+/**
+ * Lyric transcription.
+ *
+ * The words are a machine's guess and the timings are the point. What these
+ * tests hold down is that the guess never gets promoted to the artist's own
+ * words, and never quietly replaces them.
+ */
+describe('lyric transcription', () => {
+  async function grantTranscription(session: Session): Promise<void> {
+    await runtime.audio.repos.policy.grantEntitlements(session.orgId, ['audio.transcription'], session.userId)
+  }
+
+  /** Runs the queued audio transcription job and the Song Lab ingest after it. */
+  async function runTranscription(session: Session, jobId: string, projectId: string): Promise<void> {
+    const transcript = await runtime.audio.transcription.run(jobId)
+    const job = await runtime.audio.repos.jobs.getAnyOrg(jobId)
+    const config = job.configuration as { songVersionId: string }
+    await runtime.songLab.lyricTranscription.ingest({
+      transcriptId: transcript.id,
+      orgId: session.orgId,
+      userId: session.userId,
+      projectId,
+      versionId: config.songVersionId,
+    })
+  }
+
+  it('brings back timed lines, which a pasted sheet never has', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedProject(session, 'Transcribe Me')
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+    expect(response.statusCode).toBe(200)
+    const { jobId, source } = response.json() as { jobId: string; source: string }
+    // No stem separated for this version, so it transcribes the mix and says so.
+    expect(source).toBe('full_mix')
+
+    await runTranscription(session, jobId, projectId)
+
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const lines = await runtime.songLab.repos.lyrics.list(session.orgId, project.currentVersionId!)
+    expect(lines.length).toBeGreaterThan(0)
+    // The timings are the whole reason to transcribe rather than paste.
+    expect(lines.every((line) => line.startMs !== null && line.endMs !== null)).toBe(true)
+    expect(lines[0]!.lyricSource).toBe('transcribed')
+
+    // The payoff: timings place lines inside sections on their own. A pasted
+    // sheet leaves every sectionId null unless a person types timecodes, and
+    // the per-section density figures have nothing to work with.
+    const placed = lines.filter((line) => line.sectionId !== null)
+    expect(placed.length).toBeGreaterThan(0)
+  })
+
+  it('never promotes a machine transcript to the artist\'s own words', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedProject(session, 'Unconfirmed')
+    const { jobId } = (await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)).json() as { jobId: string }
+    await runTranscription(session, jobId, projectId)
+
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const lines = await runtime.songLab.repos.lyrics.list(session.orgId, project.currentVersionId!)
+    // Every line is a guess until a person says otherwise.
+    expect(lines.some((line) => line.userConfirmed)).toBe(false)
+  })
+
+  it('refuses to overwrite a lyric the artist supplied', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedProject(session, 'Handwritten')
+    await call(session, 'PATCH', `/api/song-lab/projects/${projectId}/lyrics`, {
+      source: 'user_supplied',
+      text: 'Signal fire, signal fire\nBurning on the shoreline',
+    })
+
+    const refused = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+    expect(refused.statusCode).toBe(400)
+    expect(refused.json().error.code).toBe('song_lab.lyrics_user_supplied')
+
+    // The artist's words are still there, untouched.
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const lines = await runtime.songLab.repos.lyrics.list(session.orgId, project.currentVersionId!)
+    expect(lines[0]!.text).toBe('Signal fire, signal fire')
+
+    // And it proceeds once the replacement is an explicit decision.
+    const allowed = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`, { replaceUserSupplied: true })
+    expect(allowed.statusCode).toBe(200)
+  })
+
+  it('requires the transcription capability, not just Song Lab', async () => {
+    await bootstrapFlagship()
+    const session = await provisionOrg('notranscribe@example.com', 'No Transcribe Org')
+    await grantSongLab(session.orgId)
+    const { projectId } = await seedProject(session, 'Ungated')
+
+    const refused = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+    expect(refused.statusCode).toBe(403)
+    expect(refused.json().error.code).toBe('audio.gate.org_entitlement')
+
+    await grantTranscription(session)
+    const allowed = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+    expect(allowed.statusCode).toBe(200)
+  })
+
+  it('transcribes the isolated vocal when one exists', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedProject(session, 'Stemmed')
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const versionId = project.currentVersionId!
+
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+    const stem = await runtime.songLab.vocalStems.run(stemId, session.orgId)
+    expect(stem.status).toBe('ready')
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+    const { jobId, source } = response.json() as { jobId: string; source: string }
+    expect(source).toBe('isolated_stem')
+
+    // And it is genuinely the stem asset being sent, not the mix.
+    const job = await runtime.audio.repos.jobs.getAnyOrg(jobId)
+    expect((job.configuration as { assetId: string }).assetId).toBe(stem.stemAssetId)
+  })
+
+  /**
+   * The chain, through the real queue rather than by calling the two halves in
+   * order myself. The wiring is the part most likely to be wrong: the audio
+   * pipeline produces a transcript knowing nothing about lyrics, and something
+   * has to notice it was raised for Song Lab and hand it back.
+   */
+  it('carries a transcript back to the lyric through the queue', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedProject(session, 'Chained')
+    await call(session, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)
+
+    // The audio worker: transcribe, then chain when the job was raised for
+    // Song Lab. This mirrors apps/worker/src/main.ts.
+    const audioWorker = new QueueWorker(runtime.queue, { queueName: QUEUES.audio, concurrency: 1, logger: silentLogger })
+    audioWorker.register<{ jobId: string }>(JOB_TYPES.audioTranscribe, async ({ jobId }) => {
+      const transcript = await runtime.audio.transcription.run(jobId)
+      const job = await runtime.audio.repos.jobs.getAnyOrg(jobId)
+      const config = job.configuration as { purpose?: string; songLabProjectId?: string; songVersionId?: string }
+      if (config.purpose === 'song_lab' && config.songLabProjectId && config.songVersionId) {
+        await runtime.queue.enqueue({
+          queue: QUEUES.songLab,
+          type: JOB_TYPES.songLabTranscribeLyrics,
+          payload: {
+            transcriptId: transcript.id,
+            orgId: job.orgId,
+            userId: job.userId,
+            projectId: config.songLabProjectId,
+            versionId: config.songVersionId,
+          },
+          dedupeKey: `song_lab.lyrics.transcribe:${transcript.id}`,
+        })
+      }
+    })
+
+    const songLabWorker = new QueueWorker(runtime.queue, { queueName: QUEUES.songLab, concurrency: 1, logger: silentLogger })
+    songLabWorker.register<{ transcriptId: string; orgId: string; userId: string; projectId: string; versionId: string }>(
+      JOB_TYPES.songLabTranscribeLyrics,
+      async (payload) => {
+        await runtime.songLab.lyricTranscription.ingest(payload)
+      },
+    )
+
+    await audioWorker.runOnce()
+    for (let round = 0; round < 3; round++) await songLabWorker.runOnce()
+
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const lines = await runtime.songLab.repos.lyrics.list(session.orgId, project.currentVersionId!)
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines[0]!.lyricSource).toBe('transcribed')
+  })
+
+  it('does not leak one tenant transcript into another tenant lyric', async () => {
+    const owner = await bootstrapFlagship()
+    const { projectId } = await seedProject(owner, 'Private Song')
+    const { jobId } = (await call(owner, 'POST', `/api/song-lab/projects/${projectId}/lyrics/transcribe`)).json() as { jobId: string }
+    const transcript = await runtime.audio.transcription.run(jobId)
+
+    const intruder = await provisionOrg('lyricthief@example.com', 'Intruder Org')
+    await grantSongLab(intruder.orgId)
+    await expect(
+      runtime.songLab.lyricTranscription.ingest({
+        transcriptId: transcript.id,
+        orgId: intruder.orgId,
+        userId: intruder.userId,
+        projectId,
+        versionId: 'whatever',
+      }),
+    ).rejects.toThrow()
+  })
+})
