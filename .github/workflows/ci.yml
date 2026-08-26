@@ -12,7 +12,7 @@ on:
 
 jobs:
   masterclip:
-    name: MASTERCLIP OS typecheck, lint, tests & build
+    name: MASTERCLIP OS typecheck, lint, tests, browser suite & build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,4 +37,25 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      # Before the browser suite: e2e serves the real production build, and
+      # scripts/e2e-server.mjs refuses to start without apps/web/dist.
       - run: pnpm build
+      # The browser suite is where the offline show, the IndexedDB cache and the
+      # Web Audio path are actually verified — the claims no unit test can make.
+      # It found three real defects the rest of the suite passed straight over,
+      # so it is worth the ~1 minute of browser provisioning.
+      #
+      # `--with-deps` installs the system libraries Chromium needs on a bare
+      # runner. Only chromium: the suite pins one browser project.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      # Traces and screenshots are retained on failure; without them a red
+      # browser job is a stack trace with no picture of the page.
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7

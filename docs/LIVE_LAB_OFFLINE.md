@@ -77,7 +77,63 @@ crash recoveries) are collected locally and synced to
 show, in batches, and only what the client chooses to send. Reliability data,
 not surveillance.
 
+## What is stored on the device
+
+Two things, and both are needed:
+
+- **The audio**, in IndexedDB, keyed by manifest path.
+- **The show itself** — setlist, scenes, pad map, MIDI mappings and the
+  manifest — in `localStorage` under `masterclip.live.show.<projectId>`,
+  written when the package is built.
+
+The second used to be missing, and the omission defeated the first. Performance
+Mode loaded its bundle over the network on every entry, so at a venue with no
+connection it rendered **Request failed** and the verified audio cache was never
+reached. Caching a show's audio while leaving the show itself in the cloud is
+not local-first; it only looks like it from inside an already-running session.
+
+Two more things had to hold before any of that was reachable after a crash:
+
+- **The application itself.** A service worker (`apps/web/public/sw.js`) caches
+  the app shell, so reloading with no network loads the app instead of
+  `ERR_INTERNET_DISCONNECTED`. It never caches `/api/` — the app already knows
+  how to be offline, and a worker answering an API call from a stale cache
+  would make a performer trust data that is no longer true.
+
+  The shell is cached **at install**, document and scripts together, not merely
+  as it is used. On a first visit the page's own scripts are fetched before the
+  worker controls anything, so runtime caching alone never sees them: load the
+  app, build a show, go offline without reloading — what a performer actually
+  does — and the reload at the venue would find no application to load. The
+  browser's own HTTP cache hides this on a warm machine, which is why the
+  offline spec asserts the bundle is in the worker's cache rather than trusting
+  that the reload succeeded.
+
+  Assets the current document no longer names are dropped when a document is
+  fetched over the network. Filenames are content-hashed, so nothing overwrites
+  them and every deploy would otherwise add a version that stays forever — and
+  this origin's storage is shared with the show audio, which the app refuses to
+  mark READY when storage is short. Shell growth is not free here.
+- **The signed-in identity.** `/api/auth/me` fails when the server is
+  unreachable, and that used to read as *signed out* — a sign-in form nobody at
+  a venue can complete. A server that answers "no" still signs you out; a
+  server that cannot be answered at all does not. This grants nothing: every
+  API call still needs a real session cookie, and the only data it unlocks is
+  what this same user already cached on this device.
+
+`loadShowBundle` prefers the network and falls back to the stored copy. That
+order is deliberate: a set edited since the last package should be picked up
+when there is a connection to pick it up from, so the stored bundle is the
+floor rather than the default. With no connection and no stored bundle there is
+genuinely no show to run, and the error stands.
+
 ## How the cache is verified
+
+The offline show is demonstrated end to end by
+`tests/e2e/live-lab-offline.spec.ts`: a set is built, owned audio uploaded and
+attached, the package built and cached, and then the browser is taken offline
+with `context.setOffline(true)` — checked unreachable inside the test — before
+Performance Mode is entered and driven.
 
 `IndexedDbCacheStore` is exercised in real Chromium by
 `tests/e2e/live-lab-browser.spec.ts`, not only through the in-memory
