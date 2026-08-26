@@ -14,6 +14,7 @@ import {
   StemType,
   buildStageControlHandoff,
   defaultPadMap,
+  remapPadMap,
   type LiveProject,
 } from '@masterclip/performance-project'
 import { checkPromptSafety } from '@masterclip/ai-audio'
@@ -107,6 +108,12 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     const activeCount = await runtime.liveLab.countProjects(auth.orgId)
     await runtime.entitlements.requireWithinLimit(auth.orgId, 'live_lab.max_projects', activeCount, 'active Live Lab project')
 
+    // Resolved before anything is created. Creating the project first meant a
+    // duplicate of an unreadable or foreign set left an empty project behind,
+    // still counting against live_lab.max_projects.
+    const source = body.duplicateOf ? await runtime.liveLab.getProject(body.duplicateOf) : null
+    if (source) assertSameOrg(source.organizationId, auth.orgId)
+
     const project = await runtime.liveLab.createProject({
       orgId: auth.orgId,
       name: body.name,
@@ -120,10 +127,8 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
 
     // Duplicate an existing set: items, scenes, clips, stems and pad map are
     // copied; audio assets are shared (same storage objects, new references).
-    if (body.duplicateOf) {
-      const source = await runtime.liveLab.getProject(body.duplicateOf)
-      assertSameOrg(source.organizationId, auth.orgId)
-      await runtime.liveLab.updateProject(project.id, { masterTempo: source.masterTempo, timeSignature: source.timeSignature, padMap: source.padMap })
+    if (source) {
+      await runtime.liveLab.updateProject(project.id, { masterTempo: source.masterTempo, timeSignature: source.timeSignature })
       const [items, scenes, clips, stems, assets] = await Promise.all([
         runtime.liveLab.listItems(source.id),
         runtime.liveLab.listScenes(source.id),
@@ -132,6 +137,13 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
         runtime.liveLab.listAssets(source.id),
       ])
       const assetIdMap = new Map<string, string>()
+      // Every duplicated record gets a new id, so anything that referenced the
+      // originals — pads, follow actions — has to be rewritten to match. Copied
+      // verbatim, a duplicated set's pads all pointed back at the source
+      // project's scenes and stems and were dead on the first press.
+      const sceneIdMap = new Map<string, string>()
+      const clipIdMap = new Map<string, string>()
+      const stemIdMap = new Map<string, string>()
       for (const asset of assets) {
         const copy = await runtime.liveLab.createAsset({
           orgId: auth.orgId,
@@ -182,10 +194,11 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
             loopEnabled: scene.loopEnabled,
             followAction: scene.followAction,
           })
+          sceneIdMap.set(scene.id, newScene.id)
           for (const clip of clips.filter((c) => c.liveSceneId === scene.id)) {
             const mappedAsset = assetIdMap.get(clip.sourceAssetId)
             if (!mappedAsset) continue
-            await runtime.liveLab.createClip({
+            const newClip = await runtime.liveLab.createClip({
               orgId: auth.orgId,
               liveProjectId: project.id,
               liveSceneId: newScene.id,
@@ -199,12 +212,13 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
               gain: clip.gain,
               pan: clip.pan,
             })
+            clipIdMap.set(clip.id, newClip.id)
           }
         }
         for (const stem of stems.filter((s) => s.liveSetItemId === item.id)) {
           const mappedAsset = assetIdMap.get(stem.sourceAssetId)
           if (!mappedAsset) continue
-          await runtime.liveLab.createStem({
+          const newStem = await runtime.liveLab.createStem({
             orgId: auth.orgId,
             liveProjectId: project.id,
             liveSetItemId: newItem.id,
@@ -214,8 +228,26 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
             gain: stem.gain,
             pan: stem.pan,
           })
+          stemIdMap.set(stem.id, newStem.id)
         }
       }
+
+      // Follow targets are rewritten in a second pass: a scene may follow one
+      // created after it, so the map is only complete once every scene exists.
+      // A 'target' follow whose target did not survive falls back to 'stop' —
+      // the scene ends rather than queueing a scene from the source project.
+      for (const scene of scenes) {
+        const copyId = sceneIdMap.get(scene.id)
+        if (!copyId) continue
+        const target = scene.followTargetSceneId ? sceneIdMap.get(scene.followTargetSceneId) ?? null : null
+        if (scene.followAction === 'target' && !target) {
+          await runtime.liveLab.updateScene(copyId, { followAction: 'stop', followTargetSceneId: null })
+          continue
+        }
+        if (target) await runtime.liveLab.updateScene(copyId, { followTargetSceneId: target })
+      }
+
+      await runtime.liveLab.updateProject(project.id, { padMap: remapPadMap(source.padMap, { sceneIdMap, clipIdMap, stemIdMap }) })
     }
 
     await runtime.audit.record({
@@ -1024,13 +1056,19 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       throw new AppError({ kind: 'validation', code: 'live.pad_required', message: 'padIndex is required to assign a pad' })
     }
     const asset = await runtime.liveLab.getAsset(body.assetId)
-    await runtime.liveLab.approveAssetLineage(asset.id, auth.userId)
 
     let sceneId: string
     if (body.mode === 'replace_scene') {
       if (!body.sceneId) throw new AppError({ kind: 'validation', code: 'live.scene_required', message: 'sceneId is required to replace a scene' })
       const scene = await runtime.liveLab.getScene(body.sceneId)
       assertSameOrg(scene.organizationId, auth.orgId)
+      // Same org is not enough, exactly as for the add path below: replacing a
+      // scene in another project would delete that project's clips and, with a
+      // padIndex, write a foreign scene id into this project's pad map.
+      if (scene.liveProjectId !== job.liveProjectId) throw forbidden('scene belongs to another project')
+      // Approval is recorded only once the request is known to be actionable;
+      // stamping it before validation left rejected requests marked approved.
+      await runtime.liveLab.approveAssetLineage(asset.id, auth.userId)
       const clips = (await runtime.liveLab.listClips(scene.liveProjectId)).filter((c) => c.liveSceneId === scene.id)
       for (const clip of clips) await runtime.liveLab.deleteClip(clip.id)
       await runtime.liveLab.createClip({
@@ -1049,6 +1087,7 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
       // Same org is not enough: a set item from a *different* project would
       // produce scenes the manifest cannot resolve to a setlist entry.
       if (item.liveProjectId !== job.liveProjectId) throw forbidden('set item belongs to another project')
+      await runtime.liveLab.approveAssetLineage(asset.id, auth.userId)
       const scene = await runtime.liveLab.createScene({
         orgId: auth.orgId,
         liveProjectId: job.liveProjectId,

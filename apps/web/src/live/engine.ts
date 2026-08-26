@@ -381,6 +381,55 @@ export interface CacheProgress {
   message: string
 }
 
+const SHOW_BUNDLE_KEY = 'masterclip.live.show'
+
+/**
+ * The show's own data, kept on the device beside its audio.
+ *
+ * Caching the audio was never enough on its own: Performance Mode loads the
+ * setlist, scenes, pad map and manifest over the network, so at a venue with no
+ * connection it rendered "Request failed" and the verified cache was never
+ * reached. The bundle is small metadata, so localStorage is the right home for
+ * it — the audio stays in IndexedDB where it belongs.
+ */
+export function storeShowBundle(projectId: string, bundle: LiveProjectBundle): void {
+  try {
+    window.localStorage.setItem(`${SHOW_BUNDLE_KEY}.${projectId}`, JSON.stringify(bundle))
+  } catch {
+    // A full or disabled store is not a reason to fail the packaging run; the
+    // show still works online, and verification already reported the cache.
+  }
+}
+
+export function loadStoredShowBundle(projectId: string): LiveProjectBundle | null {
+  try {
+    const raw = window.localStorage.getItem(`${SHOW_BUNDLE_KEY}.${projectId}`)
+    return raw ? (JSON.parse(raw) as LiveProjectBundle) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The bundle Performance Mode should run on: current when the network is
+ * there, the packaged copy when it is not.
+ *
+ * Deliberately not cache-first — a set edited since the last package should be
+ * picked up when there is a connection to pick it up from. The stored copy is
+ * the floor, not the default.
+ */
+export async function loadShowBundle(projectId: string): Promise<LiveProjectBundle> {
+  try {
+    const fresh = await liveApi.project(projectId)
+    storeShowBundle(projectId, fresh)
+    return fresh
+  } catch (err) {
+    const stored = loadStoredShowBundle(projectId)
+    if (stored) return stored
+    throw err
+  }
+}
+
 /**
  * Builds the offline performance package end to end: manifest on the server,
  * bytes into IndexedDB, checksums verified on this device, READY reported back.
@@ -430,6 +479,14 @@ export async function cacheShow(projectId: string, onProgress: (progress: CacheP
   }
   const result = await liveApi.verifyPackage(record.id, verified)
   if (result.status === 'ready') {
+    // Store the show itself, not just its audio, while the network is still
+    // here. Fetched fresh so the stored copy carries the manifest just built.
+    try {
+      storeShowBundle(projectId, await liveApi.project(projectId))
+    } catch {
+      // Reported below as READY regardless: the cache is verified either way,
+      // and an unstorable bundle only costs the offline-start path.
+    }
     onProgress({
       phase: 'ready',
       cachedFiles: cached,

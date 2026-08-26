@@ -864,3 +864,170 @@ describe('performance analytics', () => {
     expect((response.json() as { recorded: number }).recorded).toBe(2)
   })
 })
+
+/**
+ * Regressions found by review of the duplication, AI-accept and platform
+ * provider paths. Each of these passed typecheck and the existing suite.
+ */
+describe('duplicating a set', () => {
+  it('repoints pads at the copies rather than the source project', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner, 'Original')
+    const { scene, stem } = await seedSong(owner, projectId)
+
+    // A pad grid wired to the source project's records.
+    const padded = await call(owner, 'PATCH', `/api/live-lab/projects/${projectId}`, {
+      padMap: [
+        { index: 0, mode: 'scene', label: 'HOOK', targetId: scene.id, color: '' },
+        { index: 1, mode: 'stem_mute', label: 'CLICK', targetId: stem.id, color: '' },
+      ],
+    })
+    expect(padded.statusCode).toBe(200)
+
+    const duplicated = await call(owner, 'POST', '/api/live-lab/projects', { name: 'Copy', duplicateOf: projectId })
+    expect(duplicated.statusCode).toBe(200)
+    const copyId = (duplicated.json() as { project: { id: string } }).project.id
+
+    const bundle = (await call(owner, 'GET', `/api/live-lab/projects/${copyId}`)).json() as {
+      project: { padMap: Array<{ index: number; mode: string; targetId: string | null }> }
+      scenes: Array<{ id: string }>
+      stems: Array<{ id: string }>
+    }
+    const scenePad = bundle.project.padMap.find((p) => p.index === 0)
+    const stemPad = bundle.project.padMap.find((p) => p.index === 1)
+
+    // The point: not the source ids, and not dangling — the copies' own ids.
+    expect(scenePad?.targetId).not.toBe(scene.id)
+    expect(stemPad?.targetId).not.toBe(stem.id)
+    expect(bundle.scenes.map((s) => s.id)).toContain(scenePad?.targetId)
+    expect(bundle.stems.map((s) => s.id)).toContain(stemPad?.targetId)
+  })
+
+  it('clears a pad whose target did not survive instead of leaving it dangling', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner, 'Original')
+    await seedSong(owner, projectId)
+    await call(owner, 'PATCH', `/api/live-lab/projects/${projectId}`, {
+      padMap: [{ index: 2, mode: 'scene', label: 'GONE', targetId: 'lscn_does_not_exist', color: '' }],
+    })
+
+    const duplicated = await call(owner, 'POST', '/api/live-lab/projects', { name: 'Copy', duplicateOf: projectId })
+    const copyId = (duplicated.json() as { project: { id: string } }).project.id
+    const bundle = (await call(owner, 'GET', `/api/live-lab/projects/${copyId}`)).json() as {
+      project: { padMap: Array<{ index: number; mode: string; targetId: string | null }> }
+    }
+    const pad = bundle.project.padMap.find((p) => p.index === 2)
+    expect(pad?.mode).toBe('empty')
+    expect(pad?.targetId).toBeNull()
+  })
+
+  it('remaps follow targets and never points one at the source project', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner, 'Original')
+    const { item, scene } = await seedSong(owner, projectId)
+    const second = await runtime.liveLab.createScene({
+      orgId: owner.orgId,
+      liveProjectId: projectId,
+      liveSetItemId: item.id,
+      name: 'OUTRO',
+      sceneType: 'outro',
+      bars: 2,
+    })
+    await runtime.liveLab.updateScene(scene.id, { followAction: 'target', followTargetSceneId: second.id })
+
+    const duplicated = await call(owner, 'POST', '/api/live-lab/projects', { name: 'Copy', duplicateOf: projectId })
+    const copyId = (duplicated.json() as { project: { id: string } }).project.id
+    const scenes = await runtime.liveLab.listScenes(copyId)
+    const hook = scenes.find((s) => s.name === 'HOOK')
+    const outro = scenes.find((s) => s.name === 'OUTRO')
+
+    expect(hook?.followAction).toBe('target')
+    expect(hook?.followTargetSceneId).toBe(outro?.id)
+    expect(hook?.followTargetSceneId).not.toBe(second.id)
+  })
+
+  it('leaves no project behind when the source cannot be duplicated', async () => {
+    const owner = await signupOwner()
+    const partner = await secondOrg()
+    const theirs = await createProject(partner, 'Theirs')
+
+    const before = (await call(owner, 'GET', '/api/live-lab/projects')).json() as { projects: unknown[] }
+    const refused = await call(owner, 'POST', '/api/live-lab/projects', { name: 'Steal', duplicateOf: theirs })
+    expect(refused.statusCode).toBeGreaterThanOrEqual(400)
+
+    // The orphan used to count against live_lab.max_projects forever.
+    const after = (await call(owner, 'GET', '/api/live-lab/projects')).json() as { projects: unknown[] }
+    expect(after.projects.length).toBe(before.projects.length)
+  })
+})
+
+describe('accepting an AI scene', () => {
+  it('refuses to replace a scene belonging to another project', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner, 'Set A')
+    const otherId = await createProject(owner, 'Set B')
+    await seedSong(owner, projectId)
+    const other = await seedSong(owner, otherId)
+
+    const created = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, {
+      request: {
+        prompt: 'a dark rolling bassline',
+        bars: 4,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'high',
+        instrumentation: ['bass'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+    })
+    expect(created.statusCode).toBe(200)
+    const jobId = (created.json() as { job: { id: string } }).job.id
+    await runtime.liveLabService.runAiJob(jobId)
+    const job = await runtime.liveLab.getAiJob(jobId)
+    const assetId = job.outputAssetIds[0] ?? ''
+
+    const clipsBefore = (await runtime.liveLab.listClips(otherId)).filter((c) => c.liveSceneId === other.scene.id)
+    const refused = await call(owner, 'POST', `/api/live-lab/ai-jobs/${jobId}/accept`, {
+      assetId,
+      mode: 'replace_scene',
+      sceneId: other.scene.id,
+    })
+    expect(refused.statusCode).toBe(403)
+
+    // Same org, but another project — its clips must be untouched.
+    const clipsAfter = (await runtime.liveLab.listClips(otherId)).filter((c) => c.liveSceneId === other.scene.id)
+    expect(clipsAfter.map((c) => c.id)).toEqual(clipsBefore.map((c) => c.id))
+  })
+
+  it('does not stamp lineage approval on a request it rejects', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner, 'Set A')
+    await seedSong(owner, projectId)
+
+    const created = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, {
+      request: {
+        prompt: 'a warm pad wash',
+        bars: 4,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'low',
+        instrumentation: ['pad'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+    })
+    const jobId = (created.json() as { job: { id: string } }).job.id
+    await runtime.liveLabService.runAiJob(jobId)
+    const job = await runtime.liveLab.getAiJob(jobId)
+    const assetId = job.outputAssetIds[0] ?? ''
+
+    // replace_scene with no sceneId is rejected after the approval used to run.
+    const refused = await call(owner, 'POST', `/api/live-lab/ai-jobs/${jobId}/accept`, { assetId, mode: 'replace_scene' })
+    expect(refused.statusCode).toBe(400)
+
+    const asset = await runtime.liveLab.getAsset(assetId)
+    const lineage = (asset.lineage ?? {}) as Record<string, unknown>
+    expect(lineage.approvedBy ?? null).toBeNull()
+  })
+})

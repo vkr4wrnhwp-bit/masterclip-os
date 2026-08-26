@@ -148,3 +148,39 @@ describe('Live Lab composes through the platform audio layer', () => {
     expect(done.outputAssetIds).toHaveLength(0)
   })
 })
+
+describe('generated scene length', () => {
+  it('reports the audio that came back, not the length that was asked for', async () => {
+    // The platform mock clamps music to 3-30s, so a 16-bar request at 100 BPM
+    // (38.4s) comes back short. Reporting the ask would have the engine
+    // schedule 8 seconds of audio that does not exist.
+    const provider = runtime.liveLabService.audioProviders.list().find((p) => p.id.startsWith('platform:'))
+    expect(provider, 'platform provider should be registered').toBeDefined()
+
+    const result = await provider!.generateScene({
+      orgId: 'org_test',
+      bpm: 100,
+      beatsPerBar: 4,
+      seed: 5,
+      request: {
+        prompt: 'a long rolling section',
+        bars: 16,
+        tempoBehavior: 'keep',
+        keyBehavior: 'keep',
+        energy: 'medium',
+        instrumentation: ['bass'],
+        intendedTransition: '',
+        rightsConfirmed: true,
+      },
+    })
+
+    const requestedMs = 16 * 4 * (60 / 100) * 1000
+    expect(requestedMs).toBeCloseTo(38_400, 0)
+    for (const option of result.options) {
+      expect(option.durationMs).not.toBeNull()
+      // Matches the bytes, and so is shorter than what was requested.
+      expect(option.durationMs!).toBeLessThan(requestedMs)
+      expect(option.durationMs!).toBeGreaterThan(0)
+    }
+  })
+})

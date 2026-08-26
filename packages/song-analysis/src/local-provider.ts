@@ -7,7 +7,14 @@ import { analyzeLoudness, analyzeSilence, analyzeStereoWidth } from './loudness.
 import { estimateKey, harmonicChangeRate } from './key.js'
 import { estimateMeter, estimateTempo } from './tempo.js'
 import { detectVocalActivity, registerProfile, vocalPhraseMetrics } from './vocal.js'
-import type { AudioSource, MusicFeatureProvider, MusicFeatureResult, VocalAnalysisProvider, VocalAnalysisResult } from './types.js'
+import type {
+  AudioSource,
+  MusicFeatureProvider,
+  MusicFeatureResult,
+  VocalAnalysisOptions,
+  VocalAnalysisProvider,
+  VocalAnalysisResult,
+} from './types.js'
 
 /**
  * The in-process DSP provider.
@@ -130,7 +137,24 @@ export class LocalVocalAnalysisProvider implements VocalAnalysisProvider {
     return true
   }
 
-  async analyzeVocals(source: AudioSource): Promise<VocalAnalysisResult> {
+  /**
+   * Measures the isolated vocal when one is supplied, and the mix otherwise.
+   *
+   * A stem that cannot be decoded falls back to the mix rather than failing the
+   * run — but it falls back honestly, returning a `full_mix` basis and the
+   * proxy's lower confidence. The one thing this must never do is report
+   * isolated-stem confidence over numbers taken from the mix.
+   */
+  async analyzeVocals(source: AudioSource, opts: VocalAnalysisOptions = {}): Promise<VocalAnalysisResult> {
+    if (opts.isolatedVocal) {
+      try {
+        const stem = await prepareAudio(opts.isolatedVocal)
+        return vocalAnalysisFrom(stem, { isolatedVocal: true })
+      } catch {
+        // Deliberately swallowed: the mix is still analysable, and the result
+        // says which one it measured.
+      }
+    }
     const prepared = await prepareAudio(source)
     return vocalAnalysisFrom(prepared)
   }
@@ -148,6 +172,7 @@ export function vocalAnalysisFrom(prepared: PreparedAudio, opts: { isolatedVocal
     value === null ? unknown<number>(method, SOURCE, note) : measured(value, confidence, method, SOURCE)
 
   return {
+    basis: opts.isolatedVocal ? 'isolated_stem' : 'full_mix',
     occupancy: measured(round(activity.occupancy), confidence, activity.method, SOURCE, opts.isolatedVocal ? undefined : 'estimated from the full mix, not an isolated vocal'),
     firstVocalSeconds: maybe(activity.firstVocalSeconds, activity.method, 'no sustained vocal activity was detected'),
     averagePhraseSeconds: maybe(phrase.averagePhraseSeconds, 'vocal_phrase_segmentation', 'no vocal phrases were detected'),

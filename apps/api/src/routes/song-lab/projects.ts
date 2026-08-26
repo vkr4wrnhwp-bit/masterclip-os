@@ -179,6 +179,31 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
     return { analysisId: await songLab.projects.reanalyze(actor, id) }
   })
 
+  // ----- vocal stem ---------------------------------------------------------
+
+  /**
+   * Separates the lead vocal so vocal metrics measure the voice rather than a
+   * spectral guess at where the voice is.
+   *
+   * Gated on `audio.stem_separation` as well as Song Lab: separation is an
+   * Audio Intelligence capability that costs provider spend, and holding Song
+   * Lab is not a licence to spend it. Starting the action here does not change
+   * whose capability it is.
+   */
+  app.post('/api/song-lab/projects/:id/versions/:versionId/vocal-stem', async (request) => {
+    const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
+    await runtime.audio.access.authorize({ capability: 'audio.stem_separation', actor })
+    const { id, versionId } = request.params as { id: string; versionId: string }
+    return { vocalStem: await songLab.vocalStems.request(actor, id, versionId) }
+  })
+
+  /** Separation attempts for a project, newest first. */
+  app.get('/api/song-lab/projects/:id/vocal-stems', async (request) => {
+    const actor = await requireSongLab(runtime, request, 'song_lab.access')
+    const { id } = request.params as { id: string }
+    return { vocalStems: await songLab.repos.vocalStems.list(actor.orgId, id) }
+  })
+
   // ----- structure ----------------------------------------------------------
 
   app.get('/api/song-lab/projects/:id/structure', async (request) => {

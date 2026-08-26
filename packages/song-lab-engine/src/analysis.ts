@@ -108,7 +108,9 @@ export class SongAnalysisService {
 
     const features = await this.runFeatures(source)
     const structure = await this.runStructure(source)
-    const vocals = await this.runVocals(source)
+    // Vocal metrics prefer a separated vocal when one exists for this exact
+    // recording. Everything else is measured from the mix, where it belongs.
+    const vocals = await this.runVocals(source, await this.isolatedVocalFor(analysis, asset.checksum))
 
     // Two things outrank a fresh detection, in this order.
     //
@@ -184,6 +186,7 @@ export class SongAnalysisService {
       featureVector: vector,
       energyCurve: { values: features.energyCurve, stepSeconds: features.energyCurveStepSeconds },
       vocalAnalysis: {
+        basis: vocals.basis,
         occupancy: vocals.occupancy,
         phrases: vocals.phrases,
         activity: vocals.activity,
@@ -249,9 +252,47 @@ export class SongAnalysisService {
     }
   }
 
-  private async runVocals(source: AudioSource): Promise<VocalAnalysisResult> {
+  /**
+   * Resolves the isolated vocal for this version, or null.
+   *
+   * The checksum is the gate: a stem is only used against the recording it was
+   * separated from. A version created by an accepted edit has different audio
+   * and therefore no stem until one is separated for it, which is the correct
+   * answer rather than an inconvenience.
+   */
+  private async isolatedVocalFor(analysis: SongAnalysisRecord, sourceChecksum: string): Promise<AudioSource | undefined> {
+    const stem = await this.deps.repos.vocalStems.readyForVersion(analysis.orgId, analysis.songVersionId, sourceChecksum)
+    if (!stem?.stemAssetId) return undefined
     try {
-      return await this.deps.providers.vocals.analyzeVocals(source)
+      const stemAsset = await this.deps.platform.audioAssetRepo.get(analysis.orgId, stem.stemAssetId)
+      return {
+        asset: {
+          id: stemAsset.id,
+          orgId: stemAsset.orgId,
+          storageKey: stemAsset.storageKey,
+          mimeType: stemAsset.mimeType,
+          fileName: stemAsset.fileName,
+          checksum: stemAsset.checksum,
+          fileSize: stemAsset.fileSize,
+          durationMs: stemAsset.durationMs,
+        },
+        read: async () => this.deps.storage.getBuffer(stemAsset.storageKey),
+      }
+    } catch (err) {
+      // A missing stem asset (retention swept it, say) is not a reason to fail
+      // the analysis — it is a reason to fall back to the mix and say so.
+      this.deps.logger.warn('song_lab.vocal_stem_unreadable', {
+        analysis_id: analysis.id,
+        vocal_stem_id: stem.id,
+        err: err instanceof Error ? err.message : String(err),
+      })
+      return undefined
+    }
+  }
+
+  private async runVocals(source: AudioSource, isolatedVocal?: AudioSource): Promise<VocalAnalysisResult> {
+    try {
+      return await this.deps.providers.vocals.analyzeVocals(source, { isolatedVocal })
     } catch (err) {
       if (err instanceof DecodeUnavailableError) {
         const { MockVocalAnalysisProvider } = await import('@masterclip/song-analysis')

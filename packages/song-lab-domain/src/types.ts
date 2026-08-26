@@ -63,6 +63,39 @@ export interface SongVersionRecord {
   createdAt: string
 }
 
+export const VOCAL_STEM_STATUSES = ['pending', 'ready', 'failed', 'unsupported'] as const
+export type VocalStemStatus = (typeof VOCAL_STEM_STATUSES)[number]
+
+/**
+ * A vocal stem separated out of a mix so vocal metrics can be measured from
+ * the voice rather than from a spectral guess at where the voice is.
+ *
+ * `unsupported` is a distinct outcome from `failed`: the provider ran and
+ * succeeded, but returned nothing identifiable as a vocal (an archive, or a
+ * set of stems with names this code does not recognise). That is a capability
+ * gap rather than an error, and it is worth telling the user apart from a
+ * separation that actually broke.
+ */
+export interface SongVocalStemRecord {
+  id: string
+  orgId: string
+  songLabProjectId: string
+  songVersionId: string
+  sourceAssetId: string
+  /** Pinned so a stem is never reused against a recording it did not come from. */
+  sourceChecksum: string
+  stemAssetId: string | null
+  status: VocalStemStatus
+  /** Verbatim provider stem name, so a renamed output shows up in the data. */
+  stemName: string | null
+  provider: string
+  modelVersion: string
+  failureReason: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
 export const SONG_ANALYSIS_STATUSES = ['queued', 'running', 'complete', 'failed'] as const
 export type SongAnalysisStatus = (typeof SONG_ANALYSIS_STATUSES)[number]
 

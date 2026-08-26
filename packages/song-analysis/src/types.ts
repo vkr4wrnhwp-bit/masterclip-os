@@ -153,7 +153,28 @@ export interface MusicFeatureResult {
   modelVersion: string
 }
 
+/**
+ * What the vocal numbers were actually measured from.
+ *
+ * `full_mix` is the spectral proxy: it infers where the voice is from band
+ * energy, tonality and centroid movement, and it is wrong on dense arrangements
+ * in a way it cannot detect. `isolated_stem` means a real separated vocal was
+ * measured. Every consumer that reports a vocal figure reports this alongside,
+ * because the same number means two different things depending on which it is.
+ */
+export type VocalMeasurementBasis = 'full_mix' | 'isolated_stem'
+
+export interface VocalAnalysisOptions {
+  /**
+   * An isolated vocal to measure instead of the mix. The mix is still passed
+   * as the primary source, so a provider that cannot use a stem ignores this
+   * and returns a `full_mix` result rather than failing.
+   */
+  isolatedVocal?: AudioSource
+}
+
 export interface VocalAnalysisResult {
+  basis: VocalMeasurementBasis
   occupancy: Measured<number>
   firstVocalSeconds: Measured<number>
   averagePhraseSeconds: Measured<number>
@@ -200,7 +221,7 @@ export interface VocalAnalysisProvider {
   readonly providerId: string
   readonly modelVersion: string
   isConfigured(): boolean
-  analyzeVocals(asset: AudioSource): Promise<VocalAnalysisResult>
+  analyzeVocals(asset: AudioSource, opts?: VocalAnalysisOptions): Promise<VocalAnalysisResult>
 }
 
 export interface SongAnalysisProviderSet {

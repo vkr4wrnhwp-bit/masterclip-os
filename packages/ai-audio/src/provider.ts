@@ -27,7 +27,8 @@ export interface GeneratedOption {
   /** OPTION A / B / C. */
   label: string
   wavBytes: Uint8Array
-  durationMs: number
+  /** Measured from the audio. Null when it cannot be read (e.g. hosted mp3). */
+  durationMs: number | null
   description: string
 }
 

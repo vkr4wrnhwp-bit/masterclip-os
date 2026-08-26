@@ -94,7 +94,7 @@ creates a new analysis row and preserves the old one. Human-confirmed sections c
 forward automatically.
 
 **"The register panel is empty on an older project."** Register and melodic contour
-arrived in migration `0006_song_lab_register`. Sections analysed before it have no
+arrived in migration `0007_song_lab_register`. Sections analysed before it have no
 register columns, so they read as *not measured* — which is honest, not broken.
 Reanalyse the project to measure them; the previous analysis stays readable.
 

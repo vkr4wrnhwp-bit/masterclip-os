@@ -84,7 +84,7 @@ so Signal, Remix Lab, Live Lab and internal A&R tooling can reuse it.
 | Package | Responsibility |
 |---|---|
 | `@masterclip/song-feature-vectors` | The `Measured<T>` envelope, the metric registry, the versioned feature vector |
-| `@masterclip/song-analysis` | PCM decoding, FFT, tempo, key, loudness, vocal activity, provider interfaces |
+| `@masterclip/song-analysis` | PCM decoding, FFT, tempo, key, loudness, vocal activity (from the mix or a separated stem), register and melodic contour, provider interfaces |
 | `@masterclip/song-structure` | Section detection, structural metrics, contrast, register and melodic analysis, Build Intelligence, Chant Finder |
 | `@masterclip/lyric-analysis` | Syllables, phrases, title/hook repetition, density |
 | `@masterclip/music-benchmarking` | Cohorts, percentiles, comparison, observation generation |

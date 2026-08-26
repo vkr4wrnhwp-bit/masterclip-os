@@ -1410,3 +1410,205 @@ describe('demo mode', () => {
     expect(second.seeded).toBe(false)
   })
 })
+
+// ===========================================================================
+
+/**
+ * Vocal-stem separation.
+ *
+ * The product claim under test is narrow and worth stating: measuring an
+ * isolated vocal is allowed to raise the confidence attached to vocal figures,
+ * and *nothing else* is. Every test here is a way of getting that wrong.
+ */
+describe('vocal stem separation', () => {
+  async function seedWithVersion(session: Session): Promise<{ projectId: string; versionId: string }> {
+    const { projectId } = await seedProject(session, 'Vocal Stem Song')
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    return { projectId, versionId: project.currentVersionId! }
+  }
+
+  it('measures vocals from the mix until a stem exists, and says so', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedWithVersion(session)
+    const project = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    const analysis = await runtime.songLab.repos.analyses.latestForVersion(session.orgId, project.currentVersionId!)
+
+    // The basis is recorded on every analysis, not only the interesting ones —
+    // a vocal figure with no stated basis is a figure you cannot interpret.
+    expect(analysis!.vocalAnalysis.basis).toBe('full_mix')
+  })
+
+  it('separates, stores the stem as a new asset, and never touches the original', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const version = await runtime.songLab.repos.versions.get(session.orgId, versionId)
+    const originalAssetId = version.sourceAssetId!
+    const original = await runtime.audio.repos.assets.get(session.orgId, originalAssetId)
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    expect(response.statusCode).toBe(200)
+    const queued = (response.json() as { vocalStem: { id: string; status: string } }).vocalStem
+    expect(queued.status).toBe('pending')
+
+    const settled = await runtime.songLab.vocalStems.run(queued.id, session.orgId)
+    expect(settled.status).toBe('ready')
+    expect(settled.stemName).toBe('vocals')
+    expect(settled.stemAssetId).not.toBeNull()
+
+    // The stem is a *different* asset. The mix is byte-identical to before.
+    expect(settled.stemAssetId).not.toBe(originalAssetId)
+    const afterwards = await runtime.audio.repos.assets.get(session.orgId, originalAssetId)
+    expect(afterwards.checksum).toBe(original.checksum)
+    expect(afterwards.storageKey).toBe(original.storageKey)
+
+    // And the version still points at the mix, not at the stem.
+    const versionAfter = await runtime.songLab.repos.versions.get(session.orgId, versionId)
+    expect(versionAfter.sourceAssetId).toBe(originalAssetId)
+  })
+
+  it('requires the stem-separation capability, not just Song Lab', async () => {
+    // Separation spends the organization's provider budget. Holding the
+    // diagnostic module is not a licence to spend it.
+    await bootstrapFlagship()
+    const session = await provisionOrg('stems@example.com', 'Stemless Org')
+    await grantSongLab(session.orgId)
+    const { projectId, versionId } = await seedWithVersion(session)
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    expect(response.statusCode).toBe(403)
+    // Specifically the audio capability, not Song Lab's own gate — otherwise
+    // this test would pass just as well if the route were broken.
+    expect(response.json().error.code).toBe('audio.gate.org_entitlement')
+
+    // And it is genuinely reachable once that capability is granted. Note the
+    // grant goes through the *audio* entitlement store: Song Lab's own
+    // entitlements are a separate system and do not open this door.
+    await runtime.audio.repos.policy.grantEntitlements(session.orgId, ['audio.stem_separation'], session.userId)
+    const allowed = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    expect(allowed.statusCode).toBe(200)
+  })
+
+  it('refuses to separate a version belonging to another project', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId } = await seedWithVersion(session)
+    const other = await seedWithVersion(session)
+
+    const response = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${other.versionId}/vocal-stem`)
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.code).toBe('song_lab.version_mismatch')
+  })
+
+  it('does not leak one tenant stem to another', async () => {
+    const owner = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(owner)
+    const requested = await call(owner, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    const intruder = await provisionOrg('intruder@example.com', 'Intruder Org')
+    await grantSongLab(intruder.orgId)
+    await expect(runtime.songLab.repos.vocalStems.get(intruder.orgId, stemId)).rejects.toThrow()
+
+    // Nor through the job, which knows an id before it can prove an org.
+    await expect(runtime.songLab.vocalStems.run(stemId, intruder.orgId)).rejects.toThrow(/another organization/)
+  })
+
+  it('does not pay twice for the same audio', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const url = `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`
+
+    const first = (await call(session, 'POST', url)).json() as { vocalStem: { id: string } }
+    const second = (await call(session, 'POST', url)).json() as { vocalStem: { id: string } }
+    expect(second.vocalStem.id).toBe(first.vocalStem.id)
+
+    const all = await runtime.songLab.repos.vocalStems.list(session.orgId, projectId)
+    expect(all.length).toBe(1)
+  })
+
+  it('will not measure a stem that came from different audio', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+    const ready = await runtime.songLab.vocalStems.run(stemId, session.orgId)
+    expect(ready.status).toBe('ready')
+
+    // A stem is only a stem *of* the recording it was separated from. Asking
+    // with any other checksum must not return it.
+    const version = await runtime.songLab.repos.versions.get(session.orgId, versionId)
+    const asset = await runtime.audio.repos.assets.get(session.orgId, version.sourceAssetId!)
+    expect(await runtime.songLab.repos.vocalStems.readyForVersion(session.orgId, versionId, asset.checksum)).not.toBeNull()
+    expect(await runtime.songLab.repos.vocalStems.readyForVersion(session.orgId, versionId, 'a-different-checksum')).toBeNull()
+  })
+
+  /**
+   * The point of the whole feature.
+   *
+   * Uses the real DSP provider rather than the deterministic one, because the
+   * claim being tested is about measurement: the same song, analysed twice,
+   * should move from a mix-based inference to a stem-based measurement, and the
+   * confidence attached to its vocal figures should rise *because of that* and
+   * not by decree.
+   */
+  it('raises vocal confidence only once it is measuring a real stem', async () => {
+    const session = await bootstrapFlagship()
+    // The local provider decodes WAV in-process, so this needs no ffmpeg.
+    const { LocalVocalAnalysisProvider } = await import('@masterclip/song-analysis')
+    runtime.songLab.providers.vocals = new LocalVocalAnalysisProvider()
+
+    const { projectId, versionId } = await seedWithVersion(session)
+    const before = await runtime.songLab.projects.reanalyze({ userId: session.userId, orgId: session.orgId, orgRole: 'owner' }, projectId)
+    await runtime.songLab.analysis.run(before, session.orgId)
+    const mixAnalysis = await runtime.songLab.repos.analyses.get(session.orgId, before)
+    const mixOccupancy = mixAnalysis.vocalAnalysis.occupancy as { confidence: number; note?: string }
+
+    expect(mixAnalysis.vocalAnalysis.basis).toBe('full_mix')
+    expect(mixOccupancy.note).toContain('not an isolated vocal')
+
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    const after = await runtime.songLab.projects.reanalyze({ userId: session.userId, orgId: session.orgId, orgRole: 'owner' }, projectId)
+    await runtime.songLab.analysis.run(after, session.orgId)
+    const stemAnalysis = await runtime.songLab.repos.analyses.get(session.orgId, after)
+    const stemOccupancy = stemAnalysis.vocalAnalysis.occupancy as { confidence: number; note?: string }
+
+    expect(stemAnalysis.vocalAnalysis.basis).toBe('isolated_stem')
+    expect(stemOccupancy.confidence).toBeGreaterThan(mixOccupancy.confidence)
+    // The caveat is dropped because it is no longer true, not to look better.
+    expect(stemOccupancy.note).toBeUndefined()
+
+    // The earlier analysis is untouched: reanalysis adds a row, it does not
+    // rewrite history, so the mix-based figures remain auditable.
+    const original = await runtime.songLab.repos.analyses.get(session.orgId, before)
+    expect(original.vocalAnalysis.basis).toBe('full_mix')
+  })
+
+  it('records unsupported separately from failed when no stem is a vocal', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    // A provider that returns an archive rather than named stems — which is
+    // exactly what the ElevenLabs adapter does today.
+    const registry = runtime.audio.registry
+    const original = registry.resolve('stems')
+    const archiveOnly = {
+      providerId: original.providerId,
+      isConfigured: () => true,
+      supportsZeroRetention: () => false,
+      healthCheck: original.healthCheck.bind(original),
+      separateStems: async () => ({
+        stems: [{ name: 'stems-archive', audio: { bytes: new Uint8Array([1, 2, 3]), contentType: 'application/zip', filename: 'stems.zip' } }],
+      }),
+    }
+    registry.register({ stems: archiveOnly as never })
+
+    const settled = await runtime.songLab.vocalStems.run(stemId, session.orgId)
+    expect(settled.status).toBe('unsupported')
+    expect(settled.failureReason).toContain('stems-archive')
+    expect(settled.stemAssetId).toBeNull()
+  })
+})

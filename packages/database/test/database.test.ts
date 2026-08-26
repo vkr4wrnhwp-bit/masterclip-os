@@ -35,7 +35,7 @@ describe('migrations', () => {
     // an earlier migration must pick up every one after it, including the
     // ALTER TABLE additions, without the schema being rebuilt.
     const db = new SqliteDb(':memory:')
-    const cutoff = MIGRATIONS.findIndex((migration) => migration.id === '0006_song_lab_register')
+    const cutoff = MIGRATIONS.findIndex((migration) => migration.id === '0007_song_lab_register')
     expect(cutoff).toBeGreaterThan(0)
 
     await runMigrations(db, MIGRATIONS.slice(0, cutoff))
@@ -43,7 +43,7 @@ describe('migrations', () => {
     expect(before.map((row) => row.name)).not.toContain('register_median')
 
     const upgrade = await runMigrations(db)
-    expect(upgrade.applied).toEqual(['0006_song_lab_register'])
+    expect(upgrade.applied).toEqual(['0007_song_lab_register'])
 
     const after = await db.query<{ name: string }>('PRAGMA table_info(song_section_features)')
     const columns = after.map((row) => row.name)
