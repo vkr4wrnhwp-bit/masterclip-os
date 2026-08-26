@@ -14,7 +14,15 @@ import {
   StructureTimeline,
   Tabs,
 } from './components.jsx'
-import { clock, seconds, songLabApi, type ProducerFeatureRow, type SectionRegisterBand, type SongSection } from './api.js'
+import {
+  clock,
+  seconds,
+  songLabApi,
+  type Measured,
+  type ProducerFeatureRow,
+  type SectionRegisterBand,
+  type SongSection,
+} from './api.js'
 
 /**
  * The project workspace.
@@ -216,6 +224,24 @@ function VocalBasisPanel({
   }
 
   const current = stems.data?.vocalStems.find((stem) => stem.songVersionId === versionId) ?? null
+  // A stem exists for this recording but the figures on screen were still
+  // measured from the mix. Separation queues the re-measurement itself, so this
+  // is normally the few seconds before that job lands — but it is also where a
+  // project sits if that queueing failed, which is why the manual path stays.
+  const awaitingRemeasure = current?.status === 'ready' && !isolated
+
+  const remeasure = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await songLabApi.reanalyze(projectId)
+      reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Card title="Vocal measurement" action={<ClassificationChip label={isolated ? 'Isolated Vocal' : 'Full Mix'} />}>
@@ -227,7 +253,15 @@ function VocalBasisPanel({
           : 'Vocal occupancy, time to first vocal, phrase length and rest ratio are estimated from the full mix. The detector infers where the voice is from band energy and tonality, so a dense arrangement reads as more vocal than it is. These figures carry lower confidence for that reason.'}
       </p>
 
-      {current?.status === 'pending' && <Callout tone="info">Separating the lead vocal. The next analysis will measure it.</Callout>}
+      {current?.status === 'pending' && (
+        <Callout tone="info">Separating the lead vocal. Re-measuring starts on its own as soon as it finishes.</Callout>
+      )}
+      {awaitingRemeasure && (
+        <Callout tone="info">
+          The lead vocal was separated{current?.stemName ? ` (${current.stemName})` : ''}. The figures above are still the
+          mix-based estimate until the re-measurement finishes.
+        </Callout>
+      )}
       {current?.status === 'unsupported' && (
         <Callout tone="info">
           {current.provider} could not return an isolated lead vocal, so the vocal figures stay measured from the mix.
@@ -236,7 +270,13 @@ function VocalBasisPanel({
       )}
       {current?.status === 'failed' && <Callout tone="warn">Separation failed: {current.failureReason ?? 'unknown reason'}</Callout>}
 
-      {!isolated && current?.status !== 'pending' && (
+      {awaitingRemeasure && (
+        <button className="small" onClick={remeasure} disabled={busy}>
+          Re-measure from the separated vocal
+        </button>
+      )}
+
+      {!isolated && current?.status !== 'pending' && current?.status !== 'ready' && (
         <button className="small" onClick={separate} disabled={busy || !versionId}>
           {current ? 'Try separating the vocal again' : 'Separate the vocal and re-measure'}
         </button>
@@ -1684,6 +1724,90 @@ function firstChorus(sections: SongSection[]): string {
 
 // ------------------------------------------------------------------- A&R ----
 
+/**
+ * What the roster has learned, per recommendation type.
+ *
+ * The two columns are the entire point. A single median pooled across songs
+ * that took a note and songs that ignored it describes neither group, so the
+ * groups are shown apart and a metric with too few releases behind it shows
+ * its count instead of a number.
+ */
+function RecommendationLearning() {
+  const state = useAsync(() => songLabApi.recommendationOutcomes(), [])
+
+  return (
+    <AsyncBlock state={state}>
+      {(data) => (
+        <Card title="What the roster has learned" action={<span className="faint">{data.summary.length} recommendation types</span>}>
+          {data.summary.length === 0 ? (
+            <div className="empty">No recommendation has been released and measured yet.</div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Recommendation</th>
+                      <th className="num">Suggested</th>
+                      <th className="num">Accepted</th>
+                      <th className="num">Implemented</th>
+                      <th className="num">Released</th>
+                      <th>Implemented</th>
+                      <th>Not implemented</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.summary.map((row) => (
+                      <tr key={row.recommendationType}>
+                        <td>{row.recommendationType.replace(/_/g, ' ')}</td>
+                        <td className="num">{row.suggested}</td>
+                        <td className="num">{row.accepted}</td>
+                        <td className="num">{row.implemented}</td>
+                        <td className="num">{row.released}</td>
+                        <td>
+                          <OutcomeMetrics group={row.implementedOutcome} />
+                        </td>
+                        <td>
+                          <OutcomeMetrics group={row.notImplementedOutcome} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Callout tone="info">{data.note}</Callout>
+            </>
+          )}
+        </Card>
+      )}
+    </AsyncBlock>
+  )
+}
+
+function OutcomeMetrics({ group }: { group: { sampleSize: number; metrics: Record<string, Measured> } }) {
+  const entries = Object.entries(group.metrics)
+  if (entries.length === 0) return <span className="faint">no releases</span>
+  return (
+    <>
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <span className="faint">{key.replace(/_/g, ' ')}: </span>
+          {value.value === null ? (
+            // The count, not a dash: "n = 3" says why the number is missing.
+            <span className="faint" title={value.note}>
+              not enough information (n&nbsp;=&nbsp;{group.sampleSize})
+            </span>
+          ) : (
+            <>
+              {value.value.toLocaleString()} <span className="faint">(n&nbsp;=&nbsp;{group.sampleSize})</span>
+            </>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
 function ArTab({ projectId }: { projectId: string }) {
   const state = useAsync(() => songLabApi.ar(projectId), [projectId])
   const [busy, setBusy] = React.useState(false)
@@ -1711,6 +1835,10 @@ function ArTab({ projectId }: { projectId: string }) {
             This view is permission controlled and is not shown to artist users. Every rating below is traceable to measured features and a
             cohort comparison, and no rating is a decision until a person approves it.
           </Callout>
+
+          <div style={{ marginBottom: 16 }}>
+            <RecommendationLearning />
+          </div>
 
           {error && <Callout tone="danger">{error}</Callout>}
 

@@ -337,6 +337,21 @@ export interface ProjectDetail {
   thingsWorthTesting: SongObservation[]
 }
 
+export interface OutcomeGroup {
+  sampleSize: number
+  metrics: Record<string, Measured>
+}
+
+export interface RecommendationOutcome {
+  recommendationType: string
+  suggested: number
+  accepted: number
+  implemented: number
+  released: number
+  implementedOutcome: OutcomeGroup
+  notImplementedOutcome: OutcomeGroup
+}
+
 export interface SongVocalStem {
   id: string
   songVersionId: string
@@ -514,6 +529,8 @@ export const songLabApi = {
     }>(`/api/song-lab/projects/${id}/versions/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
 
   ar: (id: string) => get<{ review: ArReview | null; history: ArReview[]; ratings: string[]; recommendations: string[] }>(`/api/song-lab/projects/${id}/ar`),
+  recommendationOutcomes: () =>
+    get<{ summary: RecommendationOutcome[]; note: string }>('/api/song-lab/analytics/recommendations'),
   draftAr: (id: string) => post<{ review: ArReview }>(`/api/song-lab/projects/${id}/ar/draft`),
   updateAr: (id: string, body: Record<string, unknown>) => patch<{ review: ArReview }>(`/api/song-lab/ar-reviews/${id}`, body),
   approveAr: (id: string) => post<{ review: ArReview }>(`/api/song-lab/ar-reviews/${id}/approve`),

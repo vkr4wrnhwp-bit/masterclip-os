@@ -1587,6 +1587,83 @@ describe('vocal stem separation', () => {
   })
 
   /**
+   * The defect this suite did not catch for two releases.
+   *
+   * Every test above proved the stem was produced correctly, and the
+   * confidence test proved the measurement improves — but it improved it by
+   * calling `reanalyze` by hand. Nothing in the product did that, so an artist
+   * paid for a separation, watched the card keep saying Full Mix, and was
+   * offered a button reading "try separating the vocal again" for a separation
+   * that had already succeeded.
+   *
+   * Deliberately does *not* call reanalyze. If the chain regresses, the basis
+   * stays `full_mix` and this fails.
+   */
+  it('re-measures on its own once the stem is ready, without being asked', async () => {
+    const session = await bootstrapFlagship()
+    const { LocalVocalAnalysisProvider } = await import('@masterclip/song-analysis')
+    runtime.songLab.providers.vocals = new LocalVocalAnalysisProvider()
+
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    const before = await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)
+    const mixAnalysis = before.find((row) => row.status === 'complete')!
+    expect(mixAnalysis.vocalAnalysis.basis).toBe('full_mix')
+
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    // Separation queued a fresh analysis rather than leaving the old one to
+    // stand. Compared as a set, so this cannot pass on row ordering.
+    const after = await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)
+    const seen = new Set(before.map((row) => row.id))
+    const added = after.filter((row) => !seen.has(row.id))
+    expect(added.length).toBe(1)
+
+    await runtime.songLab.analysis.run(added[0]!.id, session.orgId)
+    const remeasured = await runtime.songLab.repos.analyses.get(session.orgId, added[0]!.id)
+    expect(remeasured.vocalAnalysis.basis).toBe('isolated_stem')
+
+    // And the mix-based row is still there, unchanged.
+    expect((await runtime.songLab.repos.analyses.get(session.orgId, mixAnalysis.id)).vocalAnalysis.basis).toBe('full_mix')
+  })
+
+  /**
+   * A new master uploaded while separation was running makes the stem a stem of
+   * the *previous* recording. Reanalysing the current version would pay for a
+   * full analysis to discover the stem does not apply to it.
+   */
+  it('does not re-measure a version the project has already moved past', async () => {
+    const session = await bootstrapFlagship()
+    const { projectId, versionId } = await seedWithVersion(session)
+    const requested = await call(session, 'POST', `/api/song-lab/projects/${projectId}/versions/${versionId}/vocal-stem`)
+    const stemId = (requested.json() as { vocalStem: { id: string } }).vocalStem.id
+
+    // The project moves to a different current version before the job runs.
+    const version = await runtime.songLab.repos.versions.get(session.orgId, versionId)
+    const supersede = await runtime.songLab.repos.versions.create({
+      orgId: session.orgId,
+      songLabProjectId: projectId,
+      parentVersionId: versionId,
+      versionType: 'human_revision',
+      versionLabel: 'Master 2',
+      sourceAssetId: version.sourceAssetId,
+      createdBy: session.userId,
+    })
+    await runtime.songLab.repos.projects.setSource(session.orgId, projectId, version.sourceAssetId!, supersede.id)
+
+    const analysesBefore = (await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)).length
+    expect((await runtime.songLab.vocalStems.run(stemId, session.orgId)).status).toBe('ready')
+
+    // The stem is kept — returning to that version finds it again — but no
+    // analysis was queued for a version it cannot describe.
+    expect((await runtime.songLab.repos.analyses.listForProject(session.orgId, projectId)).length).toBe(analysesBefore)
+    const asset = await runtime.audio.repos.assets.get(session.orgId, version.sourceAssetId!)
+    expect(await runtime.songLab.repos.vocalStems.readyForVersion(session.orgId, versionId, asset.checksum)).not.toBeNull()
+  })
+
+  /**
    * The register half of the same claim.
    *
    * Section *boundaries* have to come from the full mix — an instrumental break
@@ -1913,5 +1990,130 @@ describe('lyric transcription', () => {
         versionId: 'whatever',
       }),
     ).rejects.toThrow()
+  })
+})
+
+// ===========================================================================
+
+/**
+ * Cross-roster recommendation outcomes.
+ *
+ * This is the only place Song Lab looks like it is making a claim about what
+ * works, so it is the place where a sloppy number does the most damage. Both
+ * of these tests exist because the first version of this summary got it wrong.
+ */
+describe('recommendation outcome summary', () => {
+  /**
+   * Builds `count` outcome links of one recommendation type, all released,
+   * carrying one metric each.
+   */
+  async function seedOutcomes(
+    session: Session,
+    project: { projectId: string; analysisId: string },
+    input: { type: string; implemented: boolean; values: number[] },
+  ): Promise<void> {
+    const { projectId, analysisId } = project
+    const record = await runtime.songLab.repos.projects.get(session.orgId, projectId)
+    // Observation and recommendation rows are inserted directly: what is under
+    // test is the aggregation, and driving the full observation pipeline would
+    // not let the sample sizes be controlled.
+    const observationId = `sobs_test_${input.type}_${input.implemented ? 'y' : 'n'}`
+    await runtime.db.run(
+      `INSERT INTO song_observations
+         (id, org_id, song_lab_project_id, song_version_id, song_analysis_id, benchmark_cohort_id,
+          observation_type, category, title, description, severity, confidence,
+          source_metric_keys, benchmark_result_ids, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, 'structure', 'structure', 'fixture', 'fixture', 'Worth Testing', 0.5, '[]', '[]', 'open', ?, ?)`,
+      [observationId, session.orgId, projectId, record.currentVersionId, analysisId, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'],
+    )
+    for (const [index, value] of input.values.entries()) {
+      const recommendationId = `srec_test_${input.type}_${input.implemented ? 'y' : 'n'}_${index}`
+      await runtime.db.run(
+        `INSERT INTO song_recommendations
+           (id, org_id, song_observation_id, recommendation_type, title, description,
+            experiment_supported, confidence, human_approved, approved_by, approved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0.5, 1, ?, ?, ?)`,
+        [recommendationId, session.orgId, observationId, input.type, 'fixture', 'fixture', session.userId, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'],
+      )
+      const link = await runtime.songLab.repos.outcomes.record({
+        orgId: session.orgId,
+        songLabProjectId: projectId,
+        recommendationId,
+        observationId: null,
+        suggestedAt: '2026-01-01T00:00:00Z',
+      })
+      await runtime.songLab.repos.outcomes.markAccepted(session.orgId, link.id)
+      if (input.implemented) await runtime.songLab.repos.outcomes.markImplemented(session.orgId, link.id, 'sv_fixture')
+      await runtime.songLab.repos.outcomes.markReleased(session.orgId, link.id, `rel_${recommendationId}`, '2026-02-01T00:00:00Z')
+      await runtime.songLab.outcomes.attachOutcome({
+        actor: { userId: session.userId, orgId: session.orgId, orgRole: 'owner' },
+        outcomeId: link.id,
+        outcomeWindow: '28d',
+        metrics: { streams: value },
+      })
+    }
+  }
+
+  it('refuses to report a median over a handful of releases', async () => {
+    const session = await bootstrapFlagship()
+    const project = await seedProject(session, 'Outcome Sample')
+    // Three releases. A median of three is a number, not a finding.
+    await seedOutcomes(session, project, { type: 'chorus_earlier', implemented: true, values: [1000, 50_000, 90_000] })
+
+    const response = await call(session, 'GET', '/api/song-lab/analytics/recommendations')
+    expect(response.statusCode).toBe(200)
+    const summary = (response.json() as { summary: Array<Record<string, any>> }).summary
+    const entry = summary.find((row) => row.recommendationType === 'chorus_earlier')!
+
+    expect(entry.implementedOutcome.sampleSize).toBe(3)
+    // The value is withheld, and the reason is stated rather than implied.
+    expect(entry.implementedOutcome.metrics.streams.value).toBeNull()
+    expect(entry.implementedOutcome.metrics.streams.note).toContain('below the 8')
+  })
+
+  it('reports the median once the sample clears the floor', async () => {
+    const session = await bootstrapFlagship()
+    const project = await seedProject(session, 'Outcome Enough')
+    await seedOutcomes(session, project, { type: 'chorus_earlier', implemented: true, values: [10, 20, 30, 40, 50, 60, 70, 80, 90] })
+
+    const summary = ((await call(session, 'GET', '/api/song-lab/analytics/recommendations')).json() as { summary: Array<Record<string, any>> }).summary
+    const entry = summary.find((row) => row.recommendationType === 'chorus_earlier')!
+
+    expect(entry.implementedOutcome.sampleSize).toBe(9)
+    expect(entry.implementedOutcome.metrics.streams.value).toBe(50)
+    // Confidence stays well short of certainty however large the sample gets:
+    // this is observational data about groups that selected themselves.
+    expect(entry.implementedOutcome.metrics.streams.confidence).toBeLessThanOrEqual(0.6)
+    expect(entry.implementedOutcome.metrics.streams.note).toContain('association only')
+  })
+
+  it('does not pool implemented releases with releases that ignored the note', async () => {
+    const session = await bootstrapFlagship()
+    const project = await seedProject(session, 'Outcome Split')
+    // Two clearly separated populations. Pooling them would produce a median
+    // near 500 that describes neither group.
+    await seedOutcomes(session, project, { type: 'chorus_earlier', implemented: true, values: [900, 910, 920, 930, 940, 950, 960, 970] })
+    await seedOutcomes(session, project, { type: 'chorus_earlier', implemented: false, values: [10, 20, 30, 40, 50, 60, 70, 80] })
+
+    const summary = ((await call(session, 'GET', '/api/song-lab/analytics/recommendations')).json() as { summary: Array<Record<string, any>> }).summary
+    const entry = summary.find((row) => row.recommendationType === 'chorus_earlier')!
+
+    expect(entry.released).toBe(16)
+    expect(entry.implemented).toBe(8)
+    expect(entry.implementedOutcome.metrics.streams.value).toBe(935)
+    expect(entry.notImplementedOutcome.metrics.streams.value).toBe(45)
+  })
+
+  it('still refuses the word "caused" anywhere in the response', async () => {
+    const session = await bootstrapFlagship()
+    const project = await seedProject(session, 'Outcome Language')
+    await seedOutcomes(session, project, { type: 'chorus_earlier', implemented: true, values: [10, 20, 30, 40, 50, 60, 70, 80] })
+
+    const body = JSON.stringify((await call(session, 'GET', '/api/song-lab/analytics/recommendations')).json()).toLowerCase()
+    expect(body).toContain('association only')
+    // "cannot establish that the change caused the outcome" is the one allowed
+    // use, and it is a denial. Nothing may assert causation.
+    expect(body).not.toMatch(/caused (a|an|the) (lift|increase|improvement)/)
+    expect(body).not.toContain('because of this recommendation')
   })
 })

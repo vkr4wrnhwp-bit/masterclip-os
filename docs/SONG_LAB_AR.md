@@ -78,6 +78,56 @@ The approving user and timestamp are stored and displayed.
 An AI cannot sign, reject, fund or promise anything to an artist. That is not a
 policy statement in this codebase; it is the absence of a code path.
 
+## What the roster has learned
+
+The closed loop: a recommendation was suggested → accepted or not → implemented
+or not → released or not → and then, from authorized post-release metrics, what
+was observed.
+
+```
+GET /api/song-lab/analytics/recommendations
+```
+
+Flagship only. This is Street Banker's learning about its own portfolio, not a
+partner's.
+
+Two rules keep the summary from overstating what it holds.
+
+**Groups are never pooled.** The figures are reported separately for releases
+where the recommendation *was* implemented and releases where it was not:
+
+| | Implemented | Not implemented |
+| --- | --- | --- |
+| chorus earlier | streams 935 (n = 8) | streams 45 (n = 8) |
+
+A single median across both groups would describe neither. It mixes the songs
+that took the note with the songs that ignored it, and the resulting number
+answers no question anyone asked.
+
+**A median needs a population behind it.** Below **8 released songs** in a
+group, the metric comes back with a null value and its count rather than a
+number:
+
+```
+streams: not enough information (n = 3)
+```
+
+That is the same floor a benchmark cohort must clear before it can be
+published. A recommendation type is a population too, and it does not become
+one because it is easier to count.
+
+### What this still cannot tell you
+
+Even at full sample, this is observational data about groups that selected
+themselves. Artists who take a note differ from artists who do not — in
+ambition, in budget, in how far along the record already was — in ways nothing
+here measures. So a gap between the two columns is an **association**, and
+confidence is capped at 0.6 however large the sample grows, because no amount
+of it fixes that.
+
+Nothing in this response asserts causation, and the word "caused" appears in
+one place only: the note saying this data cannot establish it.
+
 ## Operator Desk
 
 Authorized users can attach a project to an artist or lead, add A&R and producer
