@@ -241,7 +241,18 @@ export async function seedSongLabDemo(songLab: SongLabLayer, input: SeedSongLabD
       },
     },
     energyCurve: { values: demoEnergyCurve(), stepSeconds: 1 },
-    vocalAnalysis: { occupancy: measured(0.64, 0.45, 'demo'), phrases: [], activity: [], activityStepSeconds: 1, register: { median: null, low: null, high: null, confidence: 0 } },
+    // `basis` is stated here for the same reason it is stated on a real
+    // analysis: a vocal figure without one cannot be interpreted. Demo values
+    // are synthesized, so they are certainly not a measurement of an isolated
+    // stem, and saying so keeps the demo honest about what it is showing.
+    vocalAnalysis: {
+      basis: 'full_mix',
+      occupancy: measured(0.64, 0.45, 'demo'),
+      phrases: [],
+      activity: [],
+      activityStepSeconds: 1,
+      register: { median: null, low: null, high: null, confidence: 0 },
+    },
     providers: { features: source, structure: source, vocals: source },
   })
 
