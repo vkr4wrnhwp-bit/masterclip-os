@@ -148,6 +148,7 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
         consents: audioLayer.repos.consents,
         operatorDesk: audioLayer.repos.operatorDesk,
         remix: audioLayer.repos.remix,
+        providerRegistry: audioLayer.registry,
       },
       ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
     }),
