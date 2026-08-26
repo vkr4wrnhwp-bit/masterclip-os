@@ -92,7 +92,27 @@ async function main(): Promise<void> {
 
     worker.register<{ jobId: string }>(JOB_TYPES.audioTranscribe, async ({ jobId }, ctx) => {
       await ctx.heartbeat()
-      await audio.transcription.run(jobId)
+      const transcript = await audio.transcription.run(jobId)
+
+      // A transcript raised for Song Lab is a lyric. The transcription
+      // pipeline stays ignorant of that — it produces words and timings — and
+      // the chaining lives here, in the layer that knows about both.
+      const job = await audio.repos.jobs.getAnyOrg(jobId)
+      const config = job.configuration as { purpose?: string; songLabProjectId?: string; songVersionId?: string }
+      if (config.purpose === 'song_lab' && config.songLabProjectId && config.songVersionId) {
+        await runtime.queue.enqueue({
+          queue: QUEUES.songLab,
+          type: JOB_TYPES.songLabTranscribeLyrics,
+          payload: {
+            transcriptId: transcript.id,
+            orgId: job.orgId,
+            userId: job.userId,
+            projectId: config.songLabProjectId,
+            versionId: config.songVersionId,
+          },
+          dedupeKey: `song_lab.lyrics.transcribe:${transcript.id}`,
+        })
+      }
     })
 
     worker.register<{ meetingId: string }>(JOB_TYPES.audioExtractMeeting, async ({ meetingId }, ctx) => {
@@ -174,6 +194,15 @@ async function main(): Promise<void> {
      * mix-based proxy. Dead-lettering that would be wrong — nothing is broken,
      * the provider simply cannot do it.
      */
+    worker.register<{ transcriptId: string; orgId: string; userId: string; projectId: string; versionId: string }>(
+      JOB_TYPES.songLabTranscribeLyrics,
+      async (payload, ctx) => {
+        await ctx.heartbeat()
+        const lines = await songLab.lyricTranscription.ingest(payload)
+        ctx.logger.info('song_lab.lyrics_ingested', { project_id: payload.projectId, lines: lines.length })
+      },
+    )
+
     worker.register<{ vocalStemId: string; orgId: string }>(JOB_TYPES.songLabSeparateVocal, async ({ vocalStemId, orgId }, ctx) => {
       await ctx.heartbeat()
       const stem = await songLab.vocalStems.run(vocalStemId, orgId)

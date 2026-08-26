@@ -3,6 +3,7 @@ import {
   assertGenerationAllowed,
   type AudioIntelligenceProvider,
   type GeneratedOption,
+  type GenerationUsage,
   type SceneGenerationInput,
   type SceneGenerationResult,
 } from './provider.js'
@@ -31,7 +32,7 @@ export interface MusicComposer {
   }): Promise<{
     audio: { bytes: Uint8Array; contentType: string; filename?: string }
     seed?: number
-    usage?: { unit: string; inputUnits?: number; outputUnits?: number }
+    usage?: { unit: string; inputUnits?: number; outputUnits?: number; providerRequestId?: string }
   }>
 }
 
@@ -78,6 +79,8 @@ export class PlatformMusicProvider implements AudioIntelligenceProvider {
 
     const lengthMs = durationMsOf({ bpm: input.bpm, bars: input.request.bars, beatsPerBar: input.beatsPerBar })
     const options: GeneratedOption[] = []
+    // Accumulated across the three renders: one job, three purchases.
+    let usage: GenerationUsage | undefined
     for (const [index, shape] of SHAPES.entries()) {
       const result = await this.composer.generateMusic({
         orgId: input.orgId,
@@ -87,6 +90,16 @@ export class PlatformMusicProvider implements AudioIntelligenceProvider {
         instrumental: true,
         seed: input.seed + index * 7919,
       })
+      if (result.usage) {
+        usage = {
+          unit: result.usage.unit,
+          inputUnits: (usage?.inputUnits ?? 0) + (result.usage.inputUnits ?? 0),
+          outputUnits: (usage?.outputUnits ?? 0) + (result.usage.outputUnits ?? 0),
+          // The last request's id: enough to find the job at the provider,
+          // and honest that it identifies one of the three, not all.
+          ...(result.usage.providerRequestId ? { providerRequestId: result.usage.providerRequestId } : {}),
+        }
+      }
       options.push({
         label: shape.label,
         wavBytes: result.audio.bytes,
@@ -102,7 +115,9 @@ export class PlatformMusicProvider implements AudioIntelligenceProvider {
       })
     }
 
-    return { options, model: this.modelId, costMicros: 0 }
+    // costMicros stays 0: this layer does not price anything. The units below
+    // are what the ledger records, and cost reconciliation is the platform's.
+    return { options, model: this.modelId, costMicros: 0, ...(usage ? { usage } : {}) }
   }
 }
 
