@@ -120,6 +120,11 @@ export function LivePerformance({ projectId }: { projectId: string }) {
     // The engine holds the recovered levels so they survive the first song
     // change rather than being overwritten by the stored defaults.
     live.engine.restoreStemStates(restoreOffer.stems)
+    // Position first, so the stems the deck loads are the ones for the song
+    // the performer was actually on. selectSong makes no sound — the comment
+    // above promised positional restore and only the mixer was coming back,
+    // so after a mid-set crash NEXT SONG jumped to the second song.
+    if (restoreOffer.currentItemId) live.engine.selectSong(restoreOffer.currentItemId)
     live.engine.setClickEnabled(restoreOffer.clickEnabled)
     eventsRef.current.push({ eventType: 'crash_recovered', payload: {}, localTimestamp: new Date().toISOString() })
     setRestoreOffer(null)
