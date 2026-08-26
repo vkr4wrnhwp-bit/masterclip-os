@@ -14,6 +14,12 @@ jobs:
   masterclip:
     name: MASTERCLIP OS typecheck, lint, tests, browser suite & build
     runs-on: ubuntu-latest
+    # The whole suite, browser tests included, runs in under five minutes on
+    # a hosted runner. GitHub's default ceiling is six hours, which is what a
+    # hung ffmpeg probe, a deadlocked worker test or a Playwright page that
+    # never settles would actually burn before anyone noticed. 30 leaves
+    # generous headroom without being useless as a guard.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       # The QC engine renders and probes real defective MP4s, so ffmpeg is a
