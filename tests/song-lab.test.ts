@@ -11,6 +11,7 @@ import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { encodeWavPcm16, synthesize } from '@masterclip/ai-audio'
 import { REGISTER_CONFIDENCE_CEILING } from '@masterclip/song-analysis'
 import { FLAGSHIP_SONG_LAB_CAPABILITIES, PARTNER_SONG_LAB_CAPABILITIES } from '@masterclip/song-lab-domain'
+import { seedSongLabDemo } from '@masterclip/song-lab-engine'
 import { FLAGSHIP_CAPABILITIES } from '@masterclip/performance-project'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
 import { CSRF_COOKIE, CSRF_HEADER } from '../apps/api/src/security/csrf.js'
@@ -2115,5 +2116,44 @@ describe('recommendation outcome summary', () => {
     // use, and it is a denial. Nothing may assert causation.
     expect(body).not.toMatch(/caused (a|an|the) (lift|increase|improvement)/)
     expect(body).not.toContain('because of this recommendation')
+  })
+})
+
+describe('demo seeding and entitlement drift', () => {
+  // A deployed container re-runs the seed on every boot. The demo project is
+  // created once, but the capability list is not frozen at that moment: a
+  // capability added to the product later has to reach orgs that were seeded
+  // before it existed. Granting behind the "already seeded" early return meant
+  // it never did, and the symptom is invisible from the seed log — the demo
+  // project is present, the seed reports success, and the nav entry simply
+  // never appears.
+  it('re-grants a capability the org is missing even when the demo already exists', async () => {
+    const session = await bootstrapFlagship()
+
+    const first = await seedSongLabDemo(runtime.songLab, {
+      orgId: session.orgId,
+      userId: session.userId,
+      entitlements: runtime.entitlements,
+    })
+    expect(first.seeded).toBe(true)
+
+    // Stand in for a capability that did not exist when this org was seeded.
+    await runtime.entitlements.revoke(session.orgId, 'song_lab.exports')
+    expect(await runtime.entitlements.has(session.orgId, 'song_lab.exports')).toBe(false)
+
+    const second = await seedSongLabDemo(runtime.songLab, {
+      orgId: session.orgId,
+      userId: session.userId,
+      entitlements: runtime.entitlements,
+    })
+
+    // The demo is not seeded twice...
+    expect(second.seeded).toBe(false)
+    expect(second.projectId).toBe(first.projectId)
+    // ...but the org is whole again.
+    expect(await runtime.entitlements.has(session.orgId, 'song_lab.exports')).toBe(true)
+    for (const capability of FLAGSHIP_SONG_LAB_CAPABILITIES) {
+      expect(await runtime.entitlements.has(session.orgId, capability)).toBe(true)
+    }
   })
 })
