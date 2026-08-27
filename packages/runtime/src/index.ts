@@ -56,6 +56,14 @@ export interface Runtime {
   liveLab: LiveLabRepo
   entitlements: EntitlementService
   liveLabService: LiveLabService
+  /**
+   * Prices a Live Lab scene of `tracks` takes through the operator's audio
+   * rate card. Lives on the runtime so the budget gate at submission, the
+   * re-check before generating and the ledger row afterwards all quote the
+   * same number — three call sites that would otherwise each carry their own
+   * copy of the expression and drift apart one edit at a time.
+   */
+  estimateSceneCostMicros(tracks: number): number
   close(): Promise<void>
 }
 
@@ -102,6 +110,9 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
 
   const liveLabRepo = new LiveLabRepo(db, clock)
   const entitlements = new EntitlementService(db, clock)
+  // One definition, three readers: the API's budget gate, the re-check before
+  // generating, and the ledger row that records what was spent.
+  const estimateSceneCostMicros = (tracks: number): number => estimateMicros(parseRateCard(config), 'music', { tracks })
   const audioLayer = createAudioLayer({
     config,
     logger,
@@ -173,8 +184,9 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
       // The platform already knows what music costs — it prices its own the
       // same way. Live Lab asks rather than inventing a number, and an
       // unconfigured rate card yields zero here as it does everywhere else.
-      estimateSceneCostMicros: (tracks) => estimateMicros(parseRateCard(config), 'music', { tracks }),
+      estimateSceneCostMicros,
     }),
+    estimateSceneCostMicros,
     async close() {
       await db.close()
     },

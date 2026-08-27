@@ -17,7 +17,7 @@ import {
   remapPadMap,
   type LiveProject,
 } from '@masterclip/performance-project'
-import { checkPromptSafety } from '@masterclip/ai-audio'
+import { checkPromptSafety, SCENE_OPTION_COUNT } from '@masterclip/ai-audio'
 import type { Runtime } from '@masterclip/runtime'
 import { requireAuth, requireProject } from '../server.js'
 import { sniffMime } from './assets.js'
@@ -977,6 +977,37 @@ export async function registerLiveLabRoutes(app: FastifyInstance, runtime: Runti
     monthStart.setUTCHours(0, 0, 0, 0)
     const used = await runtime.liveLab.countAiJobsSince(auth.orgId, monthStart.toISOString())
     await runtime.entitlements.requireWithinLimit(auth.orgId, 'live_lab.max_ai_generations_per_month', used, 'monthly AI generation')
+
+    // Two different questions, both of which have to be answered "yes".
+    // `max_ai_generations_per_month` bounds how *often* an org may generate;
+    // the audio budget bounds how much it may *spend*. Live Lab's spend has
+    // counted toward that budget since it started pricing through the rate
+    // card, but counting toward a budget and being stopped by one are not the
+    // same thing, and until now nothing stopped it: an org could exhaust its
+    // audio budget through Meeting Intelligence and keep generating scenes,
+    // which is precisely the overrun budgets exist to prevent.
+    //
+    // Checked before the job row exists, so an exhausted org gets a straight
+    // 402 instead of a queued job that fails somewhere it cannot see. The
+    // scene is quoted at its real size — every provider returns
+    // SCENE_OPTION_COUNT takes — so a scene that would push past the cap is
+    // refused too, not only one submitted when the cap is already gone.
+    //
+    // 'scene_generation' is the ledger's operation for Live Lab, which is what
+    // the feature scope reads; org- and user-scoped budgets apply regardless.
+    const budget = await runtime.audio.repos.usage.check(
+      auth.orgId,
+      auth.userId,
+      'scene_generation',
+      runtime.estimateSceneCostMicros(SCENE_OPTION_COUNT),
+    )
+    if (!budget.allowed) {
+      throw new AppError({
+        kind: 'budget_exceeded',
+        code: 'live.budget_exhausted',
+        message: budget.reason ?? 'the audio budget for this organization is exhausted',
+      })
+    }
 
     const job = await runtime.liveLab.createAiJob({
       orgId: auth.orgId,
