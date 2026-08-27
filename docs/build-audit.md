@@ -412,8 +412,8 @@ merging Live Lab from `main`).
 
 ## Street Banker Live Lab (audited 2026-08-25)
 
-Same vocabulary, same standard. Verification run at `dd2d95f`: `pnpm typecheck`
-**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **621 passed / 621** ·
+Same vocabulary, same standard. Verification run at `4d611c3`: `pnpm typecheck`
+**44/44 clean** · `pnpm lint` **clean** · `pnpm test` **673 passed / 673** ·
 `pnpm test:e2e` **46 passed / 46** (whole repo).
 
 Additionally booted through `scripts/serve.mjs` against the bundled `dist/` in

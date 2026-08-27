@@ -158,6 +158,11 @@ test('a crash mid-show recovers offline, and never restarts audio by itself', as
   await page.getByRole('button', { name: 'CLICK' }).click()
   await expect(page.locator('.perf-indicators').getByText('CLICK')).toBeVisible()
 
+  // Locked, as the runbook says to be before doors — so the crash below
+  // exercises coming back to a locked surface rather than an open one.
+  await page.getByRole('button', { name: 'LOCK PERFORMANCE' }).click()
+  await expect(page.getByRole('button', { name: 'Exit' })).toBeDisabled()
+
   // The crash: the tab goes away and comes back, with no network to come back
   // to. This is the venue scenario, not a tidy reload.
   await page.reload()
@@ -168,6 +173,15 @@ test('a crash mid-show recovers offline, and never restarts audio by itself', as
   await expect(page.getByText(/Audio will not restart/)).toBeVisible()
 
   await page.getByRole('button', { name: 'RESTORE PERFORMANCE' }).click()
+
+  // Locked comes back locked. The runbook promises it and the snapshot records
+  // it; coming back unlocked is the accidental-navigation risk locking exists
+  // to remove, at the moment the performer is least able to notice.
+  await expect(page.getByRole('button', { name: /LOCKED/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Exit' })).toBeDisabled()
+  // Still one explicit tap away from leaving — restored lock must not trap.
+  await page.getByRole('button', { name: /LOCKED/ }).click()
+  await expect(page.getByRole('button', { name: 'Exit' })).toBeEnabled()
 
   // State came back...
   await expect(page.getByRole('button', { name: 'RESTORE PERFORMANCE' })).toHaveCount(0)

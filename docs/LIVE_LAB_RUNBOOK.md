@@ -45,6 +45,10 @@ The app offers `RESTORE PERFORMANCE` with the saved timestamp. Restoring
 reinstates song position, stem states, click and lock — **it does not start
 audio**. Trigger the next scene deliberately. Declining discards the snapshot.
 
+If you were locked before the crash you come back locked, which is the point:
+the surface you did not want touched is still the surface you do not want
+touched. Unlocking is the same explicit tap it always was.
+
 ## After the show
 
 - Unlock, exit Performance Mode.

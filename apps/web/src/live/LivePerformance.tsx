@@ -48,6 +48,26 @@ export function LivePerformance({ projectId }: { projectId: string }) {
     })
   }, [projectId])
 
+  const saveSnapshot = React.useCallback(
+    () =>
+      snapshotStore.save({
+        snapshotVersion: 1,
+        projectId,
+        packageVersion: bundle.data?.packages[0]?.version ?? null,
+        savedAt: new Date().toISOString(),
+        currentItemId: live.engine.currentItem?.id ?? null,
+        currentSceneId: live.engine.currentSceneId,
+        setPosition: 0,
+        bpm: live.engine.effectiveBpm,
+        clickEnabled: live.engine.isClickEnabled,
+        locked,
+        stems: live.engine.stems.list().map((s) => ({ id: s.id, gain: s.gain, pan: s.pan, muted: s.muted, solo: s.solo })),
+        outputs: [],
+        midiDeviceIds: [],
+      }),
+    [live.engine, projectId, locked, bundle.data],
+  )
+
   // Persist state + record analytics on every engine event.
   React.useEffect(() => {
     const unsubscribe = live.engine.on((event) => {
@@ -68,24 +88,19 @@ export function LivePerformance({ projectId }: { projectId: string }) {
       if (event.type === 'stopped') record('set_ended', {})
       if (event.type === 'error') record('error', { message: event.message })
 
-      void snapshotStore.save({
-        snapshotVersion: 1,
-        projectId,
-        packageVersion: bundle.data?.packages[0]?.version ?? null,
-        savedAt: new Date().toISOString(),
-        currentItemId: live.engine.currentItem?.id ?? null,
-        currentSceneId: live.engine.currentSceneId,
-        setPosition: 0,
-        bpm: live.engine.effectiveBpm,
-        clickEnabled: live.engine.isClickEnabled,
-        locked,
-        stems: live.engine.stems.list().map((s) => ({ id: s.id, gain: s.gain, pan: s.pan, muted: s.muted, solo: s.solo })),
-        outputs: [],
-        midiDeviceIds: [],
-      })
+      void saveSnapshot()
     })
     return unsubscribe
-  }, [live.engine, projectId, locked, bundle.data])
+  }, [live.engine, projectId, saveSnapshot])
+
+  // Locking is a decision, not an audio event, so it never reached the
+  // snapshot: the saved flag was whatever it had been at the last *sound*.
+  // A performer who locked before doors and then crashed came back unlocked —
+  // the accidental-navigation risk locking exists to remove, at the moment
+  // they are least able to notice it.
+  React.useEffect(() => {
+    void saveSnapshot()
+  }, [locked, saveSnapshot])
 
   const midi = useMidi(bundle.data?.mappings ?? [], (hit) => {
     void live.arm().then(() => dispatchMidi(live.engine, bundle.data?.project.padMap.length ?? 0, hit))
@@ -126,6 +141,12 @@ export function LivePerformance({ projectId }: { projectId: string }) {
     // so after a mid-set crash NEXT SONG jumped to the second song.
     if (restoreOffer.currentItemId) live.engine.selectSong(restoreOffer.currentItemId)
     live.engine.setClickEnabled(restoreOffer.clickEnabled)
+    // Locked comes back too. The snapshot has always recorded it and the
+    // runbook has always promised it, but nothing applied it — so a performer
+    // who locked the surface came back from a crash with it unlocked, which is
+    // the accidental-navigation risk locking exists to remove, at the moment
+    // they are least able to notice. Unlocking stays one explicit tap away.
+    setLocked(restoreOffer.locked)
     eventsRef.current.push({ eventType: 'crash_recovered', payload: {}, localTimestamp: new Date().toISOString() })
     setRestoreOffer(null)
   }
