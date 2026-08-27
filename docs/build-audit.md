@@ -444,15 +444,15 @@ claim, and this build has not made it.
 | Transport, setlist, scenes, clips, follow actions | **REAL** | incl. edit-during-playback (the engine swaps project data in place without stopping the show) |
 | Stem deck (mute/solo resolution, gain, pan) | **REAL** | solo/mute precedence tested; cross-song stem targets no-op rather than throw |
 | 16-pad grid + pad states | **REAL** | states derived from real engine state, incl. `error` for uncached audio |
-| Web Audio backend (buffer sources, buses, ramps, meters) | **DEV-LABELED** | now driven in real Chromium by the browser suite: a generated scene WAV decodes through `decodeAudioData`, and an `OfflineAudioContext` render of the shipping graph proves gain is applied proportionally and that zero gain is silence rather than "quiet" (both assertions fail when `play()` is mutated to ignore gain). **Ramps, meters and audibility on a real device remain unverified — no audio has been heard, on any device, from this environment** |
-| AudioWorklet click | **DEV-LABELED** | the browser suite confirms the Blob-URL module parses and `registerProcessor` runs under a real `AudioWorkletGlobalScope`, returning a live `AudioWorkletNode`; falls back to scheduled oscillators where the worklet is absent. Still **never heard** |
+| Web Audio backend (buffer sources, buses, ramps, meters) | **DEV-LABELED** | now driven in real Chromium by the browser suite: a generated scene WAV decodes through `decodeAudioData`, and an `OfflineAudioContext` render of the shipping graph proves gain is applied proportionally and that zero gain is silence rather than "quiet" (both assertions fail when `play()` is mutated to ignore gain). **Audio was heard on a real device on 2026-08-27** — a pad triggered from hardware produced sound, which retires the standing "never heard on any device" caveat. Ramps and meters were still not exercised deliberately, and nothing measured latency or grid alignment, so those stay unverified |
+| AudioWorklet click | **DEV-LABELED** | the browser suite confirms the Blob-URL module parses and `registerProcessor` runs under a real `AudioWorkletGlobalScope`, returning a live `AudioWorkletNode`; falls back to scheduled oscillators where the worklet is absent. Still **never heard** — the 2026-08-27 hardware session confirmed pad audio, not the click, and a click that is merely audible is not the claim that matters anyway: it has to land on the grid |
 | MIDI parsing, Learn, mapping application, duplicate detection | **REAL** | unit-tested plus an end-to-end Playwright flow that emits real MIDI bytes through a mock device |
 | Keyboard zone mapping (bulk note → scene/pad) | **REAL** | one call maps a run of consecutive notes onto a song's scenes in performance order, or the sixteen pads; targets are validated before any write and colliding keys are reported rather than silently overwritten (both tested) |
-| Web MIDI against physical hardware | **DEV-LABELED** | implemented against the spec; **no controller has ever been plugged into this build** |
+| Web MIDI against physical hardware | **REAL** | a physical controller was connected on 2026-08-27 and a hardware press fired a pad. First hardware session in this project's life; reported by the operator rather than instrumented, so read it as "a controller works" and not as a compatibility matrix — one device, one session. Multi-device, hot-plug and per-controller quirks remain unexercised |
 | Offline performance package (manifest, checksums, verification) | **REAL** | server-side and device-reported verification both tested; a missing or corrupted cached file provably prevents READY |
 | IndexedDB show cache in a browser | **REAL** | run in real Chromium against real IndexedDB and real WebCrypto: byte-identical round-trip, store digest agreeing with a digest of the source bytes, a single flipped byte changing that digest, a non-WAV refused as undecodable, and **a cached show surviving a page reload** — the property the offline package actually depends on |
-| Performance Mode running with the network down | **REAL** | demonstrated in Chromium with `context.setOffline(true)` — the network genuinely off, verified unreachable inside the test before the show is started. The demonstration found a real defect: audio was cached but the *show* was not, so Performance Mode fetched its setlist, scenes and manifest over the network and rendered "Request failed" at a venue with no connection. The bundle is now stored on the device when the package is built, and the offline start is regression-tested |
-| Crash recovery (snapshot, offer, restore) | **REAL** | restores mixer state *and position*: `selectSong` puts the set back on the song the performer was on without making a sound, so the set continues rather than jumping to the second song. Tested incl. that a restore survives the next song change and never auto-starts audio — the silence assertion fails if `selectSong` is made to start playback, and demonstrated **offline in a real browser**: reload with the network down, the app loads from the service-worker shell cache, the session survives an unreachable `/api/auth/me`, RESTORE PERFORMANCE is offered, and the transport reads stopped afterwards. Reaching that offer offline needed all three — shell, session, bundle — and none of them worked before |
+| Performance Mode running with the network down | **REAL** | demonstrated in Chromium with `context.setOffline(true)` — the network genuinely off, verified unreachable inside the test before the show is started. The demonstration found a real defect: audio was cached but the *show* was not, so Performance Mode fetched its setlist, scenes and manifest over the network and rendered "Request failed" at a venue with no connection. The bundle is now stored on the device when the package is built, and the offline start is regression-tested. **Confirmed on a real device on 2026-08-27**: locked, network disconnected, reloaded — the show came back rather than the browser's offline page |
+| Crash recovery (snapshot, offer, restore) | **REAL** | restores mixer state *and position*: `selectSong` puts the set back on the song the performer was on without making a sound, so the set continues rather than jumping to the second song. Tested incl. that a restore survives the next song change and never auto-starts audio — the silence assertion fails if `selectSong` is made to start playback, and demonstrated **offline in a real browser**: reload with the network down, the app loads from the service-worker shell cache, the session survives an unreachable `/api/auth/me`, RESTORE PERFORMANCE is offered, and the transport reads stopped afterwards. Reaching that offer offline needed all three — shell, session, bundle — and none of them worked before. **Confirmed on a real device on 2026-08-27** with the network disconnected: RESTORE PERFORMANCE was offered, the surface came back locked, and nothing played until it was triggered deliberately. The lock half of that had been fixed on the operator's word rather than observed here, so this is the first time the whole recovery path has been seen working end to end |
 | Entitlements + tenant isolation | **REAL** | server-side enforcement, numeric limits, and cross-org/cross-project write rejection all tested |
 | Rights gating + prompt safety | **REAL** | rights confirmation required at API *and* provider boundary; imitation/cloning prompts blocked pre-provider (tested) |
 | AI Scene Builder | **REAL** on mock | async via the durable queue, three options, lineage recorded, acceptance explicit; **the only provider is the local synthesizer** |
@@ -481,8 +481,20 @@ doing it found a defect no amount of reading the code had: the offline path
 was never reachable offline. That is the argument for running these rather
 than reasoning about them.
 
-What a browser still cannot settle, and a rehearsal on real hardware can:
-plug in a controller and listen. That session is what remains for Web MIDI
-against physical hardware and — the one no test can make — that the show is
-*audible*. Rendering the right samples and driving a loudspeaker are
-different claims, and only the second one matters on stage.
+That rehearsal happened on 2026-08-27. A controller was connected, a hardware
+press fired a pad, and it made a sound — which retires the two claims no test
+in this repository can make, and which had stood open since the module was
+written.
+
+The same session covered the venue scenario end to end: locked, network
+disconnected, reloaded — RESTORE PERFORMANCE offered, the surface back and
+still locked, and silence until a deliberate trigger. That path had three
+defects fixed in this repository without anyone being able to watch it run,
+the last of them on the operator's word alone, so seeing it work is worth
+more than the tests that cover it.
+
+What one session does not settle: it was one controller, reported rather than
+measured. Latency, grid alignment and the click landing where the drummer
+needs it are still unmeasured, multi-device and hot-plug are unexercised, and
+nothing has yet run for the length of an actual set. The honest reading is
+that the path works, not that it has been characterised.
