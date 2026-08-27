@@ -99,12 +99,20 @@ export interface SeedSongLabDemoInput {
 }
 
 export async function seedSongLabDemo(songLab: SongLabLayer, input: SeedSongLabDemoInput): Promise<{ seeded: boolean; projectId: string | null }> {
+  // Granted before the already-seeded check, not after it. Entitlements are
+  // idempotent and describe what the org may do, which is not the same
+  // question as whether the demo project exists yet: an org seeded when this
+  // list was shorter must pick up a newly added capability on its next boot.
+  // Behind the early return, that org would never see one again, and the
+  // failure is silent — a nav entry that never appears and an API that
+  // refuses, with a demo project sitting right there suggesting otherwise.
+  // scripts/seed.ts grants the Live Lab set unconditionally for this reason.
+  await input.entitlements.grantAll(input.orgId, FLAGSHIP_SONG_LAB_CAPABILITIES)
+
   const existing = await songLab.repos.projects.list(input.orgId, 50)
   const already = existing.find((project) => project.demo && project.title === DEMO_TITLE)
   if (already) return { seeded: false, projectId: already.id }
 
-  // The demo org is the flagship, so it holds every Song Lab capability.
-  await input.entitlements.grantAll(input.orgId, FLAGSHIP_SONG_LAB_CAPABILITIES)
   await songLab.benchmark.ensureDefaultCohorts(input.userId)
 
   const actor = { userId: input.userId, orgId: input.orgId, orgRole: 'owner' }
