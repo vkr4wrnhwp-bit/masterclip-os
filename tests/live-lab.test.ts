@@ -1031,3 +1031,121 @@ describe('accepting an AI scene', () => {
     expect(lineage.approvedBy ?? null).toBeNull()
   })
 })
+
+describe('audio budget gates AI scene generation', () => {
+  const aiRequest = {
+    prompt: 'a sparse eight-bar intro',
+    bars: 8,
+    tempoBehavior: 'keep' as const,
+    keyBehavior: 'keep' as const,
+    energy: 'low' as const,
+    instrumentation: ['pad'],
+    intendedTransition: 'into the first verse',
+    rightsConfirmed: true,
+  }
+
+  /**
+   * Spend already on the books, so "exhausted" is a real state rather than an
+   * artefact of the estimate. A test deployment has no rate card configured,
+   * so a scene is quoted at zero — a cap of zero against zero spend is not
+   * exhausted, and asserting against that would prove nothing.
+   */
+  async function spend(who: Session, micros: number): Promise<void> {
+    await runtime.audio.repos.usage.record({
+      orgId: who.orgId,
+      userId: who.userId,
+      projectType: 'audio_intelligence',
+      projectId: null,
+      provider: 'mock-audio',
+      operation: 'transcription',
+      model: 'mock',
+      unit: 'second',
+      inputUnits: 1,
+      outputUnits: 0,
+      estimatedCostMicros: micros,
+      finalCostMicros: micros,
+      currency: 'USD',
+      providerRequestId: null,
+      jobId: null,
+    })
+  }
+
+  async function capAt(who: Session, monthlyCapMicros: number, hardStop = true): Promise<void> {
+    await runtime.audio.repos.usage.setBudget({
+      orgId: who.orgId,
+      scope: 'org',
+      scopeId: who.orgId,
+      monthlyCapMicros,
+      perJobCapMicros: null,
+      approvalAboveMicros: null,
+      warnThresholdPct: 0.8,
+      hardStop,
+    })
+  }
+
+  it('refuses a scene when the org audio budget is exhausted, before a job exists', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    // Spent elsewhere on the platform — the point is that Live Lab is bound by
+    // the same budget, not only by its own generation count.
+    await spend(owner, 5_000)
+    await capAt(owner, 1_000)
+
+    const before = await runtime.liveLab.listAiJobs(projectId)
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, { request: aiRequest })
+
+    expect(response.statusCode).toBe(402)
+    expect(response.json().error.code).toBe('live.budget_exhausted')
+    // Refused before the row was written: no orphan job for a person to wonder about.
+    expect((await runtime.liveLab.listAiJobs(projectId)).length).toBe(before.length)
+  })
+
+  it('still allows a scene when the budget has headroom', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    await spend(owner, 1_000)
+    await capAt(owner, 1_000_000)
+
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, { request: aiRequest })
+    expect(response.statusCode).toBe(200)
+  })
+
+  it('a soft budget warns rather than refuses', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    await spend(owner, 5_000)
+    await capAt(owner, 1_000, false)
+
+    const response = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, { request: aiRequest })
+    expect(response.statusCode).toBe(200)
+  })
+
+  it('refuses at generation time too, so a queued batch cannot outrun the budget', async () => {
+    const owner = await signupOwner()
+    const projectId = await createProject(owner)
+    // Submitted while there is room: this job clears the gate at the API.
+    await capAt(owner, 1_000_000)
+    const created = await call(owner, 'POST', `/api/live-lab/projects/${projectId}/ai-scenes`, { request: aiRequest })
+    expect(created.statusCode).toBe(200)
+    const jobId = (created.json() as { job: { id: string } }).job.id
+
+    // ...and the budget is gone by the time the worker picks it up, which is
+    // exactly what happens when several scenes are submitted at once.
+    await spend(owner, 5_000)
+    await capAt(owner, 1_000)
+
+    // runAiJob records its own failure rather than throwing at the worker —
+    // a crashing handler would take the queue down with it — so the refusal is
+    // observable on the job, not as a rejected promise.
+    await runtime.liveLabService.runAiJob(jobId)
+
+    const job = await runtime.liveLab.getAiJob(jobId)
+    expect(job.status).toBe('failed')
+    expect(job.error ?? '').toMatch(/budget/i)
+    // Nothing was generated, so nothing was bought.
+    expect(job.outputAssetIds.length).toBe(0)
+    expect(await runtime.liveLab.listAssets(job.liveProjectId)).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ liveAiJobId: jobId })]),
+    )
+  })
+})

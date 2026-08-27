@@ -1,4 +1,4 @@
-import { AudioProviderRegistry, MockAudioProvider, PlatformMusicProvider, durationMsOf, synthesizeWav, type MusicComposer } from '@masterclip/ai-audio'
+import { AudioProviderRegistry, MockAudioProvider, PlatformMusicProvider, durationMsOf, SCENE_OPTION_COUNT, synthesizeWav, type MusicComposer } from '@masterclip/ai-audio'
 import { objectKey } from '@masterclip/asset-storage'
 import type { StorageDriver } from '@masterclip/asset-storage'
 import type { LiveAsset, LiveLabRepo } from '@masterclip/domain'
@@ -57,8 +57,19 @@ export interface LiveLabServiceDeps {
   usageLedger?: UsageLedger | null
 }
 
-/** The slice of the audio layer's usage ledger this service writes to. */
+/** The slice of the audio layer's usage ledger this service reads and writes. */
 export interface UsageLedger {
+  /**
+   * Whether this org may still spend. Optional so a deployment that composes
+   * Live Lab without the audio platform keeps working — such a build simply
+   * has no budget to enforce.
+   */
+  check?(
+    orgId: string,
+    userId: string,
+    featureKey: string,
+    estimatedCostMicros: number,
+  ): Promise<{ allowed: boolean; reason: string | null }>
   record(entry: {
     orgId: string
     userId: string
@@ -133,7 +144,27 @@ export class LiveLabService {
         sourceAudio = await storage.getBuffer(source.storageKey)
       }
 
+      // Re-checked here, not only at submission. These jobs are asynchronous
+      // by construction, so several can clear the gate at the API while the
+      // budget still looks intact and then run together — each one individually
+      // affordable, the batch not. The render pipeline re-authorizes before
+      // submitting for the same reason. This is the check that actually holds
+      // the line; the one at the API exists to give a person a straight answer
+      // instead of a job that dies out of sight.
       const provider = this.audioProviders.get(job.provider)
+      const ledger = this.deps.usageLedger
+      if (ledger?.check) {
+        const estimatedCostMicros = this.deps.estimateSceneCostMicros?.(SCENE_OPTION_COUNT) ?? 0
+        const budget = await ledger.check(job.organizationId, job.createdBy, 'scene_generation', estimatedCostMicros)
+        if (!budget.allowed) {
+          throw new AppError({
+            kind: 'budget_exceeded',
+            code: 'live.budget_exhausted',
+            message: budget.reason ?? 'the audio budget for this organization is exhausted',
+          })
+        }
+      }
+
       const result = await provider.generateScene({
         orgId: job.organizationId,
         request: config,

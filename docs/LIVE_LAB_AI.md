@@ -71,9 +71,32 @@ because a bar that drifts is discovered on stage otherwise.
   `GenerationLineage`: source asset/version, provider, model, prompt, settings,
   generation time, rights confirmation, and human approval (`approvedBy` /
   `approvedAt`, filled in at accept time).
-- **Usage is metered.** Jobs count against
-  `live_lab.max_ai_generations_per_month` (checked server-side before the job
-  exists) and append to the platform cost ledger.
+- **Usage is metered and budgeted.** Two limits apply, and both must pass.
+  `live_lab.max_ai_generations_per_month` bounds how *often* an org may
+  generate; the organization's audio budget bounds how much it may *spend*.
+  Live Lab spend lands in `audio_usage_ledger` like every other audio
+  purchase, so exhausting the budget through Meeting Intelligence or Song Lab
+  stops scene generation too — the budget is the platform's, not each
+  feature's.
+
+  The budget is checked twice, deliberately:
+
+  1. **At submission**, before the job row exists, so an exhausted org gets a
+     `402` with `live.budget_exhausted` rather than a queued job that fails
+     somewhere it cannot see.
+  2. **Before the provider is called.** These jobs are asynchronous by
+     construction, so several submitted at once would each clear the first
+     gate while the budget still looked intact and then run together — each
+     affordable alone, the batch not. This is the check that actually holds
+     the line; the render pipeline re-authorizes before submitting for the
+     same reason.
+
+  A scene is quoted at `SCENE_OPTION_COUNT` takes, so a generation that would
+  push *past* the cap is refused as well as one submitted after the cap is
+  already gone. A soft budget (`hardStop: false`) warns and allows, as
+  everywhere else on the platform. A refusal at generation time marks the job
+  `failed` with the budget reason rather than throwing at the worker, which
+  would take the queue down with it.
 
 ## Background generation during rehearsal
 

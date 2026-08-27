@@ -4,7 +4,7 @@ import { checkPromptSafety } from '../src/safety.js'
 import { durationMsOf, encodeWavPcm16, synthesize, synthesizeWav, wavDurationMs, SAMPLE_RATE } from '../src/wav.js'
 import { MockAudioProvider } from '../src/mock-provider.js'
 import { PlatformMusicProvider } from '../src/platform-provider.js'
-import { assertGenerationAllowed } from '../src/provider.js'
+import { assertGenerationAllowed, SCENE_OPTION_COUNT } from '../src/provider.js'
 
 const request = (over: Partial<AiSceneRequest> = {}): AiSceneRequest => ({
   prompt: 'a dark sparse 8 bar intro with heavy sub bass',
@@ -79,6 +79,11 @@ describe('mock provider', () => {
     const provider = new MockAudioProvider()
     const result = await provider.generateScene({ orgId: 'org', request: request(), bpm: 120, beatsPerBar: 4, sourceAudio: null, seed: 7 })
     expect(result.options.map((o) => o.label)).toEqual(['OPTION A', 'OPTION B', 'OPTION C'])
+    // The budget gate quotes a scene at SCENE_OPTION_COUNT takes before it has
+    // run one, so a provider returning a different number would make that
+    // quote wrong — and wrong low, which lets a scene through that the budget
+    // should have refused. Asserted here rather than trusted.
+    expect(result.options.length).toBe(SCENE_OPTION_COUNT)
     for (const option of result.options) {
       expect(option.durationMs).toBe(16000)
       expect(String.fromCharCode(...option.wavBytes.slice(0, 4))).toBe('RIFF')
@@ -134,6 +139,8 @@ describe('platform music bridge', () => {
       expect(call.instrumental).toBe(true)
     }
     expect(result.options.map((o) => o.label)).toEqual(['OPTION A', 'OPTION B', 'OPTION C'])
+    // The platform bridge honours the same contract the budget gate quotes against.
+    expect(result.options.length).toBe(SCENE_OPTION_COUNT)
     // Three takes must be genuinely different requests, not the same one thrice.
     expect(new Set(composer.calls.map((c) => c.seed)).size).toBe(3)
     expect(new Set(composer.calls.map((c) => c.prompt)).size).toBe(3)

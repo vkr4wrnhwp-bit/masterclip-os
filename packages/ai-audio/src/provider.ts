@@ -23,6 +23,19 @@ export interface SceneGenerationInput {
   seed: number
 }
 
+/**
+ * How many takes a scene generation produces.
+ *
+ * Every provider returns this many — OPTION A / B / C — so a caller can price
+ * a scene before submitting it. That is the whole reason this is a shared
+ * constant rather than each provider's own array length: the budget gate has
+ * to quote a job it has not run yet, and a provider quietly returning a
+ * different number would make that quote wrong in the one direction that
+ * matters, letting a scene through that the budget should have refused.
+ * Providers are tested against it.
+ */
+export const SCENE_OPTION_COUNT = 3
+
 export interface GeneratedOption {
   /** OPTION A / B / C. */
   label: string
