@@ -1,4 +1,4 @@
-import { computeReleaseReadiness, metricValue, type MixMetric } from '@masterclip/mix-analysis'
+import { basisFor, computeReleaseReadiness, metricValue, type MixMetric, type RecommendationBasis } from '@masterclip/mix-analysis'
 import type { MixIssueRecord, RoomAction, RoomExchangeRecord, SonicDnaRecord, StudioNoteRecord, StudioProjectRecord } from '@masterclip/studio-domain'
 import { actorLabel, type Actor, type StudioDeps } from './deps.js'
 import { toMixMetrics } from './mix.js'
@@ -42,6 +42,7 @@ export class StudioRoomService {
       contextUsed: answer.contextUsed,
       actions: answer.actions,
       confidence: answer.confidence,
+      basis: { ...basisForAnswer(answer, context) },
       askedBy: input.actor.userId,
     })
   }
@@ -106,6 +107,50 @@ export interface RoomAnswer {
 }
 
 const RESPONDER = 'street-banker-room-v1'
+
+/**
+ * The room's own words for confidence, as numbers.
+ *
+ * The words are what a reader sees; the numbers exist so an answer can be
+ * ranked and so the shared basis shape has something to band. Deliberately
+ * capped below certainty: the room reasons over measurements of one file, and
+ * nothing it says about a record is a fact about whether the record works.
+ */
+const ROOM_CONFIDENCE: Record<RoomAnswer['confidence'], number> = {
+  high: 0.75,
+  moderate: 0.55,
+  low: 0.3,
+  insufficient: 0,
+}
+
+/**
+ * What an answer rested on, and what the room could not see.
+ *
+ * Derived here rather than inside each topic so a topic cannot forget, and so
+ * the gaps are read off the context that was actually assembled. Every entry is
+ * something a person could go and supply.
+ */
+export function basisForAnswer(answer: RoomAnswer, context: RoomContext): RecommendationBasis {
+  const missingInputs: string[] = []
+  if (!context.analysed) missingInputs.push('a completed analysis of this version')
+  if (context.referenceCount === 0) missingInputs.push('reference tracks to compare this record against')
+
+  // Read from the analyzer's own note: without an isolated stem every vocal
+  // figure the room reasoned over was inferred from the full mix.
+  const vocalNote = context.metrics.find((metric) => metric.key === 'vocal_presence_index')?.note ?? ''
+  if (vocalNote.includes('full-mix spectral proxy')) {
+    missingInputs.push('an isolated vocal stem — the voice was inferred from the full mix')
+  }
+
+  return basisFor({
+    source: answer.confidence === 'insufficient' ? 'measurement' : 'derived_measurement',
+    confidence: ROOM_CONFIDENCE[answer.confidence],
+    // The metrics the answer said it used, which is what makes contextUsed
+    // worth printing rather than decorative.
+    measuredFrom: answer.contextUsed.filter((entry) => context.metrics.some((metric) => metric.key === entry)),
+    missingInputs,
+  })
+}
 
 /**
  * Identity, typed.

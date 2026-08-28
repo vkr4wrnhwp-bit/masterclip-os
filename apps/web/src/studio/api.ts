@@ -110,6 +110,17 @@ export interface MixCurveRow {
   points: Array<number | null>
 }
 
+export interface RecommendationBasis {
+  source: string
+  sourceLabel: string
+  confidence: number
+  confidenceLabel: 'low' | 'moderate' | 'high'
+  measuredFrom: string[]
+  measuredFromLabels: string[]
+  missingInputs: string[]
+  statement: string
+}
+
 export interface MixIssue {
   id: string
   issueType: string
@@ -122,6 +133,8 @@ export interface MixIssue {
   whyItMatters: string
   suggestedAction: string
   evidence: Record<string, unknown>
+  /** Null on findings recorded before the basis existed. */
+  basis: RecommendationBasis | null
   status: string
 }
 
@@ -133,6 +146,7 @@ export interface ReadinessBand {
   whyItMatters: string
   recommendation: string
   confidence: number
+  basis: RecommendationBasis | null
 }
 
 export interface Readiness {
@@ -260,6 +274,7 @@ export interface RoomExchange {
   contextUsed: string[]
   actions: Array<{ kind: string; label: string; target: Record<string, string | number> }>
   confidence: string
+  basis: RecommendationBasis | null
   createdAt: string
 }
 

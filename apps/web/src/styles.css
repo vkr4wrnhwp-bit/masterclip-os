@@ -714,3 +714,9 @@ ol.setlist li:hover .setlist-actions { opacity: 1; }
 .approval { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-size: 12px; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
 .approval strong { font-size: 11px; letter-spacing: 0.12em; }
 .deliverable { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+
+/* Recommendation basis. The missing inputs read as a call to action rather
+   than a disclaimer: each one names something a person can go and supply. */
+.basis { margin-top: 6px; font-size: 11px; }
+.basis-missing { margin: 4px 0 0; padding-left: 16px; color: var(--warn); }
+.basis-missing li { margin: 2px 0; }

@@ -157,6 +157,56 @@ normalisation — is what it exists to predict.
 
 ---
 
+## Where a recommendation came from
+
+Every finding, every readiness band and every Ask the Room answer carries a
+**basis**: the source, the inputs it actually read, and — the half that matters
+— what it could not see.
+
+| Source | Means |
+|---|---|
+| `measurement` | A number read directly from the file |
+| `derived_measurement` | Computed from measured figures through a mapping this module owns |
+| `heuristic` | A rule of thumb. A starting point, not a verdict |
+| `reference_cohort` | A comparison against the records you supplied |
+| `stated_preference` | Something you told the platform. Outranks anything inferred |
+| `platform_specification` | A figure published by a streaming service or delivery standard |
+
+Confidence is **banded** — low, moderate, high — because 0.62 and 0.71 are not
+meaningfully different numbers and printing them as though they were is the
+fake precision this module exists to avoid. The raw figure is still carried.
+
+`missingInputs` names things a person could go and supply:
+
+> Not available: an isolated vocal stem — the voice was inferred from the full mix
+
+"Moderate confidence" on its own tells a reader nothing they can act on. That
+line tells them exactly what to do about it, so the UI renders it as a call to
+action rather than burying it in a disclosure.
+
+### How it stays honest
+
+The inputs each finding rests on are declared **once**, centrally
+(`ISSUE_BASIS`, `BAND_BASIS`), and the basis is attached in `runMixDoctor` and
+`computeReleaseReadiness` rather than by each detector. Two consequences:
+
+- A detector cannot quietly stop reporting its basis.
+- Missing inputs are computed against the analysis that actually ran, rather
+  than asserted by code that had already decided it had enough.
+
+A test fails if any declared input is a key no analyzer emits — otherwise a
+rename would leave a finding reporting "could not be measured" forever about a
+metric that never existed, which is exactly the fabrication the field prevents.
+
+The vocal case is read from the analyzer's **own note** rather than from a flag
+passed down, so it cannot drift from what the analyzer actually did.
+
+Stored in `studio_mix_issues.basis` and `studio_room_exchanges.basis`, nullable:
+rows written before the column existed have no basis, and null means "not
+recorded" rather than "nothing was missing".
+
+---
+
 ## Adding an analyzer
 
 1. Declare the metric keys in `MIX_METRICS` (`packages/mix-analysis/src/types.ts`).

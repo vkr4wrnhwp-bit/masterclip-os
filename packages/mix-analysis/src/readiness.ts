@@ -1,5 +1,6 @@
 import { metricValue } from './analyze.js'
-import type { MixMetric } from './types.js'
+import { mixMetricDefinition, type MixMetric } from './types.js'
+import { basisFor, type RecommendationBasis, type RecommendationSource } from './recommendation.js'
 
 /**
  * Release Readiness.
@@ -43,7 +44,23 @@ export interface ReadinessBandResult {
   recommendation: string
   /** 0–1, inherited from the weakest input. */
   confidence: number
+  /**
+   * What the band was scored from, and what it could not see.
+   *
+   * Attached centrally rather than by each scorer, so the missing inputs are
+   * read off the analysis that ran rather than asserted by a scorer that has
+   * already decided what it has.
+   */
+  basis: RecommendationBasis
 }
+
+/**
+ * A scored band before its basis is attached.
+ *
+ * A scorer knows what it read. It does not know what the analysis as a whole
+ * was missing, which is the half of the basis worth reading.
+ */
+type ScoredBand = Omit<ReadinessBandResult, 'basis'>
 
 export interface ReleaseReadiness {
   /** 0–100 over the bands that could be scored, or null when none could. */
@@ -58,8 +75,26 @@ export interface ReleaseReadiness {
 export const READINESS_CAVEAT =
   'These are technical translation indicators, not a judgement of the record. A high score means the mix is likely to survive playback it was not made on; it says nothing about whether the song works.'
 
+/**
+ * What each band reads, declared once.
+ *
+ * `platform_specification` on streaming translation is the honest label: the
+ * -14 LUFS target it models is published by the platforms, not a threshold this
+ * module invented.
+ */
+export const BAND_BASIS: Record<ReadinessBand, { source: RecommendationSource; metrics: string[] }> = {
+  dynamics: { source: 'measurement', metrics: ['dynamic_range_db', 'transient_retention'] },
+  low_end: { source: 'derived_measurement', metrics: ['sub_energy_pct', 'low_energy_pct', 'low_end_centroid_hz', 'kick_bass_masking_index'] },
+  midrange: { source: 'derived_measurement', metrics: ['midrange_congestion_index', 'vocal_masking_index'] },
+  high_frequency: { source: 'derived_measurement', metrics: ['harshness_index', 'sibilance_index', 'high_energy_pct'] },
+  stereo_field: { source: 'measurement', metrics: ['stereo_width', 'phase_correlation', 'mono_fold_loss_db', 'stereo_imbalance_db'] },
+  headroom: { source: 'measurement', metrics: ['true_peak_dbtp', 'clipping_runs'] },
+  competitive_loudness: { source: 'measurement', metrics: ['integrated_lufs'] },
+  streaming_translation: { source: 'platform_specification', metrics: ['integrated_lufs', 'true_peak_dbtp'] },
+}
+
 export function computeReleaseReadiness(metrics: MixMetric[]): ReleaseReadiness {
-  const bands: ReadinessBandResult[] = [
+  const scorers: ScoredBand[] = [
     scoreDynamics(metrics),
     scoreLowEnd(metrics),
     scoreMidrange(metrics),
@@ -70,12 +105,28 @@ export function computeReleaseReadiness(metrics: MixMetric[]): ReleaseReadiness 
     scoreStreamingTranslation(metrics),
   ]
 
+  // The basis is computed against the metrics that actually arrived, so a band
+  // that scored on two of its four inputs says which two were missing.
+  const bands: ReadinessBandResult[] = scorers.map((band) => ({ ...band, basis: basisForBand(band, metrics) }))
+
   const scored = bands.filter((band) => band.score !== null)
   // An overall figure from two of eight bands would be a number nobody should
   // act on. Below half the bands, the product says so instead.
   const score = scored.length >= 4 ? Math.round(scored.reduce((sum, band) => sum + (band.score ?? 0), 0) / scored.length) : null
 
   return { score, bandsScored: scored.length, bands, caveat: READINESS_CAVEAT }
+}
+
+function basisForBand(band: ScoredBand, metrics: MixMetric[]): RecommendationBasis {
+  const declared = BAND_BASIS[band.band]
+  const measuredFrom: string[] = []
+  const missingInputs: string[] = []
+  for (const key of declared.metrics) {
+    const metric = metrics.find((candidate) => candidate.key === key)
+    if (metric && metric.value !== null) measuredFrom.push(key)
+    else missingInputs.push(`${mixMetricDefinition(key)?.label ?? key} could not be measured`)
+  }
+  return basisFor({ source: declared.source, confidence: band.confidence, measuredFrom, missingInputs })
 }
 
 /** Maps a value onto 0–100 with a flat-topped plateau between `idealLow` and `idealHigh`. */
@@ -90,7 +141,7 @@ function inverseIndex(value: number, tolerated: number): number {
   return Math.round(Math.max(0, Math.min(100, 100 - (value / tolerated) * 100)))
 }
 
-function unscored(band: ReadinessBand, label: string, reason: string, whyItMatters: string): ReadinessBandResult {
+function unscored(band: ReadinessBand, label: string, reason: string, whyItMatters: string): ScoredBand {
   return {
     band,
     label,
@@ -102,7 +153,7 @@ function unscored(band: ReadinessBand, label: string, reason: string, whyItMatte
   }
 }
 
-function scoreDynamics(metrics: MixMetric[]): ReadinessBandResult {
+function scoreDynamics(metrics: MixMetric[]): ScoredBand {
   const range = metricValue(metrics, 'dynamic_range_db')
   const transients = metricValue(metrics, 'transient_retention')
   if (range === null) {
@@ -129,7 +180,7 @@ function scoreDynamics(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreLowEnd(metrics: MixMetric[]): ReadinessBandResult {
+function scoreLowEnd(metrics: MixMetric[]): ScoredBand {
   const sub = metricValue(metrics, 'sub_energy_pct')
   const low = metricValue(metrics, 'low_energy_pct')
   const centroid = metricValue(metrics, 'low_end_centroid_hz')
@@ -159,7 +210,7 @@ function scoreLowEnd(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreMidrange(metrics: MixMetric[]): ReadinessBandResult {
+function scoreMidrange(metrics: MixMetric[]): ScoredBand {
   const congestion = metricValue(metrics, 'midrange_congestion_index')
   const vocalMasking = metricValue(metrics, 'vocal_masking_index')
   if (congestion === null) {
@@ -181,7 +232,7 @@ function scoreMidrange(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreHighFrequency(metrics: MixMetric[]): ReadinessBandResult {
+function scoreHighFrequency(metrics: MixMetric[]): ScoredBand {
   const harshness = metricValue(metrics, 'harshness_index')
   const sibilance = metricValue(metrics, 'sibilance_index')
   const highShare = metricValue(metrics, 'high_energy_pct')
@@ -211,7 +262,7 @@ function scoreHighFrequency(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreStereoField(metrics: MixMetric[]): ReadinessBandResult {
+function scoreStereoField(metrics: MixMetric[]): ScoredBand {
   const correlation = metricValue(metrics, 'phase_correlation')
   const width = metricValue(metrics, 'stereo_width')
   const monoLoss = metricValue(metrics, 'mono_fold_loss_db')
@@ -251,7 +302,7 @@ function scoreStereoField(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreHeadroom(metrics: MixMetric[]): ReadinessBandResult {
+function scoreHeadroom(metrics: MixMetric[]): ScoredBand {
   const truePeak = metricValue(metrics, 'true_peak_dbtp')
   const clipping = metricValue(metrics, 'clipping_runs')
   if (truePeak === null) {
@@ -277,7 +328,7 @@ function scoreHeadroom(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreCompetitiveLoudness(metrics: MixMetric[]): ReadinessBandResult {
+function scoreCompetitiveLoudness(metrics: MixMetric[]): ScoredBand {
   const lufs = metricValue(metrics, 'integrated_lufs')
   if (lufs === null) {
     return unscored('competitive_loudness', 'Competitive Loudness', 'Programme loudness could not be measured on this file.', 'Loudness decides how the record sits against what plays before and after it.')
@@ -303,7 +354,7 @@ function scoreCompetitiveLoudness(metrics: MixMetric[]): ReadinessBandResult {
   }
 }
 
-function scoreStreamingTranslation(metrics: MixMetric[]): ReadinessBandResult {
+function scoreStreamingTranslation(metrics: MixMetric[]): ScoredBand {
   const truePeak = metricValue(metrics, 'true_peak_dbtp')
   const lufs = metricValue(metrics, 'integrated_lufs')
   const monoLoss = metricValue(metrics, 'mono_fold_loss_db')

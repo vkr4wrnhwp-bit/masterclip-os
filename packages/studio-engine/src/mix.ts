@@ -139,7 +139,15 @@ export class StudioMixService {
 
       if (analysis.studioProjectId) {
         const issues = runMixDoctor({ metrics: result.metrics, curves: result.curves, durationMs: result.durationMs })
-        await this.deps.repos.issues.replaceForAnalysis(orgId, analysis.studioProjectId, analysisId, issues)
+        await this.deps.repos.issues.replaceForAnalysis(
+          orgId,
+          analysis.studioProjectId,
+          analysisId,
+          // The basis is stored as the JSON it is. Widening the record type to
+          // the analysis module's own interface would make the domain package
+          // depend on the shape of a module it has no other reason to know.
+          issues.map((issue) => ({ ...issue, basis: { ...issue.basis } })),
+        )
         this.logger.info('studio.mix_analyzed', { analysis_id: analysisId, metrics: result.metrics.length, issues: issues.length })
       }
 

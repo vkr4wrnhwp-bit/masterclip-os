@@ -258,6 +258,7 @@ export class RoomExchangeRepo {
     contextUsed: string[]
     actions: RoomAction[]
     confidence: 'high' | 'moderate' | 'low' | 'insufficient'
+    basis?: Record<string, unknown> | null
     askedBy: string
   }): Promise<RoomExchangeRecord> {
     const now = this.clock.isoNow()
@@ -272,6 +273,7 @@ export class RoomExchangeRepo {
       contextUsed: input.contextUsed,
       actions: input.actions,
       confidence: input.confidence,
+      basis: input.basis ?? null,
       askedBy: input.askedBy,
       createdAt: now,
     }
@@ -286,6 +288,7 @@ export class RoomExchangeRepo {
       context_used: toJson(record.contextUsed),
       actions: toJson(record.actions),
       confidence: record.confidence,
+      basis: record.basis ? toJson(record.basis) : null,
       asked_by: record.askedBy,
       created_at: now,
     })
@@ -308,6 +311,7 @@ export class RoomExchangeRepo {
       contextUsed: parseJson<string[]>(row.context_used, []),
       actions: parseJson<RoomAction[]>(row.actions, []),
       confidence: toStr(row.confidence) as RoomExchangeRecord['confidence'],
+      basis: row.basis === null || row.basis === undefined ? null : parseJson<Record<string, unknown>>(row.basis, {}),
       askedBy: toStr(row.asked_by),
       createdAt: toStr(row.created_at),
     }))

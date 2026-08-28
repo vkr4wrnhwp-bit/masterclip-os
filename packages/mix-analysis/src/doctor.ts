@@ -1,6 +1,7 @@
 import { findCurve, metricValue } from './analyze.js'
 import { median, percentile } from './spectrum.js'
-import type { MixCurve, MixMetric } from './types.js'
+import { mixMetricDefinition, type MixCurve, type MixMetric } from './types.js'
+import { basisFor, ISSUE_BASIS, type RecommendationBasis } from './recommendation.js'
 
 /**
  * Mix Doctor.
@@ -53,6 +54,15 @@ export interface MixDoctorIssue {
   whyItMatters: string
   suggestedAction: string
   evidence: Record<string, number | string | null>
+  /**
+   * What this finding rests on and what it could not see.
+   *
+   * Attached centrally in `runMixDoctor` rather than by each detector, so a
+   * detector cannot quietly stop reporting its basis, and so the missing
+   * inputs are computed against the analysis that actually ran instead of
+   * being asserted by code that already decided it had enough.
+   */
+  basis: RecommendationBasis
 }
 
 export interface MixDoctorInput {
@@ -66,8 +76,17 @@ const MAX_ISSUES = 14
 /** Per type, so one noisy detector cannot crowd out the rest. */
 const MAX_PER_TYPE = 3
 
+/**
+ * A finding before its basis is attached.
+ *
+ * Detectors produce these. They know what they measured; they do not know what
+ * the analysis as a whole was missing, which is the half of the basis worth
+ * reading.
+ */
+type DetectedIssue = Omit<MixDoctorIssue, 'basis'>
+
 export function runMixDoctor(input: MixDoctorInput): MixDoctorIssue[] {
-  const issues: MixDoctorIssue[] = [
+  const issues: DetectedIssue[] = [
     ...detectClipping(input),
     ...detectPhase(input),
     ...detectVocalMasking(input),
@@ -82,7 +101,7 @@ export function runMixDoctor(input: MixDoctorInput): MixDoctorIssue[] {
   ]
 
   const perType = new Map<MixIssueType, number>()
-  const kept: MixDoctorIssue[] = []
+  const kept: DetectedIssue[] = []
   // Strongest first while trimming, then chronological for display: an engineer
   // works down the timeline, but the trim must keep the findings that matter.
   for (const issue of [...issues].sort((a, b) => severityRank(b) - severityRank(a) || b.confidence - a.confidence)) {
@@ -92,10 +111,46 @@ export function runMixDoctor(input: MixDoctorInput): MixDoctorIssue[] {
     kept.push(issue)
     if (kept.length >= MAX_ISSUES) break
   }
-  return kept.sort((a, b) => a.startMs - b.startMs)
+  return kept.sort((a, b) => a.startMs - b.startMs).map((issue) => ({ ...issue, basis: basisForIssue(issue, input) }))
 }
 
-function severityRank(issue: MixDoctorIssue): number {
+/**
+ * The basis for one finding, computed against the analysis that actually ran.
+ *
+ * An input the detector declared but the analyzer could not measure becomes a
+ * named missing input rather than silently lowering a number nobody can
+ * interpret. The vocal case is the one that matters most in practice: without
+ * an isolated stem the voice is inferred from the full mix, and a reader who
+ * knows that can supply a stem and get a better answer.
+ */
+function basisForIssue(issue: DetectedIssue, input: MixDoctorInput): RecommendationBasis {
+  const declared = ISSUE_BASIS[issue.issueType]
+  const source = declared?.source ?? 'derived_measurement'
+  const measuredFrom: string[] = []
+  const missingInputs: string[] = []
+
+  for (const key of declared?.metrics ?? []) {
+    const metric = input.metrics.find((candidate) => candidate.key === key)
+    const curve = input.curves.find((candidate) => candidate.key === key)
+    if (curve) {
+      measuredFrom.push(key)
+      continue
+    }
+    if (metric && metric.value !== null) measuredFrom.push(key)
+    else missingInputs.push(`${mixMetricDefinition(key)?.label ?? key} could not be measured`)
+  }
+
+  // Read from the analyzer's own note rather than from a flag passed down: the
+  // note is what the analyzer actually did, and it cannot drift from it.
+  const vocalNote = input.metrics.find((metric) => metric.key === 'vocal_presence_index')?.note ?? ''
+  if (declared?.needs?.some((need) => need.when === 'no_vocal_stem') && vocalNote.includes('full-mix spectral proxy')) {
+    missingInputs.push('an isolated vocal stem — the voice was inferred from the full mix')
+  }
+
+  return basisFor({ source, confidence: issue.confidence, measuredFrom, missingInputs })
+}
+
+function severityRank(issue: DetectedIssue): number {
   return issue.severity === 'high' ? 3 : issue.severity === 'moderate' ? 2 : 1
 }
 
@@ -174,7 +229,7 @@ function clockOf(ms: number): string {
 // detectors
 // ---------------------------------------------------------------------------
 
-function detectClipping(input: MixDoctorInput): MixDoctorIssue[] {
+function detectClipping(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'clipping_runs')
   if (!curve) return []
   const regions = findRegions(curve.points, 1, 1)
@@ -194,7 +249,7 @@ function detectClipping(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectPhase(input: MixDoctorInput): MixDoctorIssue[] {
+function detectPhase(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'phase_correlation')
   if (!curve) return []
   // Inverted so findRegions can look for excursions above a threshold.
@@ -217,7 +272,7 @@ function detectPhase(input: MixDoctorInput): MixDoctorIssue[] {
   })
 }
 
-function detectVocalMasking(input: MixDoctorInput): MixDoctorIssue[] {
+function detectVocalMasking(input: MixDoctorInput): DetectedIssue[] {
   const vocal = findCurve(input.curves, 'vocal_band_share')
   const mid = findCurve(input.curves, 'midrange_share')
   if (!vocal || !mid) return []
@@ -256,7 +311,7 @@ function detectVocalMasking(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectVocalLevelChange(input: MixDoctorInput): MixDoctorIssue[] {
+function detectVocalLevelChange(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'vocal_band_share')
   if (!curve) return []
   const values = measured(curve.points)
@@ -290,7 +345,7 @@ function detectVocalLevelChange(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectKickBassCollision(input: MixDoctorInput): MixDoctorIssue[] {
+function detectKickBassCollision(input: MixDoctorInput): DetectedIssue[] {
   const kick = findCurve(input.curves, 'band_kick')
   const bass = findCurve(input.curves, 'band_bass')
   if (!kick || !bass) return []
@@ -326,7 +381,7 @@ function detectKickBassCollision(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectHarshness(input: MixDoctorInput): MixDoctorIssue[] {
+function detectHarshness(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'presence_share')
   if (!curve) return []
   const values = measured(curve.points)
@@ -348,7 +403,7 @@ function detectHarshness(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectSibilance(input: MixDoctorInput): MixDoctorIssue[] {
+function detectSibilance(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'sibilance_share')
   if (!curve) return []
   const values = measured(curve.points)
@@ -373,7 +428,7 @@ function detectSibilance(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectLowEndBuildup(input: MixDoctorInput): MixDoctorIssue[] {
+function detectLowEndBuildup(input: MixDoctorInput): DetectedIssue[] {
   const sub = findCurve(input.curves, 'band_sub')
   const low = findCurve(input.curves, 'band_low')
   if (!sub || !low) return []
@@ -401,7 +456,7 @@ function detectLowEndBuildup(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectMidrangeCongestion(input: MixDoctorInput): MixDoctorIssue[] {
+function detectMidrangeCongestion(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'midrange_share')
   const index = metricValue(input.metrics, 'midrange_congestion_index')
   // Only reported as a moment when the record as a whole shows the condition:
@@ -427,7 +482,7 @@ function detectMidrangeCongestion(input: MixDoctorInput): MixDoctorIssue[] {
   }))
 }
 
-function detectLevelDrop(input: MixDoctorInput): MixDoctorIssue[] {
+function detectLevelDrop(input: MixDoctorInput): DetectedIssue[] {
   const curve = findCurve(input.curves, 'short_term_loudness')
   if (!curve) return []
   const values = measured(curve.points)
@@ -462,8 +517,8 @@ function detectLevelDrop(input: MixDoctorInput): MixDoctorIssue[] {
  * the engineer handoff all key on time ranges, and a special case for
  * "everywhere" would have to be handled at every one of them.
  */
-function detectWholeRecordConditions(input: MixDoctorInput): MixDoctorIssue[] {
-  const issues: MixDoctorIssue[] = []
+function detectWholeRecordConditions(input: MixDoctorInput): DetectedIssue[] {
+  const issues: DetectedIssue[] = []
   const wholeRecord = { startMs: 0, endMs: input.durationMs }
 
   const truePeak = metricValue(input.metrics, 'true_peak_dbtp')

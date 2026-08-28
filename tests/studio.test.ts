@@ -1041,6 +1041,77 @@ describe('processing ledger', () => {
 // ---------------------------------------------------------------------------
 
 /**
+ * Where a recommendation came from.
+ *
+ * The basis has to survive the round trip. A taxonomy that exists only in the
+ * analysis module and is lost on the way to the database would be decoration.
+ */
+describe('recommendation basis', () => {
+  it('stores what each finding rested on, and serves it back', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    // An out-of-phase file, so the detectors actually fire and there is a
+    // finding whose basis can be checked.
+    const attached = await runtime.studio.projects.attachUpload({
+      actor: actorOf(owner),
+      projectId,
+      bytes: stereoWav({ inverted: true }),
+      filename: 'out-of-phase.wav',
+      versionType: 'mix',
+      rightsConfirmed: true,
+    })
+    const versionId = attached.version.id
+    const analysisId = attached.analysisId as string
+    await runtime.studio.mix.runAnalysis(analysisId, owner.orgId)
+
+    const issues = await runtime.studio.repos.issues.list(owner.orgId, analysisId)
+    expect(issues.length).toBeGreaterThan(0)
+    for (const issue of issues) {
+      expect(issue.basis).not.toBeNull()
+      expect(issue.basis).toMatchObject({ source: expect.any(String), confidenceLabel: expect.any(String) })
+    }
+
+    const response = await call(owner, 'GET', `/api/studio/projects/${projectId}/mix?versionId=${versionId}`)
+    expect(response.statusCode).toBe(200)
+    const served = response.json().issues as Array<{ basis: { statement: string; missingInputs: string[] } | null }>
+    for (const issue of served) {
+      expect(issue.basis?.statement).toBeTruthy()
+      expect(Array.isArray(issue.basis?.missingInputs)).toBe(true)
+    }
+
+    // Readiness carries it too, and names what it could not measure.
+    const bands = response.json().readiness.bands as Array<{ band: string; score: number | null; basis: { missingInputs: string[] } }>
+    for (const band of bands) {
+      expect(band.basis).toBeTruthy()
+      if (band.score === null) expect(band.basis.missingInputs.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('tells the room what it could not see', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId, versionId } = await seedProject(owner)
+
+    const asked = await call(owner, 'POST', `/api/studio/projects/${projectId}/ask`, {
+      versionId,
+      question: 'is the vocal sitting right?',
+    })
+    expect(asked.statusCode).toBe(200)
+    const basis = asked.json().exchange.basis as { missingInputs: string[]; sourceLabel: string }
+
+    expect(basis.sourceLabel).toBeTruthy()
+    // No references were added and no vocal stem supplied, and the answer says
+    // both rather than presenting itself as fully informed.
+    expect(basis.missingInputs.join(' ')).toMatch(/reference tracks/)
+    expect(basis.missingInputs.join(' ')).toMatch(/isolated vocal stem/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
  * Resumable uploads.
  *
  * The properties: a file arrives in parts, an interrupted upload resumes from

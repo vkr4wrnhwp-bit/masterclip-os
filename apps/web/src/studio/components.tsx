@@ -1,6 +1,6 @@
 import React from 'react'
 import { Badge, Callout } from '../ui.jsx'
-import type { MixCurveRow, MixIssue, MixMetricRow, MetricDefinition, Readiness, StudioNote } from './api.js'
+import type { MixCurveRow, MixIssue, MixMetricRow, MetricDefinition, Readiness, RecommendationBasis, StudioNote } from './api.js'
 
 export function clock(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return '—'
@@ -239,6 +239,7 @@ export function ReadinessPanel({ readiness }: { readiness: Readiness | null }) {
             <div className="faint">Detected — {band.detected}</div>
             <div className="faint">Why it matters — {band.whyItMatters}</div>
             <div>{band.recommendation}</div>
+            <BasisLine basis={band.basis} />
           </div>
         ))}
       </div>
@@ -275,6 +276,7 @@ export function IssueList({
           <div>{issue.detail}</div>
           <div className="faint">Why it matters — {issue.whyItMatters}</div>
           <div className="faint">{issue.suggestedAction}</div>
+          <BasisLine basis={issue.basis} />
           <details>
             <summary className="faint">What this rests on</summary>
             <pre className="mono evidence">{JSON.stringify(issue.evidence, null, 2)}</pre>
@@ -299,6 +301,34 @@ export function IssueList({
         </div>
       ))}
     </>
+  )
+}
+
+/**
+ * Where a recommendation came from, and what it could not see.
+ *
+ * The missing inputs are the half worth reading. "Moderate confidence" on its
+ * own tells a reader nothing they can act on; "the voice was inferred from the
+ * full mix because no isolated stem was supplied" tells them exactly what to
+ * do about it, so it is rendered as a call to action rather than buried in a
+ * disclosure.
+ */
+export function BasisLine({ basis }: { basis: RecommendationBasis | null }) {
+  if (!basis) return null
+  return (
+    <div className="basis">
+      <span className="faint">
+        {basis.sourceLabel}
+        {basis.measuredFromLabels.length > 0 && <> · {basis.measuredFromLabels.join(', ')}</>} · {basis.confidenceLabel} confidence
+      </span>
+      {basis.missingInputs.length > 0 && (
+        <ul className="basis-missing">
+          {basis.missingInputs.map((missing) => (
+            <li key={missing}>Not available: {missing}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

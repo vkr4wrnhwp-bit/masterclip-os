@@ -2,7 +2,7 @@ import React from 'react'
 import { navigate } from '../App.jsx'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { studioApi, uploadInParts, type MixIssue, type RoomExchange, type SessionPayload, type StudioVersion } from './api.js'
-import { IssueList, MetricTable, ReadinessPanel, StageBadge, Transport, Waveform, clock, formatMetric } from './components.jsx'
+import { BasisLine, IssueList, MetricTable, ReadinessPanel, StageBadge, Transport, Waveform, clock, formatMetric } from './components.jsx'
 import { StudioMaster, StudioVersions, StudioCollaborate, StudioDeliver } from './StudioWorkflow.jsx'
 
 export const STUDIO_TABS = ['session', 'rack', 'mix', 'master', 'versions', 'collaborate', 'deliver'] as const
@@ -411,6 +411,7 @@ function AskTheRoom({ projectId, onSeek }: { projectId: string; onSeek: (ms: num
               ))}
             </div>
             {exchange.contextUsed.length > 0 && <div className="faint mono">read: {exchange.contextUsed.join(', ')}</div>}
+            <BasisLine basis={exchange.basis} />
           </div>
         ))
       )}

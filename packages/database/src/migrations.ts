@@ -2797,4 +2797,26 @@ CREATE TABLE IF NOT EXISTS studio_upload_parts (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_upload_parts ON studio_upload_parts(session_id, part_index);
 `,
   },
+  {
+    // =======================================================================
+    // 0011 — Where a recommendation came from
+    //
+    // A finding already carried a confidence and the evidence that triggered
+    // it. What it could not say was what it was *unable* to see — and that is
+    // the half a reader can act on. A vocal finding derived from the full mix
+    // because no isolated stem was supplied is a different statement from the
+    // same finding derived from a stem, and until now the two were
+    // indistinguishable once stored.
+    //
+    // basis holds the source, the inputs actually read, and the named missing
+    // ones. Nullable because rows written before this migration have no basis
+    // and inventing one for them would be exactly the fabrication the column
+    // exists to prevent.
+    // =======================================================================
+    id: '0011_studio_recommendation_basis',
+    sql: `
+ALTER TABLE studio_mix_issues ADD COLUMN basis TEXT;
+ALTER TABLE studio_room_exchanges ADD COLUMN basis TEXT;
+`,
+  },
 ]

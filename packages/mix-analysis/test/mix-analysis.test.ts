@@ -11,7 +11,11 @@ import {
   loudnessMatchGainDb,
   metricValue,
   planMaster,
+  BAND_BASIS,
+  confidenceLabelFor,
+  ISSUE_BASIS,
   LocalAudioProcessingProvider,
+  RECOMMENDATION_SOURCES,
   runMixDoctor,
   type AudioProcessingProvider,
   type MixMetric,
@@ -468,5 +472,117 @@ describe('audio processing providers', () => {
       readiness: 'unavailable',
       reason: 'the endpoint refused the connection',
     })
+  })
+})
+
+/**
+ * The recommendation basis.
+ *
+ * "Moderate confidence" on its own tells a reader nothing they can act on.
+ * These tests are about the half that does: what the recommendation could not
+ * see, named in words a person could go and supply.
+ */
+describe('recommendation basis', () => {
+  it('names what every Mix Doctor finding rested on', async () => {
+    // A file the detectors actually fire on: clipped, and out of phase.
+    const noisy = buildWav(8, [{ hz: 200, amplitude: 0.3, from: 3, to: 4 }, { hz: 200, amplitude: 0.2 }, { hz: 300, amplitude: 0.2, placement: 'inverted' }], {
+      clip: true,
+    })
+    const result = await analyzeMix({ bytes: noisy, mimeType: 'audio/wav' })
+    const issues = runMixDoctor({ metrics: result.metrics, curves: result.curves, durationMs: result.durationMs })
+    expect(issues.length).toBeGreaterThan(0)
+
+    for (const issue of issues) {
+      expect(RECOMMENDATION_SOURCES).toContain(issue.basis.source)
+      expect(issue.basis.statement.length).toBeGreaterThan(20)
+      // The confidence band and the number never disagree.
+      expect(issue.basis.confidence).toBeCloseTo(issue.confidence, 5)
+      expect(issue.basis.confidenceLabel).toBe(confidenceLabelFor(issue.confidence))
+      // Every input it claims to have read was actually measured. Checked
+      // against null rather than truthiness: a measured value of zero is a
+      // measurement, and dc_offset is routinely exactly that.
+      for (const key of issue.basis.measuredFrom) {
+        const metric = result.metrics.find((candidate) => candidate.key === key)
+        const curve = result.curves.find((candidate) => candidate.key === key)
+        expect(metric?.value ?? null, `${key} is claimed as read but was not measured`).not.toBeNull()
+        if (!metric) expect(curve).toBeDefined()
+      }
+    }
+  })
+
+  it('says the vocal was inferred from the full mix when no stem was supplied', async () => {
+    const result = await analyzeMix({ bytes: MUSICAL, mimeType: 'audio/wav' })
+    expect(result.metrics.find((metric) => metric.key === 'vocal_presence_index')?.note).toMatch(/full-mix spectral proxy/)
+    const issues = runMixDoctor({ metrics: result.metrics, curves: result.curves, durationMs: result.durationMs })
+    const vocal = issues.filter((issue) => issue.issueType === 'vocal_masking' || issue.issueType === 'vocal_level_change')
+
+    // Only assert when the detector actually fired; the property is about what
+    // it says when it does, not about forcing it to.
+    for (const issue of vocal) {
+      expect(issue.basis.missingInputs.join(' ')).toMatch(/isolated vocal stem/)
+    }
+  })
+
+  it('names the readiness inputs it could not measure, rather than lowering a number silently', () => {
+    // One metric, so seven of eight bands are missing most of their inputs.
+    const readiness = computeReleaseReadiness([
+      { key: 'integrated_lufs', value: -12, unit: 'lufs', confidence: 0.6, analysisMethod: 't', provider: 't', note: '' },
+    ])
+
+    const loudness = readiness.bands.find((band) => band.band === 'competitive_loudness')
+    expect(loudness?.basis.measuredFrom).toContain('integrated_lufs')
+
+    const stereo = readiness.bands.find((band) => band.band === 'stereo_field')
+    expect(stereo?.score).toBeNull()
+    expect(stereo?.basis.missingInputs.length).toBeGreaterThan(0)
+    // In words, not metric keys nobody has heard of.
+    expect(stereo?.basis.missingInputs.join(' ')).toMatch(/could not be measured/)
+  })
+
+  it('labels the streaming band as a platform specification, not a threshold it invented', () => {
+    const readiness = computeReleaseReadiness([
+      { key: 'integrated_lufs', value: -9, unit: 'lufs', confidence: 0.6, analysisMethod: 't', provider: 't', note: '' },
+      { key: 'true_peak_dbtp', value: -0.2, unit: 'dbtp', confidence: 0.7, analysisMethod: 't', provider: 't', note: '' },
+    ])
+    const band = readiness.bands.find((candidate) => candidate.band === 'streaming_translation')
+    expect(band?.basis.source).toBe('platform_specification')
+  })
+
+  it('declares only inputs that actually exist', async () => {
+    // A declared key that is not a real metric would be reported as "could not
+    // be measured" forever — a permanent lie about the analysis, and the kind
+    // of thing a rename introduces silently.
+    const result = await analyzeMix({ bytes: MUSICAL, mimeType: 'audio/wav' })
+    const known = new Set([...result.metrics.map((metric) => metric.key), ...result.curves.map((curve) => curve.key)])
+
+    for (const [issueType, declared] of Object.entries(ISSUE_BASIS)) {
+      for (const key of declared.metrics) {
+        expect(known, `${issueType} declares an input that no analyzer emits: ${key}`).toContain(key)
+      }
+    }
+  })
+
+  it('scores readiness bands only from inputs an analyzer actually emits', async () => {
+    // The same guardrail as above, for the bands. Checked against the emitted
+    // keys rather than the measured ones: stereo width is legitimately null on
+    // a file whose channels are identical, and reporting that as missing is the
+    // module working. A key no analyzer emits at all is the bug.
+    const result = await analyzeMix({ bytes: MUSICAL, mimeType: 'audio/wav' })
+    const emitted = new Set(result.metrics.map((metric) => metric.key))
+
+    for (const [band, declared] of Object.entries(BAND_BASIS)) {
+      for (const key of declared.metrics) {
+        expect(emitted, `${band} declares an input that no analyzer emits: ${key}`).toContain(key)
+      }
+    }
+  })
+
+  it('bands confidence rather than printing false precision', () => {
+    expect(confidenceLabelFor(0.2)).toBe('low')
+    expect(confidenceLabelFor(0.62)).toBe('moderate')
+    // 0.62 and 0.71 are not meaningfully different figures, but they do sit on
+    // opposite sides of the line this module draws, and it draws it once.
+    expect(confidenceLabelFor(0.71)).toBe('high')
+    expect(confidenceLabelFor(Number.NaN)).toBe('low')
   })
 })

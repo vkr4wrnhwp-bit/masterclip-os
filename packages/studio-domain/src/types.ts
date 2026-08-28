@@ -324,6 +324,14 @@ export interface MixIssueRecord {
   whyItMatters: string
   suggestedAction: string
   evidence: Record<string, unknown>
+  /**
+   * Where the finding came from and what it could not see.
+   *
+   * Null on rows written before the basis existed. Null means "not recorded",
+   * which is a different fact from "no missing inputs" — and inventing a basis
+   * for an old row would be the fabrication the field exists to prevent.
+   */
+  basis: Record<string, unknown> | null
   status: MixIssueStatus
   statusChangedBy: string | null
   statusChangedAt: string | null
@@ -1053,6 +1061,8 @@ export interface RoomExchangeRecord {
   contextUsed: string[]
   actions: RoomAction[]
   confidence: 'high' | 'moderate' | 'low' | 'insufficient'
+  /** Where the answer came from and what the room could not see. Null on older rows. */
+  basis: Record<string, unknown> | null
   askedBy: string
   createdAt: string
 }
