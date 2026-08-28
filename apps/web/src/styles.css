@@ -68,9 +68,9 @@ a:hover { text-decoration: underline; }
 .nav a:hover { background: var(--bg-panel); color: var(--text); text-decoration: none; }
 .nav a.active { color: var(--text); border-left-color: var(--accent); background: var(--bg-panel); }
 .nav .group { padding: 14px 18px 4px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-faint); }
-/* Product divider. Two products share this shell — Masterclip for video, Street
-   Banker for music — and the nav has to say which is which, or the music
-   modules read as five siblings of the render tools rather than one product. */
+/* Section divider. One site — Street Banker — with the music modules, the
+   Masterclip video tools and the platform settings as sections inside it. The
+   nav has to name each one, or eleven links read as one undifferentiated list. */
 .nav .product { padding: 20px 18px 2px; margin-top: 6px; border-top: 1px solid var(--border); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .nav .product:first-child { border-top: none; margin-top: 0; }
 .nav .product + .group { padding-top: 8px; }

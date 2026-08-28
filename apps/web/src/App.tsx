@@ -237,45 +237,17 @@ export function App() {
       <div className="app">
         <nav className="sidebar">
           <div className="brand">
-            <h1>Masterclip OS</h1>
-            <div className="sub">cinematic render factory</div>
+            <h1>Street Banker</h1>
+            <div className="sub">studio, labs &amp; release</div>
           </div>
           <div className="nav">
-            {/* Two products share this shell, and the nav says which is which.
-                Masterclip is the cinematic render factory; Street Banker is
-                the music side — Studio, Song Lab, Remix, Audio Intelligence and
-                Live Lab are one product, not five siblings of the video tools.
-                The Masterclip heading is unconditional even though its project
-                links are not: without it, a session with no project open reads
-                as though the platform is only Street Banker. */}
-            <div className="product">Masterclip</div>
-            <NavLink route={route} to="/" name="dashboard">
-              Dashboard
-            </NavLink>
-            {projectId && (
-              <>
-                <div className="group">Project</div>
-                <NavLink route={route} to={`/project/${projectId}`} name="project">
-                  Overview &amp; shots
-                </NavLink>
-                <NavLink route={route} to={`/queue/${projectId}`} name="queue">
-                  Render queue
-                </NavLink>
-                <NavLink route={route} to={`/masters/${projectId}`} name="masters">
-                  Masters
-                </NavLink>
-                <NavLink route={route} to={`/costs/${projectId}`} name="costs">
-                  Cost lab
-                </NavLink>
-              </>
-            )}
-
-            <div className="product">Street Banker</div>
-            {/* Ordered by the creative workflow: the control room for a record,
-                then diagnosing it, then what to do with it, then playing it. */}
+            {/* One site. Street Banker is the shell and everything is a section
+                inside it — the music modules first, in the order a record moves
+                through them, then Masterclip's video tools, then the settings
+                that belong to the platform rather than to any one module. */}
             {studioCaps.data?.capabilities.includes('studio.access') && (
               <>
-                <div className="group">Studio</div>
+                <div className="product">Studio</div>
                 <NavLink route={route} to="/studio" name="studio">
                   Projects
                 </NavLink>
@@ -283,7 +255,7 @@ export function App() {
             )}
             {songLabCaps.data?.capabilities.includes('song_lab.access') && (
               <>
-                <div className="group">Song Lab</div>
+                <div className="product">Song Lab</div>
                 <NavLink route={route} to="/song-lab" name="song-lab">
                   Drop a record
                 </NavLink>
@@ -292,7 +264,7 @@ export function App() {
                 </NavLink>
               </>
             )}
-            <div className="group">Audio Intelligence</div>
+            <div className="product">Audio Intelligence</div>
             <NavLink route={route} to="/audio" name="audio-home">
               Overview
             </NavLink>
@@ -325,7 +297,7 @@ export function App() {
             </NavLink>
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
-                <div className="group">Performance</div>
+                <div className="product">Performance</div>
                 <NavLink route={route} to="/live-lab" name="live-lab">
                   Live Lab
                 </NavLink>
@@ -334,7 +306,32 @@ export function App() {
                 </NavLink>
               </>
             )}
-            {/* Platform-wide, so it sits outside both products rather than
+            {/* Masterclip is the video side of the same site: the cinematic
+                render factory. Its heading is unconditional even though the
+                project links below it are not — without it, a session with no
+                video project open would read as though the tools were gone. */}
+            <div className="product">Masterclip</div>
+            <NavLink route={route} to="/" name="dashboard">
+              Dashboard
+            </NavLink>
+            {projectId && (
+              <>
+                <div className="group">Project</div>
+                <NavLink route={route} to={`/project/${projectId}`} name="project">
+                  Overview &amp; shots
+                </NavLink>
+                <NavLink route={route} to={`/queue/${projectId}`} name="queue">
+                  Render queue
+                </NavLink>
+                <NavLink route={route} to={`/masters/${projectId}`} name="masters">
+                  Masters
+                </NavLink>
+                <NavLink route={route} to={`/costs/${projectId}`} name="costs">
+                  Cost lab
+                </NavLink>
+              </>
+            )}
+            {/* Platform-wide, so it sits outside every module rather than
                 looking like it belongs to whichever one happens to be last. */}
             <div className="product">System</div>
             <NavLink route={route} to="/providers" name="providers">
