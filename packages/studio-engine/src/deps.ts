@@ -5,7 +5,7 @@ import type { AuditLog, EntitlementService } from '@masterclip/domain'
 import type { AppConfig, Clock, Logger } from '@masterclip/shared'
 import type { AudioAssetService } from '@masterclip/audio-engine'
 import type { AudioAssetRepo, ConsentRepo } from '@masterclip/audio-domain'
-import type { MasterRenderer } from '@masterclip/mix-analysis'
+import type { AudioProcessingRegistry, MasterRenderer } from '@masterclip/mix-analysis'
 import type {
   AiPermissionRepo,
   ContributionRepo,
@@ -66,9 +66,16 @@ export interface StudioRepos {
   roomExchanges: RoomExchangeRepo
 }
 
-/** Providers, all replaceable. None is hardwired into a service. */
+/**
+ * Providers, all replaceable. None is hardwired into a service.
+ *
+ * `processing` is the registry every service asks; `masterRenderer` is the
+ * renderer the local adapter delegates to, kept separately so a test can
+ * substitute one without having to assemble a provider around it.
+ */
 export interface StudioProviders {
   masterRenderer: MasterRenderer
+  processing: AudioProcessingRegistry
 }
 
 /**

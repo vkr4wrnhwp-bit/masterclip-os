@@ -1,6 +1,7 @@
 import { AppError, type Logger } from '@masterclip/shared'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import {
+  AudioProviderNotConfiguredError,
   compareMasterMetrics,
   loudnessMatchGainDb,
   masterDirectionInfo,
@@ -167,14 +168,23 @@ export class StudioMasterService {
     const plan = rendition.renderPlan as MasterRenderPlan
     let result
     try {
-      result = await this.deps.providers.masterRenderer.renderMaster({
+      // Asked of the registry rather than reached for directly, so a configured
+      // vendor adapter is used where one exists and the local adapter is a
+      // registered provider like any other rather than a hardwired default.
+      const provider = await this.deps.providers.processing.require('render_master')
+      if (!provider.renderMaster) throw new AudioProviderNotConfiguredError('render_master')
+      result = await provider.renderMaster({
         sourceBytes: bytes,
         sourceMimeType: sourceAsset.mimeType,
         plan,
       })
     } catch (err) {
+      // A deployment with nothing configured is not the same as a render that
+      // went wrong, and the row says which. The passthrough still covers the
+      // ffmpeg-absent case; this is the path where nothing at all can render.
+      const unconfigured = err instanceof AudioProviderNotConfiguredError
       await this.deps.repos.renditions.settle(orgId, renditionId, {
-        status: 'failed',
+        status: unconfigured ? 'unsupported' : 'failed',
         failureReason: err instanceof Error ? err.message : String(err),
       })
       return this.deps.repos.renditions.get(orgId, renditionId)

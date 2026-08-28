@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeMix,
+  AudioProcessingRegistry,
   buildFilterChain,
   compareMasterMetrics,
   compareToReferences,
@@ -10,7 +11,9 @@ import {
   loudnessMatchGainDb,
   metricValue,
   planMaster,
+  LocalAudioProcessingProvider,
   runMixDoctor,
+  type AudioProcessingProvider,
   type MixMetric,
 } from '../src/index.js'
 
@@ -378,5 +381,92 @@ describe('release readiness', () => {
     ])
     expect(readiness.bandsScored).toBeLessThan(4)
     expect(readiness.score).toBeNull()
+  })
+})
+
+/**
+ * The processing provider seam.
+ *
+ * The property under test is not "the registry returns something" — it is that
+ * a deployment which cannot process audio says so, and is never allowed to
+ * masquerade as one that can.
+ */
+describe('audio processing providers', () => {
+  const readyRenderer = {
+    rendererId: 'test-ffmpeg',
+    version: '1.0.0',
+    isAvailable: async () => true,
+    renderMaster: async () => ({
+      bytes: new Uint8Array([1]),
+      contentType: 'audio/wav',
+      renderer: 'test-ffmpeg',
+      rendererVersion: '1.0.0',
+      placeholder: false,
+      filterChain: 'volume=1',
+      note: '',
+    }),
+  }
+  const absentRenderer = { ...readyRenderer, isAvailable: async () => false }
+
+  it('reports rendering as degraded — not ready — when nothing can process audio', async () => {
+    const provider = new LocalAudioProcessingProvider(absentRenderer)
+    const status = await provider.status('render_master')
+
+    expect(status.readiness).toBe('degraded')
+    expect(status.reason).toMatch(/ffmpeg/)
+    // Measuring still works: a WAV is decoded in process.
+    expect((await provider.status('analyze_mix')).readiness).toBe('ready')
+  })
+
+  it('names the performer, so a local result cannot read as a hosted service', async () => {
+    const status = await new LocalAudioProcessingProvider(readyRenderer).status('render_master')
+    expect(status.provider).toBe('street-banker')
+    expect(status.local).toBe(true)
+  })
+
+  it('prefers a ready provider over a degraded one', async () => {
+    const vendor: AudioProcessingProvider = {
+      provider: 'vendor',
+      adapter: 'vendor-v1',
+      local: false,
+      capabilities: ['render_master'],
+      status: async (capability) => ({ provider: 'vendor', adapter: 'vendor-v1', capability, readiness: 'ready', reason: null, local: false }),
+      renderMaster: readyRenderer.renderMaster,
+    }
+    const registry = new AudioProcessingRegistry().register(vendor).register(new LocalAudioProcessingProvider(absentRenderer))
+
+    expect((await registry.resolve('render_master'))?.provider).toBe('vendor')
+  })
+
+  it('falls back to the degraded provider rather than to nothing', async () => {
+    const registry = new AudioProcessingRegistry().register(new LocalAudioProcessingProvider(absentRenderer))
+    const resolved = await registry.resolve('render_master')
+    expect(resolved?.provider).toBe('street-banker')
+  })
+
+  it('refuses with the capability named when nothing can do the work', async () => {
+    const registry = new AudioProcessingRegistry().register(new LocalAudioProcessingProvider(readyRenderer))
+    await expect(registry.require('separate_stems')).rejects.toMatchObject({ code: 'studio.processing_provider_not_configured' })
+  })
+
+  it('survives a provider whose own status check throws', async () => {
+    const broken: AudioProcessingProvider = {
+      provider: 'broken',
+      adapter: 'broken-v1',
+      local: false,
+      capabilities: ['render_master'],
+      status: async () => {
+        throw new Error('the endpoint refused the connection')
+      },
+    }
+    const registry = new AudioProcessingRegistry().register(broken).register(new LocalAudioProcessingProvider(readyRenderer))
+
+    // A provider that cannot answer is not a provider that works.
+    expect((await registry.resolve('render_master'))?.provider).toBe('street-banker')
+    const report = await registry.report('render_master')
+    expect(report.find((status) => status.provider === 'broken')).toMatchObject({
+      readiness: 'unavailable',
+      reason: 'the endpoint refused the connection',
+    })
   })
 })

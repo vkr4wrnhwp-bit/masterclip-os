@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError } from '@masterclip/shared'
 import type { Runtime } from '@masterclip/runtime'
+import { AUDIO_CAPABILITY_LABELS, AUDIO_PROCESSING_CAPABILITIES } from '@masterclip/mix-analysis'
 import {
   COLLABORATOR_PERMISSIONS,
   COLLABORATOR_ROLES,
@@ -33,6 +34,21 @@ export async function registerStudioProjectRoutes(app: FastifyInstance, runtime:
       deliverableKinds: DELIVERABLE_KIND_LABELS,
       collaboratorRoles: COLLABORATOR_ROLES,
       collaboratorPermissions: COLLABORATOR_PERMISSIONS,
+    }
+  })
+
+  /**
+   * Who performs the audio work in this deployment, and whether they can.
+   *
+   * Read by the Master Station so a user is told, before they render, that
+   * nothing here can process audio — rather than being handed a placeholder and
+   * left to work out why it sounds identical.
+   */
+  app.get('/api/studio/processing-providers', async (request) => {
+    await requireStudio(runtime, request, 'studio.access')
+    return {
+      capabilities: AUDIO_PROCESSING_CAPABILITIES.map((capability) => ({ key: capability, label: AUDIO_CAPABILITY_LABELS[capability] })),
+      providers: await studio.providers.processing.report(),
     }
   })
 

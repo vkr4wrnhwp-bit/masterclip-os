@@ -102,6 +102,39 @@ cannot linger in storage because a later step never ran.
 
 ---
 
+## Who performs the work
+
+Every byte of audio goes through an `AudioProcessingProvider`. A provider
+declares what it can do (`analyze_mix`, `render_master`, `transcode`,
+`separate_stems`), who it is, and how ready it is *here*:
+
+| Readiness | Means |
+|---|---|
+| `ready` | It holds what it needs and will do the work |
+| `degraded` | It will answer, but only with a clearly labelled placeholder |
+| `unavailable` | It cannot answer at all, and says why |
+
+Three states rather than two because the middle one is real: the local renderer
+with no ffmpeg still keeps the plan, the comparison table and the approval gate
+usable, and calling that "ready" would let a settings screen claim mastering
+works here when it does not.
+
+`GET /api/studio/processing-providers` reports every provider, and Master
+Station reads it before the first click so a user is told up front rather than
+discovering it from an output that sounds identical to the input.
+
+Resolution order: a **ready** provider always beats a degraded one, whatever the
+registration order; a degraded one is used only when nothing is ready; and if
+neither exists the work refuses with `studio.processing_provider_not_configured`
+naming the capability. A provider whose own status check throws is treated as
+unavailable — a provider that cannot answer is not a provider that works.
+
+Only one provider is registered today: `street-banker` / `local-dsp`, which
+does the work on this machine. It is named rather than left blank precisely so
+a local result can never read as a hosted professional service.
+
+---
+
 ## Without ffmpeg
 
 ffmpeg is required to decode anything that is not WAV, and to render a master.

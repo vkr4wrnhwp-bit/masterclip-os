@@ -292,6 +292,15 @@ export interface SessionPayload {
   processing: ProcessingJob[]
 }
 
+export interface AudioProviderStatus {
+  provider: string
+  adapter: string
+  capability: string
+  readiness: 'ready' | 'degraded' | 'unavailable'
+  reason: string | null
+  local: boolean
+}
+
 export interface ProcessingJob {
   id: string
   jobType: string
@@ -329,6 +338,8 @@ export const studioApi = {
   importable: () => get<{ assets: Array<{ id: string; fileName: string; projectType: string; durationMs: number | null }> }>('/api/studio/importable'),
   reanalyze: (id: string, versionId?: string) => post<{ analysisId: string }>(`/api/studio/projects/${id}/analyze`, versionId ? { versionId } : {}),
   jobs: (id: string, limit?: number) => get<{ jobs: ProcessingJob[] }>(`/api/studio/projects/${id}/jobs${limit ? `?limit=${limit}` : ''}`),
+  processingProviders: () =>
+    get<{ capabilities: Array<{ key: string; label: string }>; providers: AudioProviderStatus[] }>('/api/studio/processing-providers'),
 
   notes: (id: string) => get<{ notes: StudioNote[] }>(`/api/studio/projects/${id}/notes`),
   addNote: (id: string, body: { kind?: string; timestampMs?: number | null; category: string; body: string; studioVersionId?: string }) =>

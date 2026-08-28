@@ -249,6 +249,9 @@ importers:
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:../../packages/media-tools
+      '@masterclip/mix-analysis':
+        specifier: workspace:*
+        version: link:../../packages/mix-analysis
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:../../packages/model-router

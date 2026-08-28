@@ -19,6 +19,11 @@ export function StudioMaster({ projectId, data, reload }: { projectId: string; d
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const audioRef = React.useRef<HTMLAudioElement>(null)
+  // Who will actually perform the render, and whether they can. Read before the
+  // first click rather than discovered afterwards from an output that sounds
+  // identical to the input.
+  const providers = useAsync(() => studioApi.processingProviders().catch(() => null), [])
+  const renderStatus = providers.data?.providers.find((status) => status.capability === 'render_master') ?? null
 
   const request = async (direction: string) => {
     if (!versionId) return
@@ -49,6 +54,12 @@ export function StudioMaster({ projectId, data, reload }: { projectId: string; d
         return (
           <>
             <Card title="Master directions">
+              {renderStatus && renderStatus.readiness !== 'ready' && (
+                <Callout tone="warn" title="Nothing here can process audio">
+                  {renderStatus.reason ?? 'No configured provider can render a master in this deployment.'} Every direction below still plans and
+                  compares; what comes back is your own mix, marked as a placeholder.
+                </Callout>
+              )}
               {!versionId ? (
                 <Empty>Upload or approve a mix first — Master Station needs something to master.</Empty>
               ) : (

@@ -995,6 +995,22 @@ describe('processing ledger', () => {
     expect(settled!.finishedAt).not.toBeNull()
   })
 
+  it('says who will perform the work, and whether they can, before anything is rendered', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+
+    const response = await call(owner, 'GET', '/api/studio/processing-providers')
+    expect(response.statusCode).toBe(200)
+    const render = response.json().providers.find((status: { capability: string }) => status.capability === 'render_master')
+
+    // Named, and named as local. An unattributed result could be mistaken for
+    // a hosted professional service.
+    expect(render.provider).toBe('street-banker')
+    expect(render.local).toBe(true)
+    expect(['ready', 'degraded', 'unavailable']).toContain(render.readiness)
+    if (render.readiness !== 'ready') expect(render.reason).toBeTruthy()
+  })
+
   it('serves the ledger for a project, and never for another organization’s', async () => {
     const flagship = await signup('flagship@example.com', 'Flagship')
     await grantStudio(flagship.orgId)

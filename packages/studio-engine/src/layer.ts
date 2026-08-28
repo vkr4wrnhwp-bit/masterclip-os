@@ -3,7 +3,13 @@ import type { DurableQueue } from '@masterclip/queue'
 import type { StorageDriver } from '@masterclip/asset-storage'
 import { AuditLog, type EntitlementService } from '@masterclip/domain'
 import { systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
-import { PassthroughMasterRenderer, ResilientMasterRenderer, type MasterRenderer } from '@masterclip/mix-analysis'
+import {
+  AudioProcessingRegistry,
+  LocalAudioProcessingProvider,
+  PassthroughMasterRenderer,
+  ResilientMasterRenderer,
+  type MasterRenderer,
+} from '@masterclip/mix-analysis'
 import {
   AiPermissionRepo,
   ContributionRepo,
@@ -107,7 +113,13 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
   // reason to dead-letter an artist's master.
   const masterRenderer: MasterRenderer = opts.providers?.masterRenderer ?? (opts.mockOnly ? new PassthroughMasterRenderer() : new ResilientMasterRenderer())
 
-  const providers: StudioProviders = { masterRenderer }
+  // The registry is where a vendor adapter registers. The local adapter is
+  // registered last on purpose: a configured vendor is preferred, and removing
+  // that vendor's key falls back to local processing rather than to nothing.
+  const processing =
+    opts.providers?.processing ?? new AudioProcessingRegistry().register(new LocalAudioProcessingProvider(masterRenderer))
+
+  const providers: StudioProviders = { masterRenderer, processing }
 
   const repos: StudioRepos = {
     projects: new StudioProjectRepo(opts.db, clock),
