@@ -327,6 +327,27 @@ export interface UploadPlan {
   received: number[]
 }
 
+export interface ProvenanceEvent {
+  id: string
+  sequence: number
+  eventType: string
+  subjectType: string
+  subjectId: string
+  actorLabel: string
+  payload: Record<string, unknown>
+  hash: string
+  recordedAt: string
+}
+
+export interface ProvenanceVerification {
+  intact: boolean
+  events: number
+  brokenAt: number | null
+  reason: string | null
+  headHash: string | null
+  statement: string
+}
+
 export interface AudioProviderStatus {
   provider: string
   adapter: string
@@ -490,9 +511,12 @@ export const studioApi = {
     get<{
       passport: { id: string; documentHash: string; status: string; document: Record<string, unknown>; createdAt: string } | null
       verification: { valid: boolean; document: { valid: boolean }; asset: { checked: boolean; valid: boolean; detail: string } } | null
+      chain: ProvenanceVerification
       contributions: Array<{ id: string; contributionType: string; performedBy: string; human: boolean; aiTool: string | null; aiRole: string | null; detail: string }>
       contributionTypes: string[]
     }>(`/api/studio/projects/${id}/passport`),
+  provenance: (id: string) =>
+    get<{ events: ProvenanceEvent[]; verification: ProvenanceVerification; statement: string }>(`/api/studio/projects/${id}/provenance`),
   buildPassport: (id: string) => post<{ passport: { id: string } }>(`/api/studio/projects/${id}/passport`),
   addContribution: (id: string, body: { contributionType: string; performedBy: string; human: boolean; detail?: string; aiTool?: string; aiRole?: string }) =>
     post<{ contribution: unknown }>(`/api/studio/projects/${id}/contributions`, body),

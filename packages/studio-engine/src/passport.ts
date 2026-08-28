@@ -208,6 +208,16 @@ export class StudioPassportService {
       targetId: passportId,
       data: { versionId: version.id, checksum: version.assetChecksum, documentHash: finalized.documentHash },
     })
+    await this.deps.repos.provenance.append({
+      orgId: actor.orgId,
+      studioProjectId: passport.studioProjectId,
+      eventType: 'passport.finalized',
+      subjectType: 'studio_passport',
+      subjectId: passportId,
+      actorUserId: actor.userId,
+      actorLabel: actorLabel(actor),
+      payload: { versionId: version.id, versionChecksum: version.assetChecksum, documentHash: finalized.documentHash },
+    })
 
     return finalized
   }

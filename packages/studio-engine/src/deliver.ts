@@ -273,6 +273,18 @@ export class StudioDeliveryService {
       targetId: deliverableId,
       data: { releaseId, approvalId: approval.id },
     })
+    // Where the record went, and on whose sign-off. This is the event a rights
+    // question years later is most likely to be about.
+    await this.deps.repos.provenance.append({
+      orgId: actor.orgId,
+      studioProjectId: deliverable.studioProjectId,
+      eventType: 'delivery.sent',
+      subjectType: 'studio_deliverable',
+      subjectId: deliverableId,
+      actorUserId: actor.userId,
+      actorLabel: actorLabel(actor),
+      payload: { assetKind: deliverable.assetKind, releaseId, approvalId: approval.id },
+    })
 
     return this.deps.repos.deliverables.get(actor.orgId, deliverableId)
   }

@@ -563,6 +563,20 @@ export function StudioDeliver({ projectId, data, reload }: { projectId: string; 
                     <Badge tone={payload.verification?.valid ? 'ok' : 'danger'}>{payload.verification?.valid ? 'verified' : 'verification failed'}</Badge>
                   </div>
                   {payload.verification?.asset.checked && <div className="faint">{payload.verification.asset.detail}</div>}
+
+                  {/* The chain the passport sits on. Shown next to it rather
+                      than on its own screen: a passport that verifies against a
+                      history with a hole in it is a document about an
+                      incomplete record, and both answers belong together. */}
+                  <h4>History</h4>
+                  <div>
+                    <Badge tone={payload.chain.intact ? 'ok' : 'danger'}>
+                      {payload.chain.intact ? `${payload.chain.events} linked events` : `chain breaks at event ${payload.chain.brokenAt}`}
+                    </Badge>
+                  </div>
+                  {payload.chain.reason && <div className="danger-text">{payload.chain.reason}</div>}
+                  <div className="faint">{payload.chain.statement}</div>
+
                   <h4>Contributions</h4>
                   {payload.contributions.length === 0 ? (
                     <Empty>no contributions declared</Empty>

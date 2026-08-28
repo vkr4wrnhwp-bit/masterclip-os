@@ -15,6 +15,7 @@ import {
   SONIC_DNA_ATTRIBUTES,
   STUDIO_SERVICES,
 } from '@masterclip/studio-domain'
+import { PROVENANCE_STATEMENT } from '@masterclip/studio-domain'
 import { RACK_MODULES, artistKeyOf } from '@masterclip/studio-engine'
 import { requireStudio, signedUrlFor } from './helpers.js'
 
@@ -387,6 +388,26 @@ export async function registerStudioWorkflowRoutes(app: FastifyInstance, runtime
     })
   }
 
+  // ----- the provenance chain -------------------------------------------------
+
+  /**
+   * What happened to this record, in order, with each event linked to the one
+   * before it.
+   *
+   * The verification is computed on every read rather than cached: a cached
+   * "intact" is a claim about a moment that has passed, and this is precisely
+   * the thing that must not be asserted from stale state.
+   */
+  app.get('/api/studio/projects/:id/provenance', async (request) => {
+    const { id } = request.params as { id: string }
+    const actor = await requireStudio(runtime, request, 'studio.record_passport', { project: { id, permission: 'view' } })
+    return {
+      events: await studio.repos.provenance.list(actor.orgId, id),
+      verification: await studio.repos.provenance.verify(actor.orgId, id),
+      statement: PROVENANCE_STATEMENT,
+    }
+  })
+
   // ----- record passport and the creation ledger ------------------------------
 
   app.get('/api/studio/projects/:id/passport', async (request) => {
@@ -396,6 +417,10 @@ export async function registerStudioWorkflowRoutes(app: FastifyInstance, runtime
     return {
       passport,
       verification: passport ? await studio.passports.verify(actor, passport.id) : null,
+      // The chain the passport sits on. A passport that verifies against a
+      // chain with a hole in it is a document about an incomplete history, and
+      // a reader should see both answers rather than only the reassuring one.
+      chain: await studio.repos.provenance.verify(actor.orgId, id),
       contributions: await studio.repos.contributions.list(actor.orgId, id),
       contributionTypes: CONTRIBUTION_TYPES,
     }

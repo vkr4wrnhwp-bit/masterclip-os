@@ -187,6 +187,18 @@ export class StudioCollaborationService {
       targetId: version.id,
       data: { approvalId: approval.id, checksum: version.assetChecksum },
     })
+    // The checksum goes into the chain, not just the row: an approval that
+    // named specific bytes is the fact somebody will need to prove later.
+    await this.deps.repos.provenance.append({
+      orgId: input.actor.orgId,
+      studioProjectId: input.projectId,
+      eventType: 'approval.granted',
+      subjectType: 'studio_version',
+      subjectId: version.id,
+      actorUserId: input.actor.userId,
+      actorLabel: actorLabel(input.actor),
+      payload: { approvalType: input.approvalType, versionLabel: version.label, versionChecksum: version.assetChecksum },
+    })
 
     return approval
   }
@@ -207,6 +219,18 @@ export class StudioCollaborationService {
       subjectType: 'approval',
       subjectId: approvalId,
       detail: reason,
+    })
+    // Revocation is an event, never an erasure. The grant stays in the chain
+    // above this one: who approved what, and who later withdrew it.
+    await this.deps.repos.provenance.append({
+      orgId: actor.orgId,
+      studioProjectId: projectId,
+      eventType: 'approval.revoked',
+      subjectType: 'approval',
+      subjectId: approvalId,
+      actorUserId: actor.userId,
+      actorLabel: actorLabel(actor),
+      payload: { approvalType: approval.approvalType, reason },
     })
   }
 

@@ -246,6 +246,27 @@ export class StudioMasterService {
     })
     await this.deps.repos.renditions.setOutputAnalysis(orgId, renditionId, outputAnalysis.id, null)
 
+    // Recorded whether or not real processing happened. A placeholder is a
+    // fact about the record's history too, and one somebody may need to
+    // explain later.
+    await this.deps.repos.provenance.append({
+      orgId,
+      studioProjectId: rendition.studioProjectId,
+      eventType: 'master.rendered',
+      subjectType: 'master_rendition',
+      subjectId: renditionId,
+      actorUserId: userId,
+      actorLabel: userId,
+      payload: {
+        direction: rendition.direction,
+        renderer: result.renderer,
+        rendererVersion: result.rendererVersion,
+        placeholder: result.placeholder,
+        sourceVersionId: rendition.sourceVersionId,
+        outputChecksum: outputAsset.checksum,
+      },
+    })
+
     this.logger.info('studio.master_rendered', { rendition_id: renditionId, renderer: result.renderer, placeholder: result.placeholder })
     return this.deps.repos.renditions.get(orgId, renditionId)
   }

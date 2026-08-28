@@ -91,6 +91,30 @@ export class StudioProjectService {
       targetId: project.id,
       data: { title: project.title, rightsConfirmationId: consent.id },
     })
+
+    // The chain opens with the record's own creation and the consent that made
+    // it lawful, so every later event links back to a stated rights basis
+    // rather than to nothing.
+    await this.deps.repos.provenance.append({
+      orgId: input.actor.orgId,
+      studioProjectId: project.id,
+      eventType: 'project.created',
+      subjectType: 'studio_project',
+      subjectId: project.id,
+      actorUserId: input.actor.userId,
+      actorLabel: actorLabel(input.actor),
+      payload: { artistName: project.artistName, title: project.title, genre: project.genre },
+    })
+    await this.deps.repos.provenance.append({
+      orgId: input.actor.orgId,
+      studioProjectId: project.id,
+      eventType: 'rights.confirmed',
+      subjectType: 'consent_record',
+      subjectId: consent.id,
+      actorUserId: input.actor.userId,
+      actorLabel: actorLabel(input.actor),
+      payload: { statement: STUDIO_RIGHTS_STATEMENT },
+    })
     return project
   }
 
@@ -246,6 +270,18 @@ export class StudioProjectService {
       targetType: 'studio_project',
       targetId: project.id,
       data: { versionId: version.id, assetId: input.assetId, checksum: input.assetChecksum, versionType: input.versionType },
+    })
+    // The checksum, not the storage key: the chain records which bytes
+    // arrived, and a location is not a fact about the recording.
+    await this.deps.repos.provenance.append({
+      orgId: input.actor.orgId,
+      studioProjectId: project.id,
+      eventType: 'version.added',
+      subjectType: 'studio_version',
+      subjectId: version.id,
+      actorUserId: input.actor.userId,
+      actorLabel: actorLabel(input.actor),
+      payload: { label: version.label, versionType: input.versionType, sourceKind: input.sourceKind, checksum: input.assetChecksum },
     })
 
     return { project: await this.deps.repos.projects.get(input.actor.orgId, project.id), version, analysisId }

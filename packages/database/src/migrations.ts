@@ -2819,4 +2819,50 @@ ALTER TABLE studio_mix_issues ADD COLUMN basis TEXT;
 ALTER TABLE studio_room_exchanges ADD COLUMN basis TEXT;
 `,
   },
+  {
+    // =======================================================================
+    // 0012 — The provenance chain
+    //
+    // studio_activity already records what happened. What it cannot do is
+    // show that nothing was removed from it: delete a row and the log simply
+    // reads as though the event never occurred.
+    //
+    // Each event here carries the hash of its predecessor, so the sequence
+    // is self-checking. Removing an event breaks the link at the next one;
+    // editing one changes its hash and breaks the link too. Verification
+    // walks the chain and says exactly which sequence number fails.
+    //
+    // This is tamper-EVIDENT, not tamper-PROOF, and the distinction is not
+    // pedantic. Nothing here is signed. Anyone who can write to this table
+    // can recompute the whole chain and it will verify. What it defends
+    // against is a partial edit — the realistic failure, where one
+    // inconvenient row is removed or altered and the rest is left alone.
+    // Calling it cryptographic verification would be a claim the code does
+    // not support, and no surface does.
+    // =======================================================================
+    id: '0012_studio_provenance',
+    sql: `
+CREATE TABLE IF NOT EXISTS studio_provenance_events (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  -- 1-based and contiguous per project. A gap is a missing event, which is
+  -- the whole point: the chain notices what a plain log cannot.
+  sequence            INTEGER NOT NULL,
+  event_type          TEXT NOT NULL,
+  subject_type        TEXT NOT NULL,
+  subject_id          TEXT NOT NULL,
+  actor_user_id       TEXT,
+  actor_label         TEXT NOT NULL,
+  -- JSON. Facts about the record only: checksums, version labels, decisions.
+  -- Never a signed URL, a storage key, or contributor personal data.
+  payload             TEXT NOT NULL,
+  previous_hash       TEXT,
+  hash                TEXT NOT NULL,
+  recorded_at         TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_provenance_seq ON studio_provenance_events(org_id, studio_project_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_studio_provenance_subject ON studio_provenance_events(org_id, subject_type, subject_id);
+`,
+  },
 ]

@@ -148,6 +148,24 @@ export class StudioMixService {
           // depend on the shape of a module it has no other reason to know.
           issues.map((issue) => ({ ...issue, basis: { ...issue.basis } })),
         )
+        // The analyzer set goes into the chain with the result. A decision made
+        // on version 1.0.0 of the analyzers is a different decision from the
+        // same numbers under a later set, and only the record can say which.
+        await this.deps.repos.provenance.append({
+          orgId,
+          studioProjectId: analysis.studioProjectId,
+          eventType: 'analysis.completed',
+          subjectType: 'mix_analysis',
+          subjectId: analysisId,
+          actorUserId: analysis.createdBy,
+          actorLabel: analysis.createdBy,
+          payload: {
+            analyzerSetVersion: analysis.analyzerSetVersion,
+            sourceChecksum: analysis.sourceChecksum,
+            metrics: result.metrics.length,
+            findings: issues.length,
+          },
+        })
         this.logger.info('studio.mix_analyzed', { analysis_id: analysisId, metrics: result.metrics.length, issues: issues.length })
       }
 

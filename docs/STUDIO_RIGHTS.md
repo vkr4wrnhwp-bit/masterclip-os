@@ -7,6 +7,45 @@ legal conclusion.
 
 ---
 
+## The provenance chain
+
+`studio_activity` records what happened. It cannot show that nothing was
+**removed** — delete a row and the log reads as though the event never occurred.
+
+Each event in `studio_provenance_events` carries the hash of its predecessor, so
+the sequence checks itself. Removing an event breaks the link at the next one;
+editing one changes its hash and breaks the link there. Verification walks the
+chain and names the sequence number that fails, because "the chain is broken"
+without a position is useless for finding out what actually happened.
+
+What gets recorded, and nothing else: project creation, the rights confirmation,
+every version with its checksum, every completed analysis with the analyzer set
+it used, every master render (**including a placeholder one** — that is a fact
+about the record's history too), every approval with the exact bytes it named,
+every revocation, every delivery, and every finalized passport.
+
+What never gets recorded: a storage key, a signed URL, or contributor personal
+data. The chain holds facts about the recording, and a location is not one.
+
+### Tamper-evident, not tamper-proof
+
+The distinction is not pedantic and the product never blurs it.
+
+**Nothing here is signed.** A party with write access to the database can
+recompute the whole chain and it will verify clean. What this defends against is
+the realistic failure: one inconvenient row edited or removed and the rest left
+alone. That, it catches every time, and a test proves it by tampering with the
+table directly.
+
+No surface claims more. The statement shown next to the chain says it in those
+words, and a test fails if it ever reads as cryptographic proof.
+
+Sequence and previous hash are read inside `append` rather than passed in, so a
+caller cannot write an event linked to the wrong predecessor; the unique index
+on `(org, project, sequence)` is the backstop when two appends race.
+
+---
+
 ## Record Passport
 
 A machine-readable provenance record for one recording, assembled from what the

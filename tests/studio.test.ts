@@ -1041,6 +1041,110 @@ describe('processing ledger', () => {
 // ---------------------------------------------------------------------------
 
 /**
+ * The provenance chain.
+ *
+ * The property under test is the one an activity log cannot offer: that a
+ * removed or altered event is *detectable*. The tests tamper with the table
+ * directly, because that is the threat the chain exists to notice.
+ */
+describe('provenance chain', () => {
+  it('records the record\u2019s history in order, starting from the rights basis', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const response = await call(owner, 'GET', `/api/studio/projects/${projectId}/provenance`)
+    expect(response.statusCode).toBe(200)
+    const events = response.json().events as Array<{ sequence: number; eventType: string; previousHash: string | null; payload: Record<string, unknown> }>
+
+    expect(events[0]?.eventType).toBe('project.created')
+    expect(events[0]?.previousHash).toBeNull()
+    expect(events[1]?.eventType).toBe('rights.confirmed')
+    expect(events.map((event) => event.eventType)).toContain('version.added')
+
+    // Contiguous, and each linked to the one before it.
+    events.forEach((event, index) => expect(event.sequence).toBe(index + 1))
+
+    // The chain records checksums, never storage locations or signed URLs.
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toMatch(/organizations\//)
+    expect(serialized).not.toMatch(/sig=|X-Amz-Signature/)
+
+    expect(response.json().verification).toMatchObject({ intact: true, brokenAt: null })
+  })
+
+  it('notices an altered event, and says which one', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const before = await runtime.studio.repos.provenance.verify(owner.orgId, projectId)
+    expect(before.intact).toBe(true)
+    expect(before.headHash).toBeTruthy()
+
+    // Rewrite the payload of event 2 without recomputing its hash — the exact
+    // partial edit the chain exists to catch.
+    await db.run("UPDATE studio_provenance_events SET payload = ? WHERE org_id = ? AND studio_project_id = ? AND sequence = 2", [
+      JSON.stringify({ statement: 'nobody confirmed anything' }),
+      owner.orgId,
+      projectId,
+    ])
+
+    const after = await runtime.studio.repos.provenance.verify(owner.orgId, projectId)
+    expect(after.intact).toBe(false)
+    expect(after.brokenAt).toBe(2)
+    expect(after.reason).toMatch(/altered/)
+    // A broken chain has no head hash to offer: there is nothing to pin to.
+    expect(after.headHash).toBeNull()
+  })
+
+  it('notices a removed event', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    await db.run('DELETE FROM studio_provenance_events WHERE org_id = ? AND studio_project_id = ? AND sequence = 2', [owner.orgId, projectId])
+
+    const after = await runtime.studio.repos.provenance.verify(owner.orgId, projectId)
+    expect(after.intact).toBe(false)
+    expect(after.brokenAt).toBe(2)
+    expect(after.reason).toMatch(/missing/)
+  })
+
+  it('never claims to be cryptographic proof', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const response = await call(owner, 'GET', `/api/studio/projects/${projectId}/provenance`)
+    const statement = response.json().statement as string
+
+    // Nothing is signed, and the surface says so rather than letting a reader
+    // infer a guarantee the code cannot support.
+    expect(statement).toMatch(/tamper-evident/i)
+    expect(statement).toMatch(/not cryptographic proof/i)
+    expect(statement).not.toMatch(/\bsigned by\b|\bcryptographically verified\b/i)
+  })
+
+  it('records an approval against the exact bytes it approved', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId, versionId } = await seedProject(owner)
+    const version = await runtime.studio.repos.versions.get(owner.orgId, versionId)
+
+    const approved = await call(owner, 'POST', `/api/studio/projects/${projectId}/approve`, { versionId, approvalType: 'mix', comments: 'good' })
+    expect(approved.statusCode).toBe(200)
+
+    const events = await runtime.studio.repos.provenance.list(owner.orgId, projectId)
+    const approval = events.find((event) => event.eventType === 'approval.granted')
+    expect(approval?.payload.versionChecksum).toBe(version.assetChecksum)
+    expect((await runtime.studio.repos.provenance.verify(owner.orgId, projectId)).intact).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
  * Where a recommendation came from.
  *
  * The basis has to survive the round trip. A taxonomy that exists only in the

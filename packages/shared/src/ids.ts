@@ -158,6 +158,7 @@ export type IdPrefix =
   | 'stjob' // studio processing job
   | 'stup' // studio upload session
   | 'stupp' // studio upload part
+  | 'stpe' // studio provenance event
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`
