@@ -241,6 +241,14 @@ export function App() {
             <div className="sub">cinematic render factory</div>
           </div>
           <div className="nav">
+            {/* Two products share this shell, and the nav says which is which.
+                Masterclip is the cinematic render factory; Street Banker is
+                the music side — Studio, Song Lab, Remix, Audio Intelligence and
+                Live Lab are one product, not five siblings of the video tools.
+                The Masterclip heading is unconditional even though its project
+                links are not: without it, a session with no project open reads
+                as though the platform is only Street Banker. */}
+            <div className="product">Masterclip</div>
             <NavLink route={route} to="/" name="dashboard">
               Dashboard
             </NavLink>
@@ -258,6 +266,29 @@ export function App() {
                 </NavLink>
                 <NavLink route={route} to={`/costs/${projectId}`} name="costs">
                   Cost lab
+                </NavLink>
+              </>
+            )}
+
+            <div className="product">Street Banker</div>
+            {/* Ordered by the creative workflow: the control room for a record,
+                then diagnosing it, then what to do with it, then playing it. */}
+            {studioCaps.data?.capabilities.includes('studio.access') && (
+              <>
+                <div className="group">Studio</div>
+                <NavLink route={route} to="/studio" name="studio">
+                  Projects
+                </NavLink>
+              </>
+            )}
+            {songLabCaps.data?.capabilities.includes('song_lab.access') && (
+              <>
+                <div className="group">Song Lab</div>
+                <NavLink route={route} to="/song-lab" name="song-lab">
+                  Drop a record
+                </NavLink>
+                <NavLink route={route} to="/song-lab/projects" name="song-lab-projects">
+                  Song projects
                 </NavLink>
               </>
             )}
@@ -292,27 +323,6 @@ export function App() {
             <NavLink route={route} to="/audio/admin" name="audio-admin">
               Partner entitlements
             </NavLink>
-            {studioCaps.data?.capabilities.includes('studio.access') && (
-              <>
-                <div className="group">Studio</div>
-                <NavLink route={route} to="/studio" name="studio">
-                  Projects
-                </NavLink>
-              </>
-            )}
-            {songLabCaps.data?.capabilities.includes('song_lab.access') && (
-              <>
-                {/* Song Lab comes before Remix Lab in the creative workflow:
-                    diagnose the record, then decide what to do with it. */}
-                <div className="group">Song Lab</div>
-                <NavLink route={route} to="/song-lab" name="song-lab">
-                  Drop a record
-                </NavLink>
-                <NavLink route={route} to="/song-lab/projects" name="song-lab-projects">
-                  Song projects
-                </NavLink>
-              </>
-            )}
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
                 <div className="group">Performance</div>
@@ -324,7 +334,9 @@ export function App() {
                 </NavLink>
               </>
             )}
-            <div className="group">System</div>
+            {/* Platform-wide, so it sits outside both products rather than
+                looking like it belongs to whichever one happens to be last. */}
+            <div className="product">System</div>
             <NavLink route={route} to="/providers" name="providers">
               Providers &amp; models
             </NavLink>
