@@ -102,6 +102,53 @@ cannot linger in storage because a later step never ran.
 
 ---
 
+## Uploads
+
+Audio arrives in parts. A 100 MB mix used to be one multipart request — buffered
+in the API process, hashed in memory, and lost in its entirety if the connection
+dropped at 95%.
+
+```
+POST   /api/studio/projects/:id/uploads                       open a session
+PUT    /api/studio/projects/:id/uploads/:sid/parts/:index      one part
+GET    /api/studio/projects/:id/uploads/:sid                   what arrived (resume)
+POST   /api/studio/projects/:id/uploads/:sid/complete          assemble and verify
+DELETE /api/studio/projects/:id/uploads/:sid                   abandon
+```
+
+`STUDIO_UPLOAD_PART_SIZE` (8 MiB, floor 64 KiB) sets the chunk. A session stores
+the size it opened with, so changing the setting never invalidates an upload in
+flight. It is a deployment setting rather than a client one because a client
+that could name its own part size could turn one upload into a million requests.
+
+**Resume** is a server-side fact: parts are stored as individual objects and
+recorded, so `GET` returns which indexes exist and the client sends the rest.
+The browser keeps the session id in `localStorage`, so a reload or a closed
+laptop lid resumes rather than restarting.
+
+**Transport** is `direct` when the storage driver can hand out a signed PUT — S3
+— and the parts never touch the API process. Local disk returns null and the
+parts come through the API, which is slower and entirely safe. The session
+records which happened, because "where did this customer's audio go" deserves an
+answer from data.
+
+**Verification** happens before anything is built from the bytes: each part must
+be exactly the size the plan called for, the assembled total must match what was
+declared, and the file's own checksum must match `sha256` where the client
+declared one. A short part is how a truncated upload becomes a file that
+analyses cleanly and is wrong.
+
+Rights are confirmed when the session opens, not at completion — the same
+refusal as the single-request path, made before a byte is accepted.
+
+Abandoned sessions expire after 24 hours and are reclaimed by
+`studio.uploads.sweep`, which runs hourly. Their parts are useless on their own.
+
+The single-request `POST /api/studio/projects/:id/upload` still works and is
+still the right thing for a small file.
+
+---
+
 ## Who performs the work
 
 Every byte of audio goes through an `AudioProcessingProvider`. A provider

@@ -58,6 +58,10 @@ async function boot(): Promise<void> {
       // turn them on explicitly, which is also the check that they are off.
       STUDIO_MARKETPLACE_ENABLED: 'false',
       STUDIO_OPPORTUNITY_ENGINE_ENABLED: 'false',
+      // 64KB parts, the configured floor. A 700KB test file then genuinely
+      // arrives in eleven parts, so the resume and completeness paths are
+      // exercised rather than collapsed into a single-part upload.
+      STUDIO_UPLOAD_PART_SIZE: '65536',
     },
     true,
   )
@@ -832,6 +836,13 @@ describe('demo seed', () => {
       if (note.timestampMs !== null) expect(note.timestampMs).toBeLessThanOrEqual(latest.durationMs ?? 0)
     }
 
+    // Nothing is left looking like it is still running. A demo whose
+    // processing panel says work is queued forever teaches that the product is
+    // broken rather than that it is careful.
+    const jobs = await runtime.studio.repos.processing.list(owner.orgId, result.project.id, 200)
+    expect(jobs.length).toBeGreaterThan(0)
+    expect(jobs.filter((job) => job.status === 'queued' || job.status === 'running')).toEqual([])
+
     // Idempotent: seeding twice finds the demo rather than duplicating it.
     const again = await seedStudioDemo(runtime.studio, { orgId: owner.orgId, userId: owner.userId, email: owner.email, entitlements: runtime.entitlements })
     expect(again.created).toBe(false)
@@ -1024,5 +1035,191 @@ describe('processing ledger', () => {
     await grantStudio(partner.orgId, PARTNER_STUDIO_CAPABILITIES)
     const theirs = await call(partner, 'GET', `/api/studio/projects/${projectId}/jobs`)
     expect(theirs.statusCode).toBe(404)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Resumable uploads.
+ *
+ * The properties: a file arrives in parts, an interrupted upload resumes from
+ * what the server already holds, and nothing incomplete or mis-sized ever
+ * becomes a version.
+ */
+describe('resumable upload', () => {
+  async function openSession(session: Session, projectId: string, bytes: Uint8Array, fileName = 'mix.wav') {
+    const response = await call(session, 'POST', `/api/studio/projects/${projectId}/uploads`, {
+      fileName,
+      contentType: 'audio/wav',
+      totalBytes: bytes.length,
+      versionType: 'mix',
+      rightsConfirmed: true,
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json() as { session: { id: string; partCount: number; partSize: number; transport: string }; received: number[] }
+  }
+
+  async function sendPart(session: Session, projectId: string, sessionId: string, index: number, bytes: Uint8Array) {
+    return app.inject({
+      method: 'PUT',
+      url: `/api/studio/projects/${projectId}/uploads/${sessionId}/parts/${index}`,
+      headers: { ...headers(session), 'content-type': 'application/octet-stream' },
+      payload: Buffer.from(bytes),
+    })
+  }
+
+  it('accepts a file in parts and builds one version from them', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const created = await call(owner, 'POST', '/api/studio/projects', {
+      title: 'Chunked',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+    const audio = stereoWav({ seconds: 4 })
+
+    const plan = await openSession(owner, projectId, audio)
+    // Local storage has no direct-upload endpoint, so the parts come through
+    // the API — and the session says so rather than pretending otherwise.
+    expect(plan.session.transport).toBe('api')
+    // The point of the test is the multi-part path. If a config change ever
+    // collapsed this to one part it would still pass while proving nothing.
+    expect(plan.session.partCount).toBeGreaterThan(1)
+
+    for (let index = 0; index < plan.session.partCount; index++) {
+      const offset = index * plan.session.partSize
+      const part = audio.slice(offset, offset + plan.session.partSize)
+      expect((await sendPart(owner, projectId, plan.session.id, index, part)).statusCode).toBe(200)
+    }
+
+    const completed = await call(owner, 'POST', `/api/studio/projects/${projectId}/uploads/${plan.session.id}/complete`)
+    expect(completed.statusCode).toBe(200)
+    const versionId = completed.json().versionId
+
+    // The version exists, carries the whole file, and was queued for analysis.
+    const version = await runtime.studio.repos.versions.get(owner.orgId, versionId)
+    expect(version.assetId).not.toBeNull()
+    const asset = await runtime.audio.repos.assets.get(owner.orgId, version.assetId as string)
+    expect(asset.fileSize).toBe(audio.length)
+
+    const stored = await runtime.storage.getBuffer(asset.storageKey)
+    expect(Buffer.from(stored).equals(Buffer.from(audio))).toBe(true)
+  })
+
+  it('resumes from the parts the server already holds', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const created = await call(owner, 'POST', '/api/studio/projects', {
+      title: 'Interrupted',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+    const audio = stereoWav({ seconds: 4 })
+    const plan = await openSession(owner, projectId, audio)
+
+    // Send the first part, then "lose the connection".
+    await sendPart(owner, projectId, plan.session.id, 0, audio.slice(0, plan.session.partSize))
+
+    const resumed = await call(owner, 'GET', `/api/studio/projects/${projectId}/uploads/${plan.session.id}`)
+    expect(resumed.statusCode).toBe(200)
+    expect(resumed.json().received).toContain(0)
+
+    // Completing now must refuse: an upload missing a part is not a file.
+    expect(plan.session.partCount).toBeGreaterThan(1)
+    const premature = await call(owner, 'POST', `/api/studio/projects/${projectId}/uploads/${plan.session.id}/complete`)
+    expect(premature.statusCode).toBe(400)
+    expect(premature.json().error.code).toBe('studio.upload_incomplete')
+  })
+
+  it('refuses a part that is not the size the plan called for', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const created = await call(owner, 'POST', '/api/studio/projects', {
+      title: 'Truncated',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+    const audio = stereoWav({ seconds: 4 })
+    const plan = await openSession(owner, projectId, audio)
+
+    // A short part is how a truncated upload becomes a file that analyses
+    // cleanly and is wrong.
+    const short = await sendPart(owner, projectId, plan.session.id, 0, audio.slice(0, 128))
+    expect(short.statusCode).toBe(400)
+    expect(short.json().error.code).toBe('studio.upload_part_size')
+  })
+
+  it('refuses to open a session without a rights confirmation', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const created = await call(owner, 'POST', '/api/studio/projects', {
+      title: 'Unconfirmed',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+
+    const response = await call(owner, 'POST', `/api/studio/projects/${projectId}/uploads`, {
+      fileName: 'mix.wav',
+      contentType: 'audio/wav',
+      totalBytes: 1024,
+      versionType: 'mix',
+      rightsConfirmed: false,
+    })
+    // Refused before a single byte is accepted, not after the file has landed.
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.code).toBe('studio.rights_not_confirmed')
+  })
+
+  it('reclaims an abandoned upload and the storage it held', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const created = await call(owner, 'POST', '/api/studio/projects', {
+      title: 'Abandoned',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+    const audio = stereoWav({ seconds: 4 })
+    const plan = await openSession(owner, projectId, audio)
+    await sendPart(owner, projectId, plan.session.id, 0, audio.slice(0, plan.session.partSize))
+
+    const parts = await runtime.studio.repos.uploads.parts(owner.orgId, plan.session.id)
+    expect(parts.length).toBe(1)
+    expect(await runtime.storage.exists(parts[0]!.storageKey)).toBe(true)
+
+    const aborted = await call(owner, 'DELETE', `/api/studio/projects/${projectId}/uploads/${plan.session.id}`)
+    expect(aborted.statusCode).toBe(200)
+    expect(aborted.json().session.status).toBe('aborted')
+    // The bytes are gone, not merely forgotten.
+    expect(await runtime.storage.exists(parts[0]!.storageKey)).toBe(false)
+    expect(await runtime.studio.repos.uploads.parts(owner.orgId, plan.session.id)).toEqual([])
+  })
+
+  it('never lets one organization touch another’s upload session', async () => {
+    const flagship = await signup('flagship@example.com', 'Flagship')
+    await grantStudio(flagship.orgId)
+    const created = await call(flagship, 'POST', '/api/studio/projects', {
+      title: 'Private',
+      artistName: 'Example Artist',
+      genre: 'alternative',
+      rightsConfirmed: true,
+    })
+    const projectId = created.json().project.id
+    const plan = await openSession(flagship, projectId, stereoWav({ seconds: 4 }))
+
+    const partner = await provisionOrg('partner@example.com', 'Partner')
+    await grantStudio(partner.orgId, PARTNER_STUDIO_CAPABILITIES)
+    const peek = await call(partner, 'GET', `/api/studio/projects/${projectId}/uploads/${plan.session.id}`)
+    expect(peek.statusCode).toBe(404)
   })
 })

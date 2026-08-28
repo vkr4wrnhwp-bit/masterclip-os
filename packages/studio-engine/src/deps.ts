@@ -34,6 +34,7 @@ import type {
   StudioProjectRepo,
   StudioReferenceRepo,
   StudioVersionRepo,
+  UploadSessionRepo,
 } from '@masterclip/studio-domain'
 
 export interface StudioRepos {
@@ -45,6 +46,7 @@ export interface StudioRepos {
   analyses: MixAnalysisRepo
   issues: MixIssueRepo
   processing: ProcessingJobRepo
+  uploads: UploadSessionRepo
   references: StudioReferenceRepo
   renditions: MasterRenditionRepo
   albums: StudioAlbumRepo

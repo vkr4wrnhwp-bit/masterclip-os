@@ -1,4 +1,5 @@
-import { AppError, sha256Hex } from '@masterclip/shared'
+import { open, stat } from 'node:fs/promises'
+import { AppError, sha256File, sha256Hex } from '@masterclip/shared'
 import { sanitizeFilename, sanitizeSegment } from '@masterclip/asset-storage'
 import { retentionExpiresAt, type RetentionKind } from '@masterclip/audio-core'
 import type { AudioAssetRecord, AudioProjectType } from '@masterclip/audio-domain'
@@ -101,6 +102,89 @@ export class AudioAssetService {
     })
     const key = this.storageKey(input.actor.orgId, input.area, record.id, record.fileName)
     await this.deps.storage.putBuffer(key, input.bytes, { contentType: mime, sha256: checksum })
+    await this.deps.db.run('UPDATE audio_assets SET storage_key = ? WHERE id = ?', [key, record.id])
+    return { ...record, storageKey: key }
+  }
+
+  /**
+   * The same thing, from a file on disk rather than from memory.
+   *
+   * Everything `storeUpload` guarantees still holds — magic-byte sniffing,
+   * the size ceiling, checksum de-duplication, retention, the tenant-scoped
+   * key — but the bytes are never held in the process. Only the first 16 KB
+   * is read, to sniff the type; the hash is streamed and the file is handed
+   * to the driver by path.
+   *
+   * This is what a resumable upload completes into: assembling parts into
+   * memory would put the whole-file buffering back exactly where chunking
+   * removed it.
+   */
+  async storeUploadFromFile(input: {
+    actor: Actor
+    filePath: string
+    filename: string
+    area: string
+    projectType: AudioProjectType
+    projectId: string | null
+    assetType: string
+    retentionKind: RetentionKind
+    rightsStatus: string
+    consentRecordId: string | null
+    durationMs?: number | null
+  }): Promise<AudioAssetRecord> {
+    const info = await stat(input.filePath)
+    if (info.size === 0) {
+      throw new AppError({ kind: 'validation', code: 'audio.empty_upload', message: 'the uploaded file is empty' })
+    }
+    if (info.size > MAX_AUDIO_UPLOAD_BYTES) {
+      throw new AppError({ kind: 'validation', code: 'audio.too_large', message: 'the uploaded file exceeds the 512MB limit' })
+    }
+
+    const handle = await open(input.filePath, 'r')
+    let head: Uint8Array
+    try {
+      const buffer = Buffer.alloc(Math.min(16384, info.size))
+      await handle.read(buffer, 0, buffer.length, 0)
+      head = new Uint8Array(buffer)
+    } finally {
+      await handle.close()
+    }
+
+    const mime = sniffAudioMime(head)
+    if (!mime || !AUDIO_UPLOAD_TYPES.has(mime)) {
+      throw new AppError({
+        kind: 'validation',
+        code: 'audio.unsupported_type',
+        message: 'unsupported file type — upload WAV, MP3, M4A, FLAC, OGG, MP4 or MOV',
+      })
+    }
+
+    const checksum = await sha256File(input.filePath)
+    const existing = await this.deps.repos.assets.findByChecksum(input.actor.orgId, checksum)
+    if (existing && existing.projectType === input.projectType && existing.projectId === input.projectId) {
+      return existing
+    }
+
+    const policy = await this.deps.repos.policy.getPolicy(input.actor.orgId)
+    const record = await this.deps.repos.assets.create({
+      orgId: input.actor.orgId,
+      ownerUserId: input.actor.userId,
+      projectType: input.projectType,
+      projectId: input.projectId,
+      assetType: input.assetType,
+      storageKey: '',
+      fileName: sanitizeFilename(input.filename),
+      mimeType: mime,
+      fileSize: info.size,
+      durationMs: input.durationMs ?? null,
+      checksum,
+      rightsStatus: input.rightsStatus,
+      consentRecordId: input.consentRecordId,
+      retentionKind: input.retentionKind,
+      retentionExpiresAt: retentionExpiresAt(policy, input.retentionKind, this.deps.clock.now()),
+    })
+    const key = this.storageKey(input.actor.orgId, input.area, record.id, record.fileName)
+    await this.deps.storage.putFile(key, input.filePath, { contentType: mime, sha256: checksum })
     await this.deps.db.run('UPDATE audio_assets SET storage_key = ? WHERE id = ?', [key, record.id])
     return { ...record, storageKey: key }
   }

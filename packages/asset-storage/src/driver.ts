@@ -27,6 +27,16 @@ export interface StorageDriver {
   delete(key: string): Promise<void>
   /** Time-limited, tamper-evident URL. Never a raw public path. */
   signedUrl(key: string, ttlSeconds?: number): Promise<string>
+  /**
+   * Time-limited URL a client may PUT one object to, or **null** when the
+   * driver has no way to accept bytes directly.
+   *
+   * Null is the honest answer for local disk: there is no object endpoint to
+   * hand out, and inventing one would mean opening a write path into the
+   * filesystem. A caller that gets null routes the bytes through the API
+   * instead, which is slower and entirely safe.
+   */
+  signedUploadUrl(key: string, ttlSeconds?: number, contentType?: string): Promise<string | null>
   list(prefix: string): Promise<string[]>
 }
 

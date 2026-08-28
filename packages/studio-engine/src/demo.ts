@@ -3,6 +3,7 @@ import type { EntitlementService } from '@masterclip/domain'
 import { FLAGSHIP_STUDIO_CAPABILITIES, type StudioProjectRecord } from '@masterclip/studio-domain'
 import type { StudioLayer } from './layer.js'
 import type { Actor } from './deps.js'
+import { outcomeForAnalysis, outcomeForRendition } from './processing.js'
 
 /**
  * Demo mode.
@@ -96,11 +97,15 @@ export async function seedStudioDemo(
   })
 
   // Analysis runs inline rather than through the queue so a freshly seeded
-  // deployment shows a complete Studio without a worker having run yet.
+  // deployment shows a complete Studio without a worker having run yet. Each
+  // one still settles its ledger row: a demo whose processing panel says work
+  // is queued forever teaches that the product is broken.
   for (const version of [mixOne.version, mixTwo.version]) {
     if (!version.assetId || !version.assetChecksum) continue
     const analysisId = await studio.projects.queueAnalysis(actor, project.id, version.id, version.assetId, version.assetChecksum)
-    await studio.mix.runAnalysis(analysisId, input.orgId)
+    await studio.processing.runForSubject(input.orgId, 'mix_analysis', analysisId, async () =>
+      outcomeForAnalysis(await studio.mix.runAnalysis(analysisId, input.orgId)),
+    )
   }
 
   // --- a reference, measured and then discarded ----------------------------
@@ -117,7 +122,10 @@ export async function seedStudioDemo(
     rightsBasis: 'owned',
     rightsConfirmed: true,
   })
-  await studio.mix.runAnalysis(reference.analysisId, input.orgId)
+  await studio.processing.runForSubject(input.orgId, 'mix_analysis', reference.analysisId, async () => {
+    await studio.mix.runReferenceAnalysis(reference.analysisId, reference.reference.id, input.orgId)
+    return outcomeForAnalysis(await studio.repos.analyses.get(input.orgId, reference.analysisId))
+  })
 
   // --- notes on the timeline ----------------------------------------------
   const currentVersionId = mixTwo.version.id
@@ -171,11 +179,17 @@ export async function seedStudioDemo(
   for (const direction of ['transparent', 'competitive'] as const) {
     const { rendition } = await studio.master.requestRendition({ actor, projectId: project.id, versionId: currentVersionId, direction })
     renditionIds.push(rendition.id)
-    await studio.master.renderRendition(rendition.id, input.orgId, input.userId)
+    await studio.processing.runForSubject(input.orgId, 'master_rendition', rendition.id, async () =>
+      outcomeForRendition(await studio.master.renderRendition(rendition.id, input.orgId, input.userId)),
+    )
     const refreshed = await studio.repos.renditions.get(input.orgId, rendition.id)
     if (refreshed.outputAnalysisId) {
-      await studio.mix.runAnalysis(refreshed.outputAnalysisId, input.orgId)
-      await studio.master.settleRenditionAnalysis(refreshed.outputAnalysisId, rendition.id, input.orgId)
+      const outputAnalysisId = refreshed.outputAnalysisId
+      await studio.processing.runForSubject(input.orgId, 'mix_analysis', outputAnalysisId, async () => {
+        const analysis = await studio.mix.runAnalysis(outputAnalysisId, input.orgId)
+        await studio.master.settleRenditionAnalysis(outputAnalysisId, rendition.id, input.orgId)
+        return outcomeForAnalysis(analysis)
+      })
     }
   }
 

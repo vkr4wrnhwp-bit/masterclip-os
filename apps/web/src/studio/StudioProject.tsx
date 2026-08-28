@@ -1,7 +1,7 @@
 import React from 'react'
 import { navigate } from '../App.jsx'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
-import { studioApi, type MixIssue, type RoomExchange, type SessionPayload, type StudioVersion } from './api.js'
+import { studioApi, uploadInParts, type MixIssue, type RoomExchange, type SessionPayload, type StudioVersion } from './api.js'
 import { IssueList, MetricTable, ReadinessPanel, StageBadge, Transport, Waveform, clock, formatMetric } from './components.jsx'
 import { StudioMaster, StudioVersions, StudioCollaborate, StudioDeliver } from './StudioWorkflow.jsx'
 
@@ -269,19 +269,24 @@ function UploadVersion({ projectId, onDone }: { projectId: string; onDone: () =>
   const [rights, setRights] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [progress, setProgress] = React.useState<{ done: number; total: number } | null>(null)
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!file) return
     setBusy(true)
     setError(null)
-    const form = new FormData()
-    form.append('file', file)
-    form.append('versionType', versionType)
-    form.append('rightsConfirmed', String(rights))
     try {
-      await studioApi.uploadVersion(projectId, form)
+      // Sent in parts, and resumable: a failure here leaves what was already
+      // sent on the server, and pressing the button again picks up from there
+      // rather than starting the file over.
+      await uploadInParts(projectId, file, {
+        versionType,
+        rightsConfirmed: rights,
+        onProgress: (done, total) => setProgress({ done, total }),
+      })
       setFile(null)
+      setProgress(null)
       onDone()
     } catch (err) {
       setError((err as Error).message)
@@ -305,7 +310,7 @@ function UploadVersion({ projectId, onDone }: { projectId: string; onDone: () =>
         <span className="faint">rights confirmed</span>
       </label>
       <button className="primary" type="submit" disabled={!file || !rights || busy}>
-        {busy ? 'uploading…' : 'Add version'}
+        {busy ? (progress && progress.total > 1 ? `uploading ${progress.done}/${progress.total}…` : 'uploading…') : 'Add version'}
       </button>
       {error && <span className="danger-text">{error}</span>}
     </form>

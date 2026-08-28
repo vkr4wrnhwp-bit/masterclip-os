@@ -74,6 +74,19 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     }
   })
 
+  // One upload part, as raw bytes.
+  //
+  // The limit is the part size plus a small margin rather than the whole-file
+  // ceiling: a request that tries to send more than one part is not a large
+  // upload, it is a client ignoring the plan the server gave it.
+  app.addContentTypeParser(
+    'application/octet-stream',
+    { parseAs: 'buffer', bodyLimit: runtime.config.STUDIO_UPLOAD_PART_SIZE + 1024 * 1024 },
+    (_req, body, done) => {
+      done(null, body)
+    },
+  )
+
   app.setErrorHandler((error, _request, reply) => {
     const appError = asAppError(error)
     if (appError.kind === 'internal') runtime.logger.error('api.unhandled', { err: appError })

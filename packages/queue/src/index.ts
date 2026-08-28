@@ -60,6 +60,7 @@ export const JOB_TYPES = {
   studioRenderMaster: 'studio.master.render',
   studioAnalyzeRendition: 'studio.master.analyze',
   studioAssessAlbum: 'studio.album.assess',
+  studioSweepUploads: 'studio.uploads.sweep',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]

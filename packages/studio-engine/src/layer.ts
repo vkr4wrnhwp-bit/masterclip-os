@@ -38,6 +38,7 @@ import {
   StudioProjectRepo,
   StudioReferenceRepo,
   StudioVersionRepo,
+  UploadSessionRepo,
 } from '@masterclip/studio-domain'
 import type { AudioAssetRepo, ConsentRepo } from '@masterclip/audio-domain'
 import type { AudioAssetService } from '@masterclip/audio-engine'
@@ -55,6 +56,7 @@ import { StudioRightsService } from './rights.js'
 import { StudioRackService } from './rack.js'
 import { StudioMarketService } from './market.js'
 import { StudioProcessingService } from './processing.js'
+import { StudioUploadService } from './uploads.js'
 import type { StudioDeps, StudioProviders, StudioRepos } from './deps.js'
 
 /**
@@ -82,6 +84,7 @@ export interface StudioLayer {
   racks: StudioRackService
   market: StudioMarketService
   processing: StudioProcessingService
+  uploads: StudioUploadService
 }
 
 export interface CreateStudioLayerOptions {
@@ -130,6 +133,7 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
     analyses: new MixAnalysisRepo(opts.db, clock),
     issues: new MixIssueRepo(opts.db, clock),
     processing: new ProcessingJobRepo(opts.db, clock),
+    uploads: new UploadSessionRepo(opts.db, clock),
     references: new StudioReferenceRepo(opts.db, clock),
     renditions: new MasterRenditionRepo(opts.db, clock),
     albums: new StudioAlbumRepo(opts.db, clock),
@@ -169,11 +173,13 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
     },
   }
 
+  const projects = new StudioProjectService(deps)
+
   return {
     repos,
     providers,
     access: new StudioAccessControl(opts.config, opts.db, opts.entitlements, repos.collaborators, repos.projects),
-    projects: new StudioProjectService(deps),
+    projects,
     mix: new StudioMixService(deps),
     master: new StudioMasterService(deps),
     versions: new StudioVersionService(deps),
@@ -186,5 +192,6 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
     racks: new StudioRackService(deps),
     market: new StudioMarketService(deps),
     processing: new StudioProcessingService(deps),
+    uploads: new StudioUploadService(deps, projects),
   }
 }

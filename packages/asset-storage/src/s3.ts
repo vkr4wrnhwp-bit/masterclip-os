@@ -132,6 +132,28 @@ export class S3Storage implements StorageDriver {
     })
   }
 
+  /**
+   * A presigned PUT for one object, so a client sends bytes straight to the
+   * bucket and the API never holds them.
+   *
+   * The key is built by the server, never by the client, so a signed URL can
+   * only ever write where the server decided. Content-Type is deliberately not
+   * signed: browsers and proxies rewrite it, and a mismatch would fail the
+   * upload for a header nobody chose. What the object actually contains is
+   * verified from its bytes at completion.
+   */
+  async signedUploadUrl(key: string, ttlSeconds = 900): Promise<string | null> {
+    const { issuedAtEpochSeconds } = stableExpiry(this.now(), ttlSeconds)
+    return presignUrl({
+      method: 'PUT',
+      url: this.urlFor(key),
+      region: this.opts.region,
+      credentials: this.opts.credentials,
+      expiresSeconds: ttlSeconds,
+      date: new Date(issuedAtEpochSeconds * 1000),
+    })
+  }
+
   async list(prefix: string): Promise<string[]> {
     const url = new URL(this.opts.endpoint)
     url.pathname = this.opts.forcePathStyle !== false ? `/${this.opts.bucket}` : '/'

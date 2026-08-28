@@ -226,6 +226,13 @@ const EnvSchema = z.object({
   STUDIO_MAX_ANALYSIS_SECONDS: num(900),
   /** Recorded on every analysis so incomparable results are visible as such. */
   STUDIO_ANALYZER_SET: z.string().default('1.0.0'),
+  /**
+   * Upload chunk size, in bytes. 8 MiB by default: a 100MB upload is thirteen
+   * requests rather than hundreds, and losing one to a flaky connection costs
+   * seconds. The floor exists because a client that could name its own tiny
+   * part size could turn one upload into a million requests.
+   */
+  STUDIO_UPLOAD_PART_SIZE: num(8 * 1024 * 1024),
 
   // --- media ---------------------------------------------------------------
   FFMPEG_PATH: z.string().default('ffmpeg'),

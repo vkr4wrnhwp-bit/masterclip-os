@@ -235,6 +235,100 @@ export async function registerStudioProjectRoutes(app: FastifyInstance, runtime:
     })
   })
 
+  /**
+   * Resumable upload: open a session.
+   *
+   * The version limit is checked here rather than at completion. Refusing an
+   * upload after a customer has spent ten minutes sending 100MB would be the
+   * worst possible moment to mention the limit.
+   */
+  app.post('/api/studio/projects/:id/uploads', async (request) => {
+    const { id } = request.params as { id: string }
+    const pre = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
+    const current = await studio.repos.versions.countForProject(pre.orgId, id)
+    const actor = await requireStudio(runtime, request, 'studio.access', {
+      project: { id, permission: 'upload' },
+      usage: { limit: 'studio.max_versions_per_project', current, what: 'version' },
+    })
+    const body = z
+      .object({
+        fileName: z.string().min(1).max(240),
+        contentType: z.string().max(120).default('application/octet-stream'),
+        totalBytes: z.number().int().positive(),
+        sha256: z
+          .string()
+          .regex(/^[0-9a-fA-F]{64}$/)
+          .optional(),
+        versionType: z.enum(STUDIO_VERSION_TYPES).default('mix'),
+        label: z.string().max(200).optional(),
+        rightsConfirmed: z.boolean(),
+      })
+      .parse(request.body)
+
+    // The same refusal the single-request path makes, made before any byte is
+    // accepted rather than after the file has landed.
+    if (!body.rightsConfirmed) {
+      throw new AppError({
+        kind: 'validation',
+        code: 'studio.rights_not_confirmed',
+        message: STUDIO_RIGHTS_STATEMENT,
+        details: { statement: STUDIO_RIGHTS_STATEMENT },
+      })
+    }
+
+    return studio.uploads.begin({
+      actor,
+      projectId: id,
+      fileName: body.fileName,
+      contentType: body.contentType,
+      totalBytes: body.totalBytes,
+      declaredSha256: body.sha256 ?? null,
+      versionType: body.versionType,
+      label: body.label ?? null,
+    })
+  })
+
+  /** Where an interrupted upload left off. */
+  app.get('/api/studio/projects/:id/uploads/:sessionId', async (request) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string }
+    const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
+    return studio.uploads.status(actor, sessionId)
+  })
+
+  /**
+   * One part, through the API.
+   *
+   * Used where the storage driver has no direct-upload path — local disk — and
+   * as the fallback when a signed URL expires mid-upload. The body is the raw
+   * part; Fastify is configured to accept it as a Buffer.
+   */
+  app.put('/api/studio/projects/:id/uploads/:sessionId/parts/:index', async (request) => {
+    const { id, sessionId, index } = request.params as { id: string; sessionId: string; index: string }
+    const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
+    const partIndex = Number.parseInt(index, 10)
+    if (!Number.isInteger(partIndex)) {
+      throw new AppError({ kind: 'validation', code: 'studio.upload_bad_part', message: 'the part index must be a whole number' })
+    }
+    const body = request.body
+    if (!Buffer.isBuffer(body)) {
+      throw new AppError({ kind: 'validation', code: 'studio.upload_no_body', message: 'send the part as a binary body' })
+    }
+    return studio.uploads.receivePart({ actor, sessionId, index: partIndex, bytes: new Uint8Array(body) })
+  })
+
+  /** Assemble, verify, and create the version. */
+  app.post('/api/studio/projects/:id/uploads/:sessionId/complete', async (request) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string }
+    const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
+    return studio.uploads.complete({ actor, sessionId })
+  })
+
+  app.delete('/api/studio/projects/:id/uploads/:sessionId', async (request) => {
+    const { id, sessionId } = request.params as { id: string; sessionId: string }
+    const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
+    return { session: await studio.uploads.abort(actor, sessionId) }
+  })
+
   /** Import an existing Street Banker release or any authorized asset in the org. */
   app.post('/api/studio/projects/:id/import', async (request) => {
     const { id } = request.params as { id: string }

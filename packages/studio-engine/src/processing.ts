@@ -126,6 +126,23 @@ export class StudioProcessingService {
     }
   }
 
+  /**
+   * The same bracket, found from the row the job settles.
+   *
+   * For work performed inline rather than through the queue — the demo seed,
+   * a CLI, a test. Without it those paths leave a ledger row queued forever,
+   * and a screen that reads "what is running" would show phantom work.
+   */
+  async runForSubject(
+    orgId: string,
+    subjectType: string,
+    subjectId: string,
+    work: () => Promise<ProcessingJobOutcome>,
+  ): Promise<ProcessingJobRecord | null> {
+    const job = await this.deps.repos.processing.forSubject(orgId, subjectType, subjectId)
+    return this.run({ jobId: job?.id ?? null, orgId }, work)
+  }
+
   /** Everything recorded for a project, newest first. */
   async list(actor: Actor, projectId: string, limit = 50): Promise<ProcessingJobRecord[]> {
     return this.deps.repos.processing.list(actor.orgId, projectId, limit)

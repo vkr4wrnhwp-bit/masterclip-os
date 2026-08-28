@@ -2722,4 +2722,79 @@ CREATE INDEX IF NOT EXISTS idx_studio_processing_subject ON studio_processing_jo
 CREATE INDEX IF NOT EXISTS idx_studio_processing_status ON studio_processing_jobs(org_id, status, created_at);
 `,
   },
+  {
+    // =======================================================================
+    // 0010 — Resumable uploads
+    //
+    // A 100MB mix used to arrive as one multipart request: buffered in the
+    // API process, hashed in memory, and lost in its entirety if the
+    // connection dropped at 95%. On a single instance that is the most
+    // likely first production failure, and it is not a correctness bug —
+    // it is a shape problem.
+    //
+    // A session records the intent to upload before any byte arrives, and
+    // each part is stored as its own object. Two things follow:
+    //
+    //   - Resume is a question the server can answer. A client that lost
+    //     its connection asks which parts exist and sends the rest.
+    //   - No request ever holds the whole file. The parts are assembled by
+    //     streaming to disk at completion, not gathered in memory.
+    //
+    // declared_sha256 is the client's claim about the file. It is verified
+    // against the assembled bytes before the asset is created, so a
+    // truncated or corrupted upload is refused rather than analysed.
+    // =======================================================================
+    id: '0010_studio_uploads',
+    sql: `
+CREATE TABLE IF NOT EXISTS studio_upload_sessions (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  file_name           TEXT NOT NULL,
+  content_type        TEXT NOT NULL,
+  total_bytes         INTEGER NOT NULL,
+  part_size           INTEGER NOT NULL,
+  part_count          INTEGER NOT NULL,
+  -- The client's claim about the whole file, checked against the assembled
+  -- bytes before anything is created from them. Null when not declared.
+  declared_sha256     TEXT,
+  -- Where the parts live while the upload is in flight. Deleted on completion
+  -- and on abort; an expired session is swept.
+  storage_prefix      TEXT NOT NULL,
+  -- api | direct. Which route the parts took, recorded because "the bytes went
+  -- straight to object storage" is a fact worth being able to answer later.
+  transport           TEXT NOT NULL,
+  version_type        TEXT NOT NULL,
+  label               TEXT,
+  -- The consent record written before the session opened. Rights are confirmed
+  -- before a byte is accepted, not after the file has landed.
+  rights_confirmation_id TEXT NOT NULL,
+  -- open | completed | aborted | expired
+  status              TEXT NOT NULL,
+  studio_version_id   TEXT,
+  audio_asset_id      TEXT,
+  failure_reason      TEXT,
+  expires_at          TEXT NOT NULL,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_uploads_project ON studio_upload_sessions(org_id, studio_project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_uploads_status ON studio_upload_sessions(status, expires_at);
+
+-- One row per stored part. Presence is the resume signal, and the checksum is
+-- what makes a re-sent part verifiable rather than merely overwritten.
+CREATE TABLE IF NOT EXISTS studio_upload_parts (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  session_id          TEXT NOT NULL REFERENCES studio_upload_sessions(id),
+  part_index          INTEGER NOT NULL,
+  storage_key         TEXT NOT NULL,
+  bytes               INTEGER NOT NULL,
+  sha256              TEXT NOT NULL,
+  received_at         TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_upload_parts ON studio_upload_parts(session_id, part_index);
+`,
+  },
 ]

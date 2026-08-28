@@ -292,6 +292,26 @@ export interface SessionPayload {
   processing: ProcessingJob[]
 }
 
+export interface UploadSession {
+  id: string
+  fileName: string
+  totalBytes: number
+  partSize: number
+  partCount: number
+  transport: 'api' | 'direct'
+  status: string
+  studioVersionId: string | null
+  failureReason: string | null
+}
+
+export interface UploadPlan {
+  session: UploadSession
+  partSize: number
+  partCount: number
+  parts: Array<{ index: number; url: string | null; bytes: number }>
+  received: number[]
+}
+
 export interface AudioProviderStatus {
   provider: string
   adapter: string
@@ -340,6 +360,13 @@ export const studioApi = {
   jobs: (id: string, limit?: number) => get<{ jobs: ProcessingJob[] }>(`/api/studio/projects/${id}/jobs${limit ? `?limit=${limit}` : ''}`),
   processingProviders: () =>
     get<{ capabilities: Array<{ key: string; label: string }>; providers: AudioProviderStatus[] }>('/api/studio/processing-providers'),
+
+  beginUpload: (id: string, body: { fileName: string; contentType: string; totalBytes: number; versionType: string; label?: string; rightsConfirmed: boolean }) =>
+    post<UploadPlan>(`/api/studio/projects/${id}/uploads`, body),
+  uploadStatus: (id: string, sessionId: string) => get<UploadPlan>(`/api/studio/projects/${id}/uploads/${sessionId}`),
+  completeUpload: (id: string, sessionId: string) =>
+    post<{ session: UploadSession; versionId: string; analysisId: string | null }>(`/api/studio/projects/${id}/uploads/${sessionId}/complete`),
+  abortUpload: (id: string, sessionId: string) => del<{ session: UploadSession }>(`/api/studio/projects/${id}/uploads/${sessionId}`),
 
   notes: (id: string) => get<{ notes: StudioNote[] }>(`/api/studio/projects/${id}/notes`),
   addNote: (id: string, body: { kind?: string; timestampMs?: number | null; category: string; body: string; studioVersionId?: string }) =>
@@ -468,4 +495,86 @@ export const studioApi = {
   setAiPermission: (id: string, body: { assetScope: string; permission: string; granted: boolean; conditions?: string }) =>
     post<{ permission: unknown }>(`/api/studio/projects/${id}/rights/ai`, body),
   setIdentity: (id: string, body: { subject: string; control: string }) => post<{ entry: unknown }>(`/api/studio/projects/${id}/rights/identity`, body),
+}
+
+// ---------------------------------------------------------------------------
+// resumable upload
+// ---------------------------------------------------------------------------
+
+/**
+ * Sends a file in parts, and picks up where it left off.
+ *
+ * Only one part is ever held in memory: `File.slice` is lazy, and each slice is
+ * read as it is sent. A 400MB master costs the browser one 8MB buffer at a
+ * time rather than 400MB up front, which is the whole point of doing this.
+ *
+ * Interruptions are survivable. The session id is kept in `localStorage` under
+ * the project, so a reload — or a laptop lid closing at 90% — resumes against
+ * the parts the server already holds rather than starting again.
+ */
+export async function uploadInParts(
+  projectId: string,
+  file: File,
+  opts: { versionType: string; label?: string; rightsConfirmed: boolean; onProgress?: (done: number, total: number) => void; signal?: AbortSignal },
+): Promise<{ versionId: string; analysisId: string | null }> {
+  const key = `studio.upload.${projectId}.${file.name}.${file.size}`
+  let plan: UploadPlan | null = null
+
+  const resumable = window.localStorage.getItem(key)
+  if (resumable) {
+    // A session that has expired or was completed elsewhere is not an error
+    // worth showing anybody — start a fresh one.
+    plan = await studioApi.uploadStatus(projectId, resumable).catch(() => null)
+    if (plan && plan.session.status !== 'open') plan = null
+    if (!plan) window.localStorage.removeItem(key)
+  }
+
+  if (!plan) {
+    plan = await studioApi.beginUpload(projectId, {
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      totalBytes: file.size,
+      versionType: opts.versionType,
+      ...(opts.label ? { label: opts.label } : {}),
+      rightsConfirmed: opts.rightsConfirmed,
+    })
+    window.localStorage.setItem(key, plan.session.id)
+  }
+
+  const sessionId = plan.session.id
+  const csrf = document.cookie.match(/(?:^|;\s*)masterclip_csrf=([^;]*)/)?.[1]
+  let done = plan.received.length
+
+  opts.onProgress?.(done, plan.partCount)
+  for (const part of plan.parts) {
+    if (plan.received.includes(part.index)) continue
+    const offset = part.index * plan.partSize
+    const slice = file.slice(offset, offset + part.bytes)
+
+    // A signed URL goes straight to object storage and carries no session
+    // cookie — sending one would leak it to a third-party host.
+    const response = part.url
+      ? await fetch(part.url, { method: 'PUT', body: slice, signal: opts.signal ?? null })
+      : await fetch(`/api/studio/projects/${projectId}/uploads/${sessionId}/parts/${part.index}`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: {
+            'content-type': 'application/octet-stream',
+            ...(csrf ? { 'x-csrf-token': decodeURIComponent(csrf) } : {}),
+          },
+          body: slice,
+          signal: opts.signal ?? null,
+        })
+    if (!response.ok) {
+      // The session stays in localStorage: the parts already sent are still on
+      // the server and a retry resumes from here.
+      throw new Error(`part ${part.index + 1} of ${plan.partCount} failed (${response.status}) — retry to resume`)
+    }
+    done += 1
+    opts.onProgress?.(done, plan.partCount)
+  }
+
+  const result = await studioApi.completeUpload(projectId, sessionId)
+  window.localStorage.removeItem(key)
+  return { versionId: result.versionId, analysisId: result.analysisId }
 }

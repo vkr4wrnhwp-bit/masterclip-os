@@ -110,6 +110,16 @@ export class LocalStorage implements StorageDriver {
     return `${this.urlPrefix}?key=${encodeURIComponent(key)}&exp=${expires}&sig=${sig}`
   }
 
+  /**
+   * None. Local disk has no object endpoint, and manufacturing one would mean
+   * opening a signed write path straight into the filesystem — a much larger
+   * attack surface than routing the bytes through the API, which already
+   * authenticates, authorises and sanitises every key it writes.
+   */
+  async signedUploadUrl(): Promise<string | null> {
+    return null
+  }
+
   async list(prefix: string): Promise<string[]> {
     const base = this.pathFor(prefix)
     const out: string[] = []

@@ -302,6 +302,19 @@ async function main(): Promise<void> {
       },
     )
 
+    /**
+     * Reclaims uploads nobody finished.
+     *
+     * The parts of an abandoned upload are useless on their own — fragments of
+     * a file that was never assembled — and they hold storage indefinitely
+     * otherwise.
+     */
+    worker.register(JOB_TYPES.studioSweepUploads, async (_payload, ctx) => {
+      await ctx.heartbeat()
+      await studio.uploads.sweep()
+      await enqueueStudioTick(JOB_TYPES.studioSweepUploads, UPLOAD_SWEEP_TICK_MS)
+    })
+
     // Self-perpetuating maintenance ticks: each run re-arms the next time
     // bucket, and the bucketed dedupe key stops restarts from stacking them.
     worker.register(JOB_TYPES.audioRetentionSweep, async (_payload, ctx) => {
@@ -320,6 +333,12 @@ async function main(): Promise<void> {
     return worker
   })
 
+  const UPLOAD_SWEEP_TICK_MS = 60 * 60_000
+  async function enqueueStudioTick(type: string, delayMs: number): Promise<void> {
+    const bucket = Math.floor((Date.now() + delayMs) / delayMs)
+    await runtime.queue.enqueue({ queue: QUEUES.studio, type, payload: {}, delayMs, dedupeKey: `${type}:${bucket}` })
+  }
+
   const RETENTION_TICK_MS = 15 * 60_000
   const SCHEDULE_TICK_MS = 60 * 60_000
   async function enqueueAudioTick(type: string, delayMs: number): Promise<void> {
@@ -334,6 +353,7 @@ async function main(): Promise<void> {
   }
   await enqueueAudioTick(JOB_TYPES.audioRetentionSweep, 5_000)
   await enqueueAudioTick(JOB_TYPES.audioScheduleTick, 10_000)
+  if (runtime.config.STUDIO_ENABLED) await enqueueStudioTick(JOB_TYPES.studioSweepUploads, 30_000)
 
   for (const worker of workers) worker.start()
   logger.info('worker.started', {
