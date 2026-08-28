@@ -19,6 +19,7 @@ import { LiveLabService } from './live-lab.js'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
 import { createAudioLayer, estimateMicros, parseRateCard, type AudioLayer } from '@masterclip/audio-engine'
 import { createSongLabLayer, type SongLabLayer } from '@masterclip/song-lab-engine'
+import { createStudioLayer, type StudioLayer } from '@masterclip/studio-engine'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
 
 export * from './render.js'
@@ -53,6 +54,7 @@ export interface Runtime {
   agents: AgentLayer
   audio: AudioLayer
   songLab: SongLabLayer
+  studio: StudioLayer
   liveLab: LiveLabRepo
   entitlements: EntitlementService
   liveLabService: LiveLabService
@@ -163,6 +165,20 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
         transcription: audioLayer.transcription,
         transcripts: audioLayer.repos.transcripts,
       },
+      ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
+    }),
+    // Studio borrows the same audio asset and consent services. It is the
+    // canonical project record for a song's whole life, so it points at Song
+    // Lab and the release workflow rather than duplicating either.
+    studio: createStudioLayer({
+      config,
+      logger,
+      db,
+      storage,
+      queue,
+      clock,
+      entitlements,
+      audio: { assets: audioLayer.assets, assetRepo: audioLayer.repos.assets, consents: audioLayer.repos.consents },
       ...(opts.mockOnly !== undefined ? { mockOnly: opts.mockOnly } : {}),
     }),
     liveLab: liveLabRepo,

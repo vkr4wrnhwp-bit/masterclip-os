@@ -9,6 +9,7 @@
 import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { seedAudioDemo } from '@masterclip/audio-engine'
 import { seedSongLabDemo } from '@masterclip/song-lab-engine'
+import { seedStudioDemo, STUDIO_DEMO_ARTIST, STUDIO_DEMO_TITLE } from '@masterclip/studio-engine'
 import { applyEnvFile, sha256Hex } from '@masterclip/shared'
 import { CharacterRecord, EnvironmentRecord, emptyShot } from '@masterclip/shot-schema'
 import { objectKey } from '@masterclip/asset-storage'
@@ -79,6 +80,7 @@ async function main(): Promise<void> {
     if (existingProjects.length > 0) {
       await seedLiveLab(runtime, orgId, userId)
       await seedSongLab(runtime, orgId, userId)
+      await seedStudio(runtime, orgId, userId)
       console.log(`org already seeded (${existingProjects.length} project(s)) — nothing to do`)
       console.log(`sign in as ${EMAIL}`)
       await runtime.close()
@@ -238,6 +240,7 @@ async function main(): Promise<void> {
   console.log(audioSeed.seeded ? 'audio intelligence demo data seeded' : 'audio intelligence demo data already present')
   await seedLiveLab(runtime, orgId, userId)
   await seedSongLab(runtime, orgId, userId)
+  await seedStudio(runtime, orgId, userId)
 
   console.log('')
   console.log(`sign in as ${credentials}`)
@@ -256,6 +259,25 @@ async function main(): Promise<void> {
 async function seedSongLab(runtime: Runtime, orgId: string, userId: string): Promise<void> {
   const result = await seedSongLabDemo(runtime.songLab, { orgId, userId, entitlements: runtime.entitlements })
   console.log(result.seeded ? `song lab demo seeded (Example Artist — Signal Fire): ${result.projectId}` : 'song lab demo already present')
+}
+
+/**
+ * The Studio demo: the same fictional record carried through the Studio
+ * lifecycle — two mixes, a measured reference, notes on the timeline, a vocal
+ * rack, two mastering directions rendered and compared at matched loudness,
+ * and a delivery tab with real failing checks (no ISRC, explicit status
+ * undeclared) so the Delivery Centre demonstrates itself honestly.
+ *
+ * Every analysis is real: the demo audio goes through the same analyzer set as
+ * a user's upload, so nothing on screen is a fixture.
+ */
+async function seedStudio(runtime: Runtime, orgId: string, userId: string): Promise<void> {
+  const result = await seedStudioDemo(runtime.studio, { orgId, userId, email: EMAIL, entitlements: runtime.entitlements })
+  console.log(
+    result.created
+      ? `studio demo seeded (${STUDIO_DEMO_ARTIST} — ${STUDIO_DEMO_TITLE}): ${result.project.id} · ${result.versionIds.length} version(s) · ${result.renditionIds.length} master(s)`
+      : 'studio demo already present',
+  )
 }
 
 /**

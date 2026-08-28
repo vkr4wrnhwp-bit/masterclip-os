@@ -21,6 +21,7 @@
     "@masterclip/domain": "workspace:*",
     "@masterclip/lyric-analysis": "workspace:*",
     "@masterclip/media-tools": "workspace:*",
+    "@masterclip/mix-analysis": "workspace:*",
     "@masterclip/model-router": "workspace:*",
     "@masterclip/music-benchmarking": "workspace:*",
     "@masterclip/performance-project": "workspace:*",

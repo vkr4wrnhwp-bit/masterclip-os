@@ -200,6 +200,40 @@ const EnvSchema = z.object({
   /** Experiment previews are derived, not masters: they expire by default. */
   SONG_LAB_PREVIEW_RETENTION_DAYS: num(30),
 
+  // --- Street Banker Studio ------------------------------------------------
+  /** Umbrella kill switch. Off means no Studio route or job runs at all. */
+  STUDIO_ENABLED: bool(true),
+  STUDIO_MIX_ENABLED: bool(true),
+  STUDIO_MASTER_ENABLED: bool(true),
+  STUDIO_TRANSLATION_LAB_ENABLED: bool(true),
+  STUDIO_ASK_THE_ROOM_ENABLED: bool(true),
+  STUDIO_DELIVER_ENABLED: bool(true),
+  STUDIO_SONIC_DNA_ENABLED: bool(true),
+  STUDIO_RECORD_PASSPORT_ENABLED: bool(true),
+  STUDIO_IDENTITY_VAULT_ENABLED: bool(true),
+  STUDIO_AI_LICENSING_ENABLED: bool(true),
+  /**
+   * Future-facing surfaces default OFF.
+   *
+   * The marketplace has no configured providers and no payment integration;
+   * the opportunity engine is not yet connected to the audience, streaming and
+   * campaign data it is eventually meant to weigh. Both have real schemas and
+   * real API boundaries, and both stay dark until the thing behind them exists.
+   */
+  STUDIO_MARKETPLACE_ENABLED: bool(false),
+  STUDIO_OPPORTUNITY_ENGINE_ENABLED: bool(false),
+  /** Cap on analysed audio length, so one long upload cannot occupy a worker. */
+  STUDIO_MAX_ANALYSIS_SECONDS: num(900),
+  /** Recorded on every analysis so incomparable results are visible as such. */
+  STUDIO_ANALYZER_SET: z.string().default('1.0.0'),
+  /**
+   * Upload chunk size, in bytes. 8 MiB by default: a 100MB upload is thirteen
+   * requests rather than hundreds, and losing one to a flaky connection costs
+   * seconds. The floor exists because a client that could name its own tiny
+   * part size could turn one upload into a million requests.
+   */
+  STUDIO_UPLOAD_PART_SIZE: num(8 * 1024 * 1024),
+
   // --- media ---------------------------------------------------------------
   FFMPEG_PATH: z.string().default('ffmpeg'),
   FFPROBE_PATH: z.string().default('ffprobe'),

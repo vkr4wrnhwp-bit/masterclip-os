@@ -23,6 +23,9 @@ import { AudioAdminView } from './views/AudioAdmin.jsx'
 import { songLabApi } from './song-lab/api.js'
 import { SongLabHome, SongLabNew, SongLabProjects } from './song-lab/SongLabHome.jsx'
 import { SongLabProject } from './song-lab/SongLabProject.jsx'
+import { studioApi } from './studio/api.js'
+import { StudioHome } from './studio/StudioHome.jsx'
+import { StudioProject, STUDIO_TABS, type StudioTab } from './studio/StudioProject.jsx'
 import { liveApi } from './live/api.js'
 import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
@@ -51,6 +54,15 @@ function parseHash(): Route {
     }
     if (segments[1] === 'projects') return { name: 'song-lab-projects', params }
     return { name: 'song-lab', params }
+  }
+  if (segments[0] === 'studio') {
+    if (segments[1]) {
+      // The tab is part of the path so an engineer can link straight to, say,
+      // the Master Station of a specific record.
+      const tab = (STUDIO_TABS as readonly string[]).includes(segments[2] ?? '') ? (segments[2] as StudioTab) : 'session'
+      return { name: 'studio-project', params: { ...params, studioProjectId: segments[1], tab } }
+    }
+    return { name: 'studio', params }
   }
   if (segments[0] === 'live-lab') {
     if (segments[1] === 'settings') return { name: 'live-settings', params }
@@ -156,6 +168,14 @@ export function App() {
     () => (user ? songLabApi.capabilities().catch(() => null) : Promise.resolve(null)),
     [user?.email],
   )
+  // Studio is entitlement-gated the same way. It is one nav entry, not seven:
+  // Session, Rack, Mix, Master, Versions, Collaborate and Deliver belong to a
+  // record rather than to the application, and live in the Studio's own
+  // contextual navigation.
+  const studioCaps = useAsync(
+    () => (user ? studioApi.capabilities().catch(() => null) : Promise.resolve(null)),
+    [user?.email],
+  )
 
   React.useEffect(() => {
     api
@@ -217,31 +237,34 @@ export function App() {
       <div className="app">
         <nav className="sidebar">
           <div className="brand">
-            <h1>Masterclip OS</h1>
-            <div className="sub">cinematic render factory</div>
+            <h1>Street Banker</h1>
+            <div className="sub">studio, labs &amp; release</div>
           </div>
           <div className="nav">
-            <NavLink route={route} to="/" name="dashboard">
-              Dashboard
-            </NavLink>
-            {projectId && (
+            {/* One site. Street Banker is the shell and everything is a section
+                inside it — the music modules first, in the order a record moves
+                through them, then Masterclip's video tools, then the settings
+                that belong to the platform rather than to any one module. */}
+            {studioCaps.data?.capabilities.includes('studio.access') && (
               <>
-                <div className="group">Project</div>
-                <NavLink route={route} to={`/project/${projectId}`} name="project">
-                  Overview &amp; shots
-                </NavLink>
-                <NavLink route={route} to={`/queue/${projectId}`} name="queue">
-                  Render queue
-                </NavLink>
-                <NavLink route={route} to={`/masters/${projectId}`} name="masters">
-                  Masters
-                </NavLink>
-                <NavLink route={route} to={`/costs/${projectId}`} name="costs">
-                  Cost lab
+                <div className="product">Studio</div>
+                <NavLink route={route} to="/studio" name="studio">
+                  Projects
                 </NavLink>
               </>
             )}
-            <div className="group">Audio Intelligence</div>
+            {songLabCaps.data?.capabilities.includes('song_lab.access') && (
+              <>
+                <div className="product">Song Lab</div>
+                <NavLink route={route} to="/song-lab" name="song-lab">
+                  Drop a record
+                </NavLink>
+                <NavLink route={route} to="/song-lab/projects" name="song-lab-projects">
+                  Song projects
+                </NavLink>
+              </>
+            )}
+            <div className="product">Audio Intelligence</div>
             <NavLink route={route} to="/audio" name="audio-home">
               Overview
             </NavLink>
@@ -272,22 +295,9 @@ export function App() {
             <NavLink route={route} to="/audio/admin" name="audio-admin">
               Partner entitlements
             </NavLink>
-            {songLabCaps.data?.capabilities.includes('song_lab.access') && (
-              <>
-                {/* Song Lab comes before Remix Lab in the creative workflow:
-                    diagnose the record, then decide what to do with it. */}
-                <div className="group">Song Lab</div>
-                <NavLink route={route} to="/song-lab" name="song-lab">
-                  Drop a record
-                </NavLink>
-                <NavLink route={route} to="/song-lab/projects" name="song-lab-projects">
-                  Song projects
-                </NavLink>
-              </>
-            )}
             {liveCaps.data?.capabilities.includes('live_lab.access') && (
               <>
-                <div className="group">Performance</div>
+                <div className="product">Performance</div>
                 <NavLink route={route} to="/live-lab" name="live-lab">
                   Live Lab
                 </NavLink>
@@ -296,7 +306,34 @@ export function App() {
                 </NavLink>
               </>
             )}
-            <div className="group">System</div>
+            {/* Masterclip is the video side of the same site: the cinematic
+                render factory. Its heading is unconditional even though the
+                project links below it are not — without it, a session with no
+                video project open would read as though the tools were gone. */}
+            <div className="product">Masterclip</div>
+            <NavLink route={route} to="/" name="dashboard">
+              Dashboard
+            </NavLink>
+            {projectId && (
+              <>
+                <div className="group">Project</div>
+                <NavLink route={route} to={`/project/${projectId}`} name="project">
+                  Overview &amp; shots
+                </NavLink>
+                <NavLink route={route} to={`/queue/${projectId}`} name="queue">
+                  Render queue
+                </NavLink>
+                <NavLink route={route} to={`/masters/${projectId}`} name="masters">
+                  Masters
+                </NavLink>
+                <NavLink route={route} to={`/costs/${projectId}`} name="costs">
+                  Cost lab
+                </NavLink>
+              </>
+            )}
+            {/* Platform-wide, so it sits outside every module rather than
+                looking like it belongs to whichever one happens to be last. */}
+            <div className="product">System</div>
             <NavLink route={route} to="/providers" name="providers">
               Providers &amp; models
             </NavLink>
@@ -345,6 +382,14 @@ export function App() {
               projectId={route.params.songProjectId ?? ''}
               tab={route.params.tab ?? 'overview'}
               canSeeAr={songLabCaps.data?.capabilities.includes('song_lab.ar_view') ?? false}
+            />
+          )}
+          {route.name === 'studio' && <StudioHome />}
+          {route.name === 'studio-project' && (
+            <StudioProject
+              projectId={route.params.studioProjectId ?? ''}
+              tab={(route.params.tab as StudioTab) ?? 'session'}
+              {...(route.params.at ? { at: route.params.at } : {})}
             />
           )}
           {route.name === 'live-lab' && <LiveLabHome />}

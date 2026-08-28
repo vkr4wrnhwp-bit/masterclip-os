@@ -71,6 +71,9 @@ importers:
       '@masterclip/midi-engine':
         specifier: workspace:*
         version: link:packages/midi-engine
+      '@masterclip/mix-analysis':
+        specifier: workspace:*
+        version: link:packages/mix-analysis
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:packages/model-router
@@ -143,6 +146,12 @@ importers:
       '@masterclip/song-structure':
         specifier: workspace:*
         version: link:packages/song-structure
+      '@masterclip/studio-domain':
+        specifier: workspace:*
+        version: link:packages/studio-domain
+      '@masterclip/studio-engine':
+        specifier: workspace:*
+        version: link:packages/studio-engine
       '@masterclip/web':
         specifier: workspace:*
         version: link:apps/web
@@ -240,6 +249,9 @@ importers:
       '@masterclip/media-tools':
         specifier: workspace:*
         version: link:../../packages/media-tools
+      '@masterclip/mix-analysis':
+        specifier: workspace:*
+        version: link:../../packages/mix-analysis
       '@masterclip/model-router':
         specifier: workspace:*
         version: link:../../packages/model-router
@@ -378,6 +390,9 @@ importers:
       '@masterclip/song-lab-engine':
         specifier: workspace:*
         version: link:../../packages/song-lab-engine
+      '@masterclip/studio-engine':
+        specifier: workspace:*
+        version: link:../../packages/studio-engine
 
   packages/agents:
     dependencies:
@@ -552,6 +567,18 @@ importers:
       '@masterclip/performance-project':
         specifier: workspace:*
         version: link:../performance-project
+
+  packages/mix-analysis:
+    dependencies:
+      '@masterclip/media-tools':
+        specifier: workspace:*
+        version: link:../media-tools
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
 
   packages/model-router:
     dependencies:
@@ -798,6 +825,9 @@ importers:
       '@masterclip/song-lab-engine':
         specifier: workspace:*
         version: link:../song-lab-engine
+      '@masterclip/studio-engine':
+        specifier: workspace:*
+        version: link:../studio-engine
 
   packages/shared: {}
 
@@ -911,6 +941,57 @@ importers:
       '@masterclip/song-feature-vectors':
         specifier: workspace:*
         version: link:../song-feature-vectors
+
+  packages/studio-domain:
+    dependencies:
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/mix-analysis':
+        specifier: workspace:*
+        version: link:../mix-analysis
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/studio-engine:
+    dependencies:
+      '@masterclip/ai-audio':
+        specifier: workspace:*
+        version: link:../ai-audio
+      '@masterclip/asset-storage':
+        specifier: workspace:*
+        version: link:../asset-storage
+      '@masterclip/audio-domain':
+        specifier: workspace:*
+        version: link:../audio-domain
+      '@masterclip/audio-engine':
+        specifier: workspace:*
+        version: link:../audio-engine
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@masterclip/mix-analysis':
+        specifier: workspace:*
+        version: link:../mix-analysis
+      '@masterclip/queue':
+        specifier: workspace:*
+        version: link:../queue
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-analysis':
+        specifier: workspace:*
+        version: link:../song-analysis
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../song-lab-domain
+      '@masterclip/studio-domain':
+        specifier: workspace:*
+        version: link:../studio-domain
 
 packages:
 

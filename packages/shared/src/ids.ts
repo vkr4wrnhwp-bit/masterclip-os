@@ -126,6 +126,39 @@ export type IdPrefix =
   | 'sout' // song outcome link
   | 'shof' // song lab handoff
   | 'vst' // song lab vocal stem
+  // Street Banker Studio
+  | 'stp' // studio project (the canonical record id)
+  | 'stv' // studio version
+  | 'stn' // studio note / marker
+  | 'strk' // rack chain
+  | 'stmd' // rack module
+  | 'stpr' // rack preset
+  | 'stma' // mix analysis
+  | 'stmi' // mix issue
+  | 'stref' // reference track
+  | 'stmr' // master rendition
+  | 'stal' // album / project-level master
+  | 'stat' // album track entry
+  | 'stcb' // collaborator
+  | 'stcm' // comment
+  | 'stap' // approval
+  | 'stac' // activity entry
+  | 'stdl' // deliverable
+  | 'stdc' // delivery check run
+  | 'stdna' // artist sonic DNA
+  | 'stmem' // creative memory entry
+  | 'stpp' // record passport
+  | 'stcl' // human creation ledger entry
+  | 'stiv' // identity vault entry
+  | 'stperm' // AI permission grant
+  | 'stlic' // licensing request
+  | 'stso' // marketplace service order
+  | 'stopp' // opportunity
+  | 'stask' // Ask the Room exchange
+  | 'stjob' // studio processing job
+  | 'stup' // studio upload session
+  | 'stupp' // studio upload part
+  | 'stpe' // studio provenance event
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`

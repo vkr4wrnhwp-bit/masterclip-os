@@ -34,6 +34,21 @@ const PRODUCT_FLAGS = new Set([
   'SONG_LAB_EXPERIMENTS_ENABLED',
   'SONG_LAB_LYRICS_ENABLED',
   'SONG_LAB_AR_VIEW_ENABLED',
+  // Street Banker Studio. Every one of these hides a whole surface: the nav
+  // entry, the tab and the routes all disappear together, so nobody meets a
+  // refusal partway through a workflow.
+  'STUDIO_ENABLED',
+  'STUDIO_MIX_ENABLED',
+  'STUDIO_MASTER_ENABLED',
+  'STUDIO_TRANSLATION_LAB_ENABLED',
+  'STUDIO_ASK_THE_ROOM_ENABLED',
+  'STUDIO_DELIVER_ENABLED',
+  'STUDIO_SONIC_DNA_ENABLED',
+  'STUDIO_RECORD_PASSPORT_ENABLED',
+  'STUDIO_IDENTITY_VAULT_ENABLED',
+  'STUDIO_AI_LICENSING_ENABLED',
+  'STUDIO_MARKETPLACE_ENABLED',
+  'STUDIO_OPPORTUNITY_ENGINE_ENABLED',
   // Not a product or a capability — an operational control with no gate code.
   'RATE_LIMIT_ENABLED',
 ])

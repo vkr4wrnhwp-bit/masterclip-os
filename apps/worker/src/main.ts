@@ -1,6 +1,7 @@
 import { createRuntime, RenderService, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
 import { applyEnvFile, loadConfig } from '@masterclip/shared'
+import { outcomeForAnalysis, outcomeForRendition } from '@masterclip/studio-engine'
 
 /**
  * The render worker.
@@ -17,7 +18,7 @@ async function main(): Promise<void> {
   const render = new RenderService(runtime)
   const logger = runtime.logger.child({ component: 'worker' })
 
-  const queueNames = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live, QUEUES.songLab]
+  const queueNames = [QUEUES.render, QUEUES.qc, QUEUES.media, QUEUES.maintenance, QUEUES.audio, QUEUES.live, QUEUES.songLab, QUEUES.studio]
   const workers = queueNames.map((queueName) => {
     const worker = new QueueWorker(runtime.queue, {
       queueName,
@@ -235,6 +236,85 @@ async function main(): Promise<void> {
       })
     })
 
+    // ----- Street Banker Studio ---------------------------------------------
+    const studio = runtime.studio
+
+    // Every Studio handler runs inside the processing ledger. `jobId` is
+    // optional throughout: a message queued before the ledger existed still
+    // runs, unrecorded, rather than being stranded across the deploy.
+    worker.register<{ analysisId: string; orgId: string; jobId?: string }>(JOB_TYPES.studioAnalyzeMix, async ({ analysisId, orgId, jobId }, ctx) => {
+      await ctx.heartbeat()
+      await studio.processing.run({ jobId, orgId }, async () => {
+        const analysis = await studio.mix.runAnalysis(analysisId, orgId)
+        ctx.logger.info('studio.mix_analysis_settled', { analysis_id: analysisId, status: analysis.status })
+        return outcomeForAnalysis(analysis)
+      })
+    })
+
+    /**
+     * Measures a reference and then discards its audio where the rights basis
+     * requires it. The discard lives in the same job as the measurement so a
+     * reference cannot linger in storage because a later step never ran.
+     */
+    worker.register<{ analysisId: string; referenceId: string; orgId: string; jobId?: string }>(
+      JOB_TYPES.studioAnalyzeReference,
+      async ({ analysisId, referenceId, orgId, jobId }, ctx) => {
+        await ctx.heartbeat()
+        await studio.processing.run({ jobId, orgId }, async () => {
+          await studio.mix.runReferenceAnalysis(analysisId, referenceId, orgId)
+          const analysis = await studio.repos.analyses.get(orgId, analysisId)
+          ctx.logger.info('studio.reference_settled', { analysis_id: analysisId, reference_id: referenceId })
+          return outcomeForAnalysis(analysis)
+        })
+      },
+    )
+
+    worker.register<{ renditionId: string; orgId: string; userId: string; jobId?: string }>(
+      JOB_TYPES.studioRenderMaster,
+      async ({ renditionId, orgId, userId, jobId }, ctx) => {
+        await ctx.heartbeat()
+        await studio.processing.run({ jobId, orgId }, async () => {
+          const rendition = await studio.master.renderRendition(renditionId, orgId, userId)
+          ctx.logger.info('studio.master_settled', { rendition_id: renditionId, status: rendition.status, placeholder: rendition.placeholder })
+          return outcomeForRendition(rendition)
+        })
+      },
+    )
+
+    /**
+     * Analyses a rendered master and computes the gain that makes its A/B fair.
+     *
+     * Separate from the render job because the analysis is the thing that makes
+     * the comparison honest, and it must still happen if the render job's
+     * follow-up work were ever to change.
+     */
+    worker.register<{ analysisId: string; renditionId: string; orgId: string; jobId?: string }>(
+      JOB_TYPES.studioAnalyzeRendition,
+      async ({ analysisId, renditionId, orgId, jobId }, ctx) => {
+        await ctx.heartbeat()
+        await studio.processing.run({ jobId, orgId }, async () => {
+          const analysis = await studio.mix.runAnalysis(analysisId, orgId)
+          await studio.master.settleRenditionAnalysis(analysisId, renditionId, orgId)
+          const rendition = await studio.repos.renditions.get(orgId, renditionId)
+          ctx.logger.info('studio.master_analyzed', { rendition_id: renditionId, match_gain_db: rendition.matchGainDb })
+          return outcomeForAnalysis(analysis)
+        })
+      },
+    )
+
+    /**
+     * Reclaims uploads nobody finished.
+     *
+     * The parts of an abandoned upload are useless on their own — fragments of
+     * a file that was never assembled — and they hold storage indefinitely
+     * otherwise.
+     */
+    worker.register(JOB_TYPES.studioSweepUploads, async (_payload, ctx) => {
+      await ctx.heartbeat()
+      await studio.uploads.sweep()
+      await enqueueStudioTick(JOB_TYPES.studioSweepUploads, UPLOAD_SWEEP_TICK_MS)
+    })
+
     // Self-perpetuating maintenance ticks: each run re-arms the next time
     // bucket, and the bucketed dedupe key stops restarts from stacking them.
     worker.register(JOB_TYPES.audioRetentionSweep, async (_payload, ctx) => {
@@ -253,6 +333,12 @@ async function main(): Promise<void> {
     return worker
   })
 
+  const UPLOAD_SWEEP_TICK_MS = 60 * 60_000
+  async function enqueueStudioTick(type: string, delayMs: number): Promise<void> {
+    const bucket = Math.floor((Date.now() + delayMs) / delayMs)
+    await runtime.queue.enqueue({ queue: QUEUES.studio, type, payload: {}, delayMs, dedupeKey: `${type}:${bucket}` })
+  }
+
   const RETENTION_TICK_MS = 15 * 60_000
   const SCHEDULE_TICK_MS = 60 * 60_000
   async function enqueueAudioTick(type: string, delayMs: number): Promise<void> {
@@ -267,6 +353,7 @@ async function main(): Promise<void> {
   }
   await enqueueAudioTick(JOB_TYPES.audioRetentionSweep, 5_000)
   await enqueueAudioTick(JOB_TYPES.audioScheduleTick, 10_000)
+  if (runtime.config.STUDIO_ENABLED) await enqueueStudioTick(JOB_TYPES.studioSweepUploads, 30_000)
 
   for (const worker of workers) worker.start()
   logger.info('worker.started', {
