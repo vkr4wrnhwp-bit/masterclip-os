@@ -34,8 +34,18 @@ test('Song Lab appears in the nav, before Live Lab in the creative workflow', as
   await expect(songLab).toBeVisible()
 
   // Song Lab comes first: diagnose the record, then decide what to do with it.
-  const groups = await page.locator('.nav .group').allTextContents()
-  expect(groups.indexOf('Song Lab')).toBeLessThan(groups.indexOf('Performance'))
+  //
+  // Both heading levels are read, in DOM order, because a nav section can be
+  // promoted or demoted between them without the ordering this test is about
+  // changing. Querying one level made the test silently stop measuring
+  // anything the day Song Lab moved to the other.
+  const sections = await page.locator('.nav .product, .nav .group').allTextContents()
+  // Asserted present before being compared: `indexOf` returns -1 for a heading
+  // that is not there, and -1 is less than every real index, so a missing Song
+  // Lab would otherwise pass this test.
+  expect(sections).toContain('Song Lab')
+  expect(sections).toContain('Performance')
+  expect(sections.indexOf('Song Lab')).toBeLessThan(sections.indexOf('Performance'))
 })
 
 test('the entry screen leads with DROP A RECORD', async () => {
