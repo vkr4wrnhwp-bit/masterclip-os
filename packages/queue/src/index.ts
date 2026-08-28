@@ -10,6 +10,7 @@ export const QUEUES = {
   audio: 'audio',
   live: 'live',
   songLab: 'song_lab',
+  studio: 'studio',
 } as const
 
 /** Job types handled by apps/worker. */
@@ -53,6 +54,12 @@ export const JOB_TYPES = {
   songLabGenerateWaveform: 'song_lab.waveform.generate',
   songLabUpdateOutcome: 'song_lab.outcome.update',
   songLabReanalyze: 'song_lab.reanalyze',
+  // Street Banker Studio
+  studioAnalyzeMix: 'studio.mix.analyze',
+  studioAnalyzeReference: 'studio.reference.analyze',
+  studioRenderMaster: 'studio.master.render',
+  studioAnalyzeRendition: 'studio.master.analyze',
+  studioAssessAlbum: 'studio.album.assess',
 } as const
 
 export type JobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES]

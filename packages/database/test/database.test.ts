@@ -42,8 +42,11 @@ describe('migrations', () => {
     const before = await db.query<{ name: string }>('PRAGMA table_info(song_section_features)')
     expect(before.map((row) => row.name)).not.toContain('register_median')
 
+    // Every migration from the cutoff onward, not just the next one — stated
+    // as "the rest of the list" so adding a migration does not require editing
+    // this assertion, which is exactly the edit somebody would make wrongly.
     const upgrade = await runMigrations(db)
-    expect(upgrade.applied).toEqual(['0007_song_lab_register'])
+    expect(upgrade.applied).toEqual(MIGRATIONS.slice(cutoff).map((migration) => migration.id))
 
     const after = await db.query<{ name: string }>('PRAGMA table_info(song_section_features)')
     const columns = after.map((row) => row.name)

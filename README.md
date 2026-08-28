@@ -169,6 +169,65 @@ Docs: [SONG_LAB.md](docs/SONG_LAB.md) · [analysis](docs/SONG_LAB_ANALYSIS.md) �
 
 ---
 
+## Street Banker Studio
+
+**The control room for a record.**
+
+Studio is where a recording lives for its whole life — one canonical project id
+from the first rough through mixing, mastering, approval, packaging and
+delivery. Every other module points at it rather than minting a second identity
+for the same song.
+
+`CREATE → ANALYZE → MIX → MASTER → APPROVE → PACKAGE → RELEASE → MARKET → MONETIZE → TRACK`
+
+Seven areas inside one nav entry: **Session** (waveform, transport, markers,
+notes, Ask the Room), **Rack** (modular signal chains in a fixed five-stage
+order), **Mix** (Mix Station, Mix Doctor, Reference DNA, Translation Lab),
+**Master** (directions, renditions, loudness-matched A/B), **Versions** (the
+vault and the difference engine), **Collaborate** (roles, timestamped comments,
+formal approval) and **Deliver** (distributor-grade checks, the Record Passport,
+rights, Sonic DNA).
+
+Five rules are enforced in code rather than in a style guide, each with a test
+that fails if it stops being true:
+
+- **Nothing is fabricated.** Every measurement carries its method and
+  confidence; a figure that could not be determined is `null` and renders as
+  *"not measured"*, never as a zero. Release Readiness withholds its overall
+  score when fewer than half its bands could be measured.
+- **Nothing is overwritten.** A new mix creates a new version; the old one is
+  marked superseded and its audio stays playable forever. The repository
+  refuses to delete any version carrying audio.
+- **An approval names bytes, not a label.** Every approval pins the checksum it
+  approved, so a later upload under the same name cannot inherit a sign-off.
+- **Every master comparison is loudness-matched.** The gain is computed
+  server-side and stored on the rendition, because a chain that adds 5 dB
+  sounds better to everyone for reasons that have nothing to do with the
+  mastering.
+- **Rights refuse by default.** An artist who has never opened the Identity
+  Vault is protected exactly as if they had set every use to prohibited.
+
+Mix Doctor returns timestamped *potential* issues with severity, confidence and
+the measurements behind them — detected against the record's own baseline, so a
+deliberately dark mix is not flagged for being what it is. Reference tracks are
+measured and then discarded: Street Banker keeps the numbers, not the audio.
+Translation Lab is explicit that its results are analytical estimates and not
+device simulations. Agent-to-agent licensing runs REQUEST → RIGHTS CHECK →
+PRICE and then stops at a human — nothing in the application can execute a
+licence, and no price is invented against a real budget.
+
+`pnpm seed` creates a fictional **Example Artist — "Signal Fire"**: two mixes, a
+measured reference, notes on the timeline, a vocal rack, two mastering
+directions compared at matched loudness, and a Delivery tab with real failing
+checks. All audio is synthesized locally; the analysis is the real analyzer set,
+so every number on screen is a measurement of the file. Open **Studio** in the
+nav; entitlement-gated per organization and enforced server-side.
+
+Docs: [STUDIO.md](docs/STUDIO.md) · [analysis](docs/STUDIO_ANALYSIS.md) ·
+[rights & provenance](docs/STUDIO_RIGHTS.md) · [runbook](docs/STUDIO_RUNBOOK.md)
+
+---
+
 ## Live Lab
 
 The live-performance module: turn releases, stems, and authorized AI-generated

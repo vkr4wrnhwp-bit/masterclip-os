@@ -1826,4 +1826,821 @@ ALTER TABLE song_section_features ADD COLUMN register_confidence REAL;
 ALTER TABLE song_section_features ADD COLUMN melodic_contour TEXT;
 `,
   },
+  {
+    // =======================================================================
+    // Street Banker Studio
+    //
+    // One canonical record per song, referenced by every stage of its life.
+    // The single most important property of this schema is that
+    // `studio_projects.id` is the only project identity: Mix, Master,
+    // Delivery, the passport, the rights grants and the opportunity engine
+    // all carry it as a foreign key rather than minting a parallel id and
+    // reconciling later. A second id for the same record is how a platform
+    // ends up unable to answer "what happened to this song".
+    //
+    // Two structural guarantees are enforced here rather than in prose:
+    //
+    //   - Versions are additive. `studio_versions` has no column that means
+    //     "replaced by", only `parent_version_id` and an informational
+    //     `superseded_at`; the repository has no delete for a version that
+    //     carries an asset. A new mix never overwrites an old one.
+    //   - Approvals are immutable statements about a specific set of bytes.
+    //     `studio_approvals.version_checksum` pins the audio that was
+    //     approved, so a later upload under the same label cannot inherit
+    //     someone else's sign-off.
+    // =======================================================================
+    id: '0008_studio',
+    sql: `
+-- ---------------------------------------------------------------------------
+-- The canonical project record
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_projects (
+  id                          TEXT PRIMARY KEY,
+  org_id                      TEXT NOT NULL REFERENCES orgs(id),
+  artist_name                 TEXT NOT NULL,
+  -- Roster identity when the org has one. Free-text artist_name is always
+  -- present so a project is never blocked on a roster record existing.
+  artist_id                   TEXT,
+  title                       TEXT NOT NULL,
+  genre                       TEXT NOT NULL,
+  -- create | analyze | mix | master | approve | package | release | market |
+  -- monetize | track. The lifecycle the product is built around.
+  stage                       TEXT NOT NULL,
+  artwork_asset_id            TEXT,
+  current_version_id          TEXT,
+  approved_mix_version_id     TEXT,
+  approved_master_version_id  TEXT,
+  release_date                TEXT,
+  rights_confirmation_id      TEXT NOT NULL,
+  -- Pointers to the other Street Banker records for the same song. The Studio
+  -- project owns the relationship; those modules keep their own ids and are
+  -- not required to exist.
+  song_lab_project_id         TEXT,
+  live_project_id             TEXT,
+  release_id                  TEXT,
+  notes                       TEXT NOT NULL,
+  demo                        INTEGER NOT NULL,
+  archived_at                 TEXT,
+  created_by                  TEXT NOT NULL,
+  created_at                  TEXT NOT NULL,
+  updated_at                  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_projects_org ON studio_projects(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_projects_song_lab ON studio_projects(org_id, song_lab_project_id);
+
+-- ---------------------------------------------------------------------------
+-- Version Vault
+--
+-- Additive by construction. Deleting a version is not an operation this table
+-- supports for anything that carries audio: superseded_at records that a
+-- newer version exists and nothing more.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_versions (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id     TEXT NOT NULL REFERENCES studio_projects(id),
+  parent_version_id     TEXT,
+  version_type          TEXT NOT NULL,
+  label                 TEXT NOT NULL,
+  -- Mix 01, Mix 02 … numbered per type so the label a user sees is stable.
+  ordinal               INTEGER NOT NULL,
+  asset_id              TEXT,
+  asset_checksum        TEXT,
+  -- upload | import | master_render | rack_render | album_render | external
+  source_kind           TEXT NOT NULL,
+  master_rendition_id   TEXT,
+  duration_ms           INTEGER,
+  sample_rate           INTEGER,
+  bit_depth             INTEGER,
+  channels              INTEGER,
+  approved              INTEGER NOT NULL,
+  approval_id           TEXT,
+  superseded_at         TEXT,
+  notes                 TEXT NOT NULL,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_versions_project ON studio_versions(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Session: notes and markers on the waveform
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_notes (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  -- note | marker
+  kind                TEXT NOT NULL,
+  -- NULL for a note about the record rather than a moment in it.
+  timestamp_ms        INTEGER,
+  end_ms              INTEGER,
+  -- mix | master | arrangement | vocal | production | technical | other
+  category            TEXT NOT NULL,
+  body                TEXT NOT NULL,
+  -- open | in_progress | resolved | wont_fix
+  status              TEXT NOT NULL,
+  assigned_to         TEXT,
+  -- human | mix_doctor | ask_the_room — a note the machine drafted is labelled
+  -- as such for as long as it exists.
+  origin              TEXT NOT NULL,
+  source_issue_id     TEXT,
+  author_user_id      TEXT NOT NULL,
+  author_label        TEXT NOT NULL,
+  resolved_by         TEXT,
+  resolved_at         TEXT,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_notes_project ON studio_notes(org_id, studio_project_id, timestamp_ms);
+
+-- ---------------------------------------------------------------------------
+-- Rack: modular signal chains
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_rack_chains (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  -- vocal | instrument | mix_bus | master | custom
+  rack_type           TEXT NOT NULL,
+  name                TEXT NOT NULL,
+  -- a | b — the two chains an A/B compares. Both are real chains, so a user
+  -- can keep working on either.
+  ab_slot             TEXT NOT NULL,
+  -- Bumped on every mutation. Undo/redo walks studio_rack_history by it.
+  state_version       INTEGER NOT NULL,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_racks_project ON studio_rack_chains(org_id, studio_project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS studio_rack_modules (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  rack_chain_id   TEXT NOT NULL REFERENCES studio_rack_chains(id),
+  -- clean | tune | shape | color | space — the fixed signal-flow stages.
+  stage           TEXT NOT NULL,
+  module_type     TEXT NOT NULL,
+  order_index     INTEGER NOT NULL,
+  bypassed        INTEGER NOT NULL,
+  params          TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_rack_modules ON studio_rack_modules(org_id, rack_chain_id, order_index);
+
+-- Every mutation snapshots the whole chain. Undo is a restore of a snapshot
+-- rather than an inverse operation, which is the only version that stays
+-- correct once modules can be added, removed and reordered.
+CREATE TABLE IF NOT EXISTS studio_rack_history (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  rack_chain_id   TEXT NOT NULL REFERENCES studio_rack_chains(id),
+  state_version   INTEGER NOT NULL,
+  action          TEXT NOT NULL,
+  snapshot        TEXT NOT NULL,
+  created_by      TEXT NOT NULL,
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_rack_history ON studio_rack_history(org_id, rack_chain_id, state_version);
+
+CREATE TABLE IF NOT EXISTS studio_rack_presets (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  -- project | artist | org
+  scope               TEXT NOT NULL,
+  studio_project_id   TEXT,
+  artist_key          TEXT,
+  rack_type           TEXT NOT NULL,
+  name                TEXT NOT NULL,
+  modules             TEXT NOT NULL,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_rack_presets ON studio_rack_presets(org_id, scope, rack_type);
+
+-- ---------------------------------------------------------------------------
+-- Mix Station analysis
+--
+-- Metrics are rows, not columns. Adding an analyzer must not require a
+-- migration — the spec for this module is explicitly that more analyzers
+-- arrive later — and a metric row carries its own provenance so two metrics
+-- measured by different methods are never silently averaged together.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_mix_analyses (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id       TEXT,
+  studio_version_id       TEXT,
+  -- Set instead of the project columns when this analysis measures a
+  -- reference track rather than the user's own record.
+  reference_id            TEXT,
+  source_asset_id         TEXT NOT NULL,
+  source_checksum         TEXT NOT NULL,
+  -- stereo_mix | vocal_plus_instrumental | stems | multitrack
+  input_kind              TEXT NOT NULL,
+  -- pending | ready | failed | unsupported
+  status                  TEXT NOT NULL,
+  analyzer_set_version    TEXT NOT NULL,
+  duration_ms             INTEGER,
+  sample_rate             INTEGER,
+  channels                INTEGER,
+  bit_depth               INTEGER,
+  failure_reason          TEXT,
+  created_by              TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_mix_analyses ON studio_mix_analyses(org_id, studio_version_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_mix_analyses_ref ON studio_mix_analyses(org_id, reference_id);
+
+CREATE TABLE IF NOT EXISTS studio_mix_metrics (
+  analysis_id       TEXT NOT NULL REFERENCES studio_mix_analyses(id),
+  metric_key        TEXT NOT NULL,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  -- NULL means the analyzer could not determine it. It is never coerced to 0:
+  -- a zero and an unknown are different answers and the UI renders them
+  -- differently.
+  value             REAL,
+  unit              TEXT NOT NULL,
+  confidence        REAL NOT NULL,
+  analysis_method   TEXT NOT NULL,
+  provider          TEXT NOT NULL,
+  note              TEXT NOT NULL,
+  PRIMARY KEY (analysis_id, metric_key)
+);
+
+-- Per-metric time series (loudness over time, correlation over time, band
+-- energy over time), stored once per analysis so the Mix Doctor and the UI
+-- read the same curve.
+CREATE TABLE IF NOT EXISTS studio_mix_curves (
+  analysis_id     TEXT NOT NULL REFERENCES studio_mix_analyses(id),
+  curve_key       TEXT NOT NULL,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  step_ms         INTEGER NOT NULL,
+  points          TEXT NOT NULL,
+  PRIMARY KEY (analysis_id, curve_key)
+);
+
+-- ---------------------------------------------------------------------------
+-- Mix Doctor
+--
+-- Every row is a *potential* issue with a confidence and the measurements it
+-- came from. There is no column that says the mix is wrong, because the
+-- product does not make that claim.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_mix_issues (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  analysis_id         TEXT NOT NULL REFERENCES studio_mix_analyses(id),
+  issue_type          TEXT NOT NULL,
+  -- low | moderate | high
+  severity            TEXT NOT NULL,
+  confidence          REAL NOT NULL,
+  start_ms            INTEGER NOT NULL,
+  end_ms              INTEGER NOT NULL,
+  headline            TEXT NOT NULL,
+  detail              TEXT NOT NULL,
+  why_it_matters      TEXT NOT NULL,
+  suggested_action    TEXT NOT NULL,
+  evidence            TEXT NOT NULL,
+  -- open | ignored | fixed | sent_to_engineer
+  status              TEXT NOT NULL,
+  status_changed_by   TEXT,
+  status_changed_at   TEXT,
+  note_id             TEXT,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_mix_issues ON studio_mix_issues(org_id, analysis_id, start_ms);
+
+-- ---------------------------------------------------------------------------
+-- Reference DNA
+--
+-- A reference is measured, not stored: derived_only records that the audio
+-- was discarded once the measurements existed, which is the default and the
+-- only mode a user without distribution rights to the reference may use.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_references (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id     TEXT NOT NULL REFERENCES studio_projects(id),
+  label                 TEXT NOT NULL,
+  artist_name           TEXT NOT NULL,
+  title                 TEXT NOT NULL,
+  asset_id              TEXT,
+  -- owned | licensed | authorized_private_reference
+  rights_basis          TEXT NOT NULL,
+  rights_confirmed_by   TEXT NOT NULL,
+  rights_confirmed_at   TEXT NOT NULL,
+  analysis_id           TEXT,
+  derived_only          INTEGER NOT NULL,
+  audio_discarded_at    TEXT,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_references ON studio_references(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Master Station
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_master_renditions (
+  id                    TEXT PRIMARY KEY,
+  org_id                TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id     TEXT NOT NULL REFERENCES studio_projects(id),
+  source_version_id     TEXT NOT NULL,
+  -- a | b | c — the comparison slots.
+  slot                  TEXT NOT NULL,
+  -- transparent | competitive | warm | open | modern | custom
+  direction             TEXT NOT NULL,
+  priorities            TEXT NOT NULL,
+  target_lufs           REAL,
+  target_true_peak      REAL,
+  -- pending | ready | failed | unsupported
+  status                TEXT NOT NULL,
+  -- The processing that was actually applied, as data. A master whose chain
+  -- cannot be read back is a master nobody can reason about later.
+  render_plan           TEXT NOT NULL,
+  renderer              TEXT,
+  renderer_version      TEXT,
+  placeholder           INTEGER NOT NULL,
+  output_asset_id       TEXT,
+  output_analysis_id    TEXT,
+  -- Gain to apply when auditioning this against the source so the two are
+  -- compared at matched loudness. Without it, "louder" reads as "better".
+  match_gain_db         REAL,
+  failure_reason        TEXT,
+  approved              INTEGER NOT NULL,
+  created_by            TEXT NOT NULL,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_master_renditions ON studio_master_renditions(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Album master
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_albums (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  title             TEXT NOT NULL,
+  artist_name       TEXT NOT NULL,
+  status            TEXT NOT NULL,
+  cohesion_score    REAL,
+  cohesion_report   TEXT NOT NULL,
+  gap_default_ms    INTEGER NOT NULL,
+  created_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_albums ON studio_albums(org_id, created_at);
+
+CREATE TABLE IF NOT EXISTS studio_album_tracks (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  album_id            TEXT NOT NULL REFERENCES studio_albums(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  order_index         INTEGER NOT NULL,
+  gap_ms              INTEGER NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_album_tracks ON studio_album_tracks(org_id, album_id, order_index);
+
+-- ---------------------------------------------------------------------------
+-- Collaborative control room
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_collaborators (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  user_id             TEXT,
+  email               TEXT NOT NULL,
+  display_name        TEXT NOT NULL,
+  -- artist | producer | manager | ar | mix_engineer | mastering_engineer |
+  -- label | other
+  collaborator_role   TEXT NOT NULL,
+  -- JSON array drawn from view | comment | upload | approve | download | admin
+  permissions         TEXT NOT NULL,
+  invited_by          TEXT NOT NULL,
+  invited_at          TEXT NOT NULL,
+  accepted_at         TEXT,
+  revoked_at          TEXT,
+  revoked_by          TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_collaborator_email ON studio_collaborators(studio_project_id, email);
+
+CREATE TABLE IF NOT EXISTS studio_comments (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  parent_comment_id   TEXT,
+  timestamp_ms        INTEGER,
+  body                TEXT NOT NULL,
+  author_user_id      TEXT NOT NULL,
+  author_label        TEXT NOT NULL,
+  -- open | resolved
+  status              TEXT NOT NULL,
+  resolved_by         TEXT,
+  resolved_at         TEXT,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_comments ON studio_comments(org_id, studio_project_id, created_at);
+
+-- Approvals pin a checksum, not a label. Re-uploading under the same version
+-- name cannot inherit an approval that was given to different audio.
+CREATE TABLE IF NOT EXISTS studio_approvals (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT NOT NULL,
+  -- mix | master | delivery
+  approval_type       TEXT NOT NULL,
+  approved_by         TEXT NOT NULL,
+  approved_by_label   TEXT NOT NULL,
+  approved_at         TEXT NOT NULL,
+  comments            TEXT NOT NULL,
+  version_checksum    TEXT NOT NULL,
+  revoked_at          TEXT,
+  revoked_by          TEXT,
+  revoked_reason      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_studio_approvals ON studio_approvals(org_id, studio_project_id, approved_at);
+
+-- Append-only. Nothing in the application updates or deletes a row here.
+CREATE TABLE IF NOT EXISTS studio_activity (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  actor_user_id       TEXT NOT NULL,
+  actor_label         TEXT NOT NULL,
+  action              TEXT NOT NULL,
+  subject_type        TEXT NOT NULL,
+  subject_id          TEXT,
+  detail              TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_activity ON studio_activity(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Delivery centre
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_deliverables (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  -- dsp_master | clean | instrumental | acapella | tv_track |
+  -- performance_track | stems | radio_edit | spatial_master
+  asset_kind          TEXT NOT NULL,
+  asset_id            TEXT,
+  file_name           TEXT NOT NULL,
+  -- draft | checks_passed | checks_failed | approved | sent
+  status              TEXT NOT NULL,
+  sent_release_id     TEXT,
+  sent_at             TEXT,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_deliverables ON studio_deliverables(org_id, studio_project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS studio_delivery_checks (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  deliverable_id    TEXT NOT NULL REFERENCES studio_deliverables(id),
+  check_key         TEXT NOT NULL,
+  -- pass | warn | fail | unknown
+  outcome           TEXT NOT NULL,
+  detail            TEXT NOT NULL,
+  measured          TEXT,
+  expected          TEXT,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_delivery_checks ON studio_delivery_checks(org_id, deliverable_id);
+
+CREATE TABLE IF NOT EXISTS studio_release_metadata (
+  studio_project_id   TEXT PRIMARY KEY REFERENCES studio_projects(id),
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  isrc                TEXT,
+  upc                 TEXT,
+  primary_artist      TEXT NOT NULL,
+  featured_artists    TEXT NOT NULL,
+  label_name          TEXT NOT NULL,
+  -- explicit | clean | not_explicit | undeclared
+  explicit            TEXT NOT NULL,
+  language            TEXT NOT NULL,
+  genre               TEXT NOT NULL,
+  secondary_genre     TEXT NOT NULL,
+  copyright_line      TEXT NOT NULL,
+  publishing_line     TEXT NOT NULL,
+  artwork_asset_id    TEXT,
+  credits             TEXT NOT NULL,
+  splits              TEXT NOT NULL,
+  updated_by          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- Artist Sonic DNA and Creative Memory
+--
+-- Both are transparent by construction: every row records how many
+-- observations it rests on and what they were, and nothing reaches active
+-- or promoted without either a strong pattern or a person saying so.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_sonic_dna (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL REFERENCES orgs(id),
+  artist_key    TEXT NOT NULL,
+  attribute     TEXT NOT NULL,
+  value         REAL,
+  value_text    TEXT,
+  confidence    REAL NOT NULL,
+  sample_size   INTEGER NOT NULL,
+  derived_from  TEXT NOT NULL,
+  -- derived | stated — a preference the artist typed outranks one inferred.
+  source        TEXT NOT NULL,
+  -- proposed | active | dismissed
+  status        TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_sonic_dna ON studio_sonic_dna(org_id, artist_key, attribute);
+
+CREATE TABLE IF NOT EXISTS studio_creative_memory (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  -- project | artist
+  scope               TEXT NOT NULL,
+  scope_id            TEXT NOT NULL,
+  pattern_key         TEXT NOT NULL,
+  statement           TEXT NOT NULL,
+  observations        INTEGER NOT NULL,
+  supporting          INTEGER NOT NULL,
+  confidence          REAL NOT NULL,
+  -- candidate | promoted | dismissed
+  status              TEXT NOT NULL,
+  edited_statement    TEXT,
+  evidence            TEXT NOT NULL,
+  promoted_by         TEXT,
+  promoted_at         TEXT,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_creative_memory ON studio_creative_memory(org_id, scope, scope_id, pattern_key);
+
+-- ---------------------------------------------------------------------------
+-- Record Passport and the Human Creation Ledger
+--
+-- The passport document is stored as canonical JSON plus its hash. The hash
+-- is over the document, and — once a version is finalized — the finalized
+-- asset's own checksum travels with it, so a passport can be checked against
+-- the bytes it describes. It is an integrity record, not a legal conclusion.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_record_passports (
+  id                        TEXT PRIMARY KEY,
+  org_id                    TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id         TEXT NOT NULL REFERENCES studio_projects(id),
+  recording_id              TEXT NOT NULL,
+  schema_version            TEXT NOT NULL,
+  document                  TEXT NOT NULL,
+  document_hash             TEXT NOT NULL,
+  finalized_version_id      TEXT,
+  finalized_asset_checksum  TEXT,
+  -- Names the external standard this document can be projected into. A hint
+  -- for an exporter, deliberately not a coupling.
+  external_profile          TEXT,
+  -- draft | finalized
+  status                    TEXT NOT NULL,
+  created_by                TEXT NOT NULL,
+  created_at                TEXT NOT NULL,
+  updated_at                TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_passports ON studio_record_passports(org_id, studio_project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS studio_contributions (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  -- lyrics | melody | vocals | instrument | production | mix | master |
+  -- arrangement | engineering | other
+  contribution_type   TEXT NOT NULL,
+  performed_by        TEXT NOT NULL,
+  performer_user_id   TEXT,
+  instrument          TEXT,
+  detail              TEXT NOT NULL,
+  -- 1 for human work, 0 for an AI-assisted process. Both are recorded; they
+  -- are never merged into one claim.
+  human               INTEGER NOT NULL,
+  ai_tool             TEXT,
+  ai_role             TEXT,
+  declared_by         TEXT NOT NULL,
+  declared_at         TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_contributions ON studio_contributions(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Identity Vault and rights-safe AI licensing
+--
+-- Default posture is refusal. A vault row that does not exist means the use
+-- is not permitted; control = 'permitted' requires a verified consent
+-- record, which is the existing Audio Intelligence consent infrastructure.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_identity_vault (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  artist_key          TEXT NOT NULL,
+  -- voice | name | image | likeness | performance_style
+  subject             TEXT NOT NULL,
+  -- prohibited | consent_required | permitted
+  control             TEXT NOT NULL,
+  approved_model_ids  TEXT NOT NULL,
+  permitted_uses      TEXT NOT NULL,
+  prohibited_uses     TEXT NOT NULL,
+  territories         TEXT NOT NULL,
+  term_start          TEXT,
+  term_end            TEXT,
+  pricing             TEXT NOT NULL,
+  consent_record_id   TEXT,
+  verified            INTEGER NOT NULL,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL,
+  revoked_at          TEXT,
+  revoked_by          TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_identity_vault ON studio_identity_vault(org_id, artist_key, subject);
+
+-- Append-only licence history for the vault: who changed what, when, and on
+-- what basis. Revocation is an event, not an erasure.
+CREATE TABLE IF NOT EXISTS studio_identity_events (
+  id                TEXT PRIMARY KEY,
+  org_id            TEXT NOT NULL REFERENCES orgs(id),
+  identity_id       TEXT NOT NULL REFERENCES studio_identity_vault(id),
+  event             TEXT NOT NULL,
+  detail            TEXT NOT NULL,
+  actor_user_id     TEXT NOT NULL,
+  created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_identity_events ON studio_identity_events(org_id, identity_id, created_at);
+
+CREATE TABLE IF NOT EXISTS studio_ai_permissions (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  -- master | stems | acapella | instrumental | all
+  asset_scope         TEXT NOT NULL,
+  -- no_ai_use | analysis_only | private_artist_model | licensed_derivative |
+  -- fan_remix | commercial_sync_generation | voice_use | training_use
+  permission          TEXT NOT NULL,
+  granted             INTEGER NOT NULL,
+  granted_by          TEXT NOT NULL,
+  granted_at          TEXT NOT NULL,
+  revocable           INTEGER NOT NULL,
+  revoked_at          TEXT,
+  revoked_by          TEXT,
+  territories         TEXT NOT NULL,
+  term_end            TEXT,
+  conditions          TEXT NOT NULL,
+  contract_reference  TEXT,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_ai_permissions ON studio_ai_permissions(studio_project_id, asset_scope, permission);
+
+CREATE TABLE IF NOT EXISTS studio_ai_permission_events (
+  id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  permission_id   TEXT NOT NULL REFERENCES studio_ai_permissions(id),
+  event           TEXT NOT NULL,
+  detail          TEXT NOT NULL,
+  actor_user_id   TEXT NOT NULL,
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_ai_permission_events ON studio_ai_permission_events(org_id, permission_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Agent-to-agent licensing: the request boundary
+--
+-- executed exists so the schema can state the rule it enforces: no row ever
+-- reaches executed = 1 from inside this application. A request stops at
+-- awaiting_human until contract and payment infrastructure exists.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_license_requests (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  requester           TEXT NOT NULL,
+  -- human | agent
+  requester_kind      TEXT NOT NULL,
+  brief               TEXT NOT NULL,
+  budget_micros       BIGINT,
+  duration_seconds    INTEGER,
+  territories         TEXT NOT NULL,
+  rights_requested    TEXT NOT NULL,
+  -- received | rights_checked | priced | declined | awaiting_human
+  status              TEXT NOT NULL,
+  matches             TEXT NOT NULL,
+  decision_notes      TEXT NOT NULL,
+  executed            INTEGER NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_license_requests ON studio_license_requests(org_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Human engineer marketplace
+--
+-- Providers must be configured before a service can be ordered; the service
+-- catalogue is code, the providers are data, and an empty provider table
+-- means the marketplace does not offer anything.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_service_providers (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL REFERENCES orgs(id),
+  display_name  TEXT NOT NULL,
+  services      TEXT NOT NULL,
+  active        INTEGER NOT NULL,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS studio_service_orders (
+  id                            TEXT PRIMARY KEY,
+  org_id                        TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id             TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id             TEXT,
+  service_key                   TEXT NOT NULL,
+  provider_id                   TEXT,
+  -- draft | submitted | accepted | delivered | cancelled
+  status                        TEXT NOT NULL,
+  fee_micros                    BIGINT NOT NULL,
+  platform_commission_micros    BIGINT NOT NULL,
+  engineer_payout_micros        BIGINT NOT NULL,
+  rush                          INTEGER NOT NULL,
+  rush_fee_micros               BIGINT NOT NULL,
+  tip_micros                    BIGINT NOT NULL,
+  brief                         TEXT NOT NULL,
+  delivered_version_id          TEXT,
+  created_by                    TEXT NOT NULL,
+  created_at                    TEXT NOT NULL,
+  updated_at                    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_service_orders ON studio_service_orders(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Opportunity engine
+--
+-- Every row must be able to answer "why this matches". confidence_basis
+-- names the data the estimate rests on, and is the string the UI prints when
+-- there is not enough data to estimate value at all.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_opportunities (
+  id                      TEXT PRIMARY KEY,
+  org_id                  TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id       TEXT NOT NULL REFERENCES studio_projects(id),
+  opportunity_type        TEXT NOT NULL,
+  headline                TEXT NOT NULL,
+  why_it_matches          TEXT NOT NULL,
+  evidence                TEXT NOT NULL,
+  expected_value_micros   BIGINT,
+  expected_cost_micros    BIGINT,
+  confidence              REAL,
+  confidence_basis        TEXT NOT NULL,
+  -- open | accepted | dismissed
+  status                  TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_opportunities ON studio_opportunities(org_id, studio_project_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Ask the Room
+--
+-- Kept so an answer can be re-read alongside the state it was given about.
+-- context_used records what the advisor actually looked at, which is what
+-- makes an answer checkable rather than merely confident.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS studio_room_exchanges (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  question            TEXT NOT NULL,
+  answer              TEXT NOT NULL,
+  responder           TEXT NOT NULL,
+  context_used        TEXT NOT NULL,
+  actions             TEXT NOT NULL,
+  confidence          TEXT NOT NULL,
+  asked_by            TEXT NOT NULL,
+  created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_studio_room_exchanges ON studio_room_exchanges(org_id, studio_project_id, created_at);
+`,
+  },
 ]

@@ -23,6 +23,9 @@ import { AudioAdminView } from './views/AudioAdmin.jsx'
 import { songLabApi } from './song-lab/api.js'
 import { SongLabHome, SongLabNew, SongLabProjects } from './song-lab/SongLabHome.jsx'
 import { SongLabProject } from './song-lab/SongLabProject.jsx'
+import { studioApi } from './studio/api.js'
+import { StudioHome } from './studio/StudioHome.jsx'
+import { StudioProject, STUDIO_TABS, type StudioTab } from './studio/StudioProject.jsx'
 import { liveApi } from './live/api.js'
 import { LiveLabHome } from './live/LiveLabHome.jsx'
 import { LiveProject } from './live/LiveProject.jsx'
@@ -51,6 +54,15 @@ function parseHash(): Route {
     }
     if (segments[1] === 'projects') return { name: 'song-lab-projects', params }
     return { name: 'song-lab', params }
+  }
+  if (segments[0] === 'studio') {
+    if (segments[1]) {
+      // The tab is part of the path so an engineer can link straight to, say,
+      // the Master Station of a specific record.
+      const tab = (STUDIO_TABS as readonly string[]).includes(segments[2] ?? '') ? (segments[2] as StudioTab) : 'session'
+      return { name: 'studio-project', params: { ...params, studioProjectId: segments[1], tab } }
+    }
+    return { name: 'studio', params }
   }
   if (segments[0] === 'live-lab') {
     if (segments[1] === 'settings') return { name: 'live-settings', params }
@@ -154,6 +166,14 @@ export function App() {
   // courtesy; the server refuses regardless.
   const songLabCaps = useAsync(
     () => (user ? songLabApi.capabilities().catch(() => null) : Promise.resolve(null)),
+    [user?.email],
+  )
+  // Studio is entitlement-gated the same way. It is one nav entry, not seven:
+  // Session, Rack, Mix, Master, Versions, Collaborate and Deliver belong to a
+  // record rather than to the application, and live in the Studio's own
+  // contextual navigation.
+  const studioCaps = useAsync(
+    () => (user ? studioApi.capabilities().catch(() => null) : Promise.resolve(null)),
     [user?.email],
   )
 
@@ -272,6 +292,14 @@ export function App() {
             <NavLink route={route} to="/audio/admin" name="audio-admin">
               Partner entitlements
             </NavLink>
+            {studioCaps.data?.capabilities.includes('studio.access') && (
+              <>
+                <div className="group">Studio</div>
+                <NavLink route={route} to="/studio" name="studio">
+                  Projects
+                </NavLink>
+              </>
+            )}
             {songLabCaps.data?.capabilities.includes('song_lab.access') && (
               <>
                 {/* Song Lab comes before Remix Lab in the creative workflow:
@@ -345,6 +373,14 @@ export function App() {
               projectId={route.params.songProjectId ?? ''}
               tab={route.params.tab ?? 'overview'}
               canSeeAr={songLabCaps.data?.capabilities.includes('song_lab.ar_view') ?? false}
+            />
+          )}
+          {route.name === 'studio' && <StudioHome />}
+          {route.name === 'studio-project' && (
+            <StudioProject
+              projectId={route.params.studioProjectId ?? ''}
+              tab={(route.params.tab as StudioTab) ?? 'session'}
+              {...(route.params.at ? { at: route.params.at } : {})}
             />
           )}
           {route.name === 'live-lab' && <LiveLabHome />}
