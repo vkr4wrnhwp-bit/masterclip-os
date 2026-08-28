@@ -21,6 +21,7 @@
     "@masterclip/runtime": "workspace:*",
     "@masterclip/shared": "workspace:*",
     "@masterclip/song-lab-domain": "workspace:*",
-    "@masterclip/song-lab-engine": "workspace:*"
+    "@masterclip/song-lab-engine": "workspace:*",
+    "@masterclip/studio-engine": "workspace:*"
   }
 }

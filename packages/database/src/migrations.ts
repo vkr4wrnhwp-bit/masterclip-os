@@ -2643,4 +2643,83 @@ CREATE TABLE IF NOT EXISTS studio_room_exchanges (
 CREATE INDEX IF NOT EXISTS idx_studio_room_exchanges ON studio_room_exchanges(org_id, studio_project_id, created_at);
 `,
   },
+  {
+    // =======================================================================
+    // 0009 — Studio processing ledger
+    //
+    // One row per unit of asynchronous audio work, whoever performs it.
+    //
+    // Before this, each kind of work tracked its own status on its own row:
+    // an analysis knew whether it had finished, a rendition knew whether it
+    // had rendered, and nothing could answer "what is running right now,
+    // which provider ran it, what did it cost, and is it safe to retry".
+    //
+    // Three things this table makes possible that the per-row statuses
+    // could not:
+    //
+    //   - Idempotency. A retry, a double-click and a redelivered queue
+    //     message all resolve to the same job through idempotency_key rather
+    //     than performing the work twice and paying for it twice.
+    //   - Attribution. provider and adapter are recorded on the job, so a
+    //     result can always be traced to the thing that produced it —
+    //     including the local adapter, which is recorded as itself rather
+    //     than left to look like a professional service.
+    //   - Billing that fails safe. credit_state moves reserved -> consumed
+    //     only when work produced a usable result. Every failure path
+    //     releases the reservation instead, because a customer who got
+    //     nothing must not be charged for it.
+    // =======================================================================
+    id: '0009_studio_processing',
+    sql: `
+CREATE TABLE IF NOT EXISTS studio_processing_jobs (
+  id                  TEXT PRIMARY KEY,
+  org_id              TEXT NOT NULL REFERENCES orgs(id),
+  studio_project_id   TEXT NOT NULL REFERENCES studio_projects(id),
+  studio_version_id   TEXT,
+  -- mix_analysis | reference_analysis | master_render | rendition_analysis |
+  -- waveform_peaks | playback_proxy | stem_separation | album_assessment
+  job_type            TEXT NOT NULL,
+  -- The row this job settles, so a job can be read back from its subject and
+  -- a subject from its job without a join table.
+  subject_type        TEXT NOT NULL,
+  subject_id          TEXT NOT NULL,
+  -- queued | running | succeeded | failed | unsupported | cancelled
+  status              TEXT NOT NULL,
+  -- Who performed the work. The local adapter names itself here; a job that
+  -- ran locally must never be readable as a hosted professional service.
+  provider            TEXT NOT NULL,
+  adapter             TEXT NOT NULL,
+  provider_job_id     TEXT,
+  -- Unique per org. A redelivered message or a double submit resolves to the
+  -- job that already exists rather than starting a second one.
+  idempotency_key     TEXT NOT NULL,
+  attempt             INTEGER NOT NULL,
+  max_attempts        INTEGER NOT NULL,
+  -- Never invented. Null means the provider reported no cost, which is a
+  -- different fact from zero.
+  cost_micros         INTEGER,
+  billable            INTEGER NOT NULL,
+  credit_units        INTEGER NOT NULL,
+  -- not_billable | reserved | consumed | released
+  credit_state        TEXT NOT NULL,
+  error_code          TEXT,
+  error_message       TEXT,
+  -- JSON. Parameters only: never a signed URL, a storage key, a credential
+  -- or anything that would put audio into an error report.
+  request             TEXT NOT NULL,
+  result              TEXT NOT NULL,
+  queued_at           TEXT NOT NULL,
+  started_at          TEXT,
+  finished_at         TEXT,
+  duration_ms         INTEGER,
+  created_by          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_processing_key ON studio_processing_jobs(org_id, idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_studio_processing_project ON studio_processing_jobs(org_id, studio_project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_studio_processing_subject ON studio_processing_jobs(org_id, subject_type, subject_id);
+CREATE INDEX IF NOT EXISTS idx_studio_processing_status ON studio_processing_jobs(org_id, status, created_at);
+`,
+  },
 ]

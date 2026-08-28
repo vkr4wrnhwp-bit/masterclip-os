@@ -16,6 +16,7 @@ import type {
   MixAnalysisRepo,
   MixIssueRepo,
   OpportunityRepo,
+  ProcessingJobRepo,
   RackRepo,
   RecordPassportRepo,
   ReleaseMetadataRepo,
@@ -43,6 +44,7 @@ export interface StudioRepos {
   racks: RackRepo
   analyses: MixAnalysisRepo
   issues: MixIssueRepo
+  processing: ProcessingJobRepo
   references: StudioReferenceRepo
   renditions: MasterRenditionRepo
   albums: StudioAlbumRepo

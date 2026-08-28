@@ -1,6 +1,7 @@
 import { createRuntime, RenderService, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
 import { applyEnvFile, loadConfig } from '@masterclip/shared'
+import { outcomeForAnalysis, outcomeForRendition } from '@masterclip/studio-engine'
 
 /**
  * The render worker.
@@ -238,10 +239,16 @@ async function main(): Promise<void> {
     // ----- Street Banker Studio ---------------------------------------------
     const studio = runtime.studio
 
-    worker.register<{ analysisId: string; orgId: string }>(JOB_TYPES.studioAnalyzeMix, async ({ analysisId, orgId }, ctx) => {
+    // Every Studio handler runs inside the processing ledger. `jobId` is
+    // optional throughout: a message queued before the ledger existed still
+    // runs, unrecorded, rather than being stranded across the deploy.
+    worker.register<{ analysisId: string; orgId: string; jobId?: string }>(JOB_TYPES.studioAnalyzeMix, async ({ analysisId, orgId, jobId }, ctx) => {
       await ctx.heartbeat()
-      const analysis = await studio.mix.runAnalysis(analysisId, orgId)
-      ctx.logger.info('studio.mix_analysis_settled', { analysis_id: analysisId, status: analysis.status })
+      await studio.processing.run({ jobId, orgId }, async () => {
+        const analysis = await studio.mix.runAnalysis(analysisId, orgId)
+        ctx.logger.info('studio.mix_analysis_settled', { analysis_id: analysisId, status: analysis.status })
+        return outcomeForAnalysis(analysis)
+      })
     })
 
     /**
@@ -249,20 +256,30 @@ async function main(): Promise<void> {
      * requires it. The discard lives in the same job as the measurement so a
      * reference cannot linger in storage because a later step never ran.
      */
-    worker.register<{ analysisId: string; referenceId: string; orgId: string }>(
+    worker.register<{ analysisId: string; referenceId: string; orgId: string; jobId?: string }>(
       JOB_TYPES.studioAnalyzeReference,
-      async ({ analysisId, referenceId, orgId }, ctx) => {
+      async ({ analysisId, referenceId, orgId, jobId }, ctx) => {
         await ctx.heartbeat()
-        await studio.mix.runReferenceAnalysis(analysisId, referenceId, orgId)
-        ctx.logger.info('studio.reference_settled', { analysis_id: analysisId, reference_id: referenceId })
+        await studio.processing.run({ jobId, orgId }, async () => {
+          await studio.mix.runReferenceAnalysis(analysisId, referenceId, orgId)
+          const analysis = await studio.repos.analyses.get(orgId, analysisId)
+          ctx.logger.info('studio.reference_settled', { analysis_id: analysisId, reference_id: referenceId })
+          return outcomeForAnalysis(analysis)
+        })
       },
     )
 
-    worker.register<{ renditionId: string; orgId: string; userId: string }>(JOB_TYPES.studioRenderMaster, async ({ renditionId, orgId, userId }, ctx) => {
-      await ctx.heartbeat()
-      const rendition = await studio.master.renderRendition(renditionId, orgId, userId)
-      ctx.logger.info('studio.master_settled', { rendition_id: renditionId, status: rendition.status, placeholder: rendition.placeholder })
-    })
+    worker.register<{ renditionId: string; orgId: string; userId: string; jobId?: string }>(
+      JOB_TYPES.studioRenderMaster,
+      async ({ renditionId, orgId, userId, jobId }, ctx) => {
+        await ctx.heartbeat()
+        await studio.processing.run({ jobId, orgId }, async () => {
+          const rendition = await studio.master.renderRendition(renditionId, orgId, userId)
+          ctx.logger.info('studio.master_settled', { rendition_id: renditionId, status: rendition.status, placeholder: rendition.placeholder })
+          return outcomeForRendition(rendition)
+        })
+      },
+    )
 
     /**
      * Analyses a rendered master and computes the gain that makes its A/B fair.
@@ -271,14 +288,17 @@ async function main(): Promise<void> {
      * the comparison honest, and it must still happen if the render job's
      * follow-up work were ever to change.
      */
-    worker.register<{ analysisId: string; renditionId: string; orgId: string }>(
+    worker.register<{ analysisId: string; renditionId: string; orgId: string; jobId?: string }>(
       JOB_TYPES.studioAnalyzeRendition,
-      async ({ analysisId, renditionId, orgId }, ctx) => {
+      async ({ analysisId, renditionId, orgId, jobId }, ctx) => {
         await ctx.heartbeat()
-        await studio.mix.runAnalysis(analysisId, orgId)
-        await studio.master.settleRenditionAnalysis(analysisId, renditionId, orgId)
-        const rendition = await studio.repos.renditions.get(orgId, renditionId)
-        ctx.logger.info('studio.master_analyzed', { rendition_id: renditionId, match_gain_db: rendition.matchGainDb })
+        await studio.processing.run({ jobId, orgId }, async () => {
+          const analysis = await studio.mix.runAnalysis(analysisId, orgId)
+          await studio.master.settleRenditionAnalysis(analysisId, renditionId, orgId)
+          const rendition = await studio.repos.renditions.get(orgId, renditionId)
+          ctx.logger.info('studio.master_analyzed', { rendition_id: renditionId, match_gain_db: rendition.matchGainDb })
+          return outcomeForAnalysis(analysis)
+        })
       },
     )
 

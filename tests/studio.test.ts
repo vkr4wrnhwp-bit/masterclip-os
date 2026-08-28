@@ -8,7 +8,7 @@ import { LocalStorage } from '@masterclip/asset-storage'
 import { loadConfig, silentLogger } from '@masterclip/shared'
 import { createRuntime, type Runtime } from '@masterclip/runtime'
 import { FLAGSHIP_STUDIO_CAPABILITIES, PARTNER_STUDIO_CAPABILITIES } from '@masterclip/studio-domain'
-import { seedStudioDemo, STUDIO_DEMO_TITLE, type Actor } from '@masterclip/studio-engine'
+import { outcomeForAnalysis, outcomeForRendition, seedStudioDemo, STUDIO_DEMO_TITLE, type Actor } from '@masterclip/studio-engine'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
 import { CSRF_COOKIE, CSRF_HEADER } from '../apps/api/src/security/csrf.js'
 
@@ -835,5 +835,178 @@ describe('demo seed', () => {
     // Idempotent: seeding twice finds the demo rather than duplicating it.
     const again = await seedStudioDemo(runtime.studio, { orgId: owner.orgId, userId: owner.userId, email: owner.email, entitlements: runtime.entitlements })
     expect(again.created).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The processing ledger.
+ *
+ * One row per unit of asynchronous work. The property that matters most is the
+ * billing one: work that produced nothing usable must never convert a credit,
+ * on any path out — including the one where the work throws.
+ */
+describe('processing ledger', () => {
+  it('opens a job when a version is uploaded, and names the performer', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId, analysisId } = await seedProject(owner)
+
+    const job = await runtime.studio.repos.processing.forSubject(owner.orgId, 'mix_analysis', analysisId)
+    expect(job).not.toBeNull()
+    expect(job!.jobType).toBe('mix_analysis')
+    expect(job!.studioProjectId).toBe(projectId)
+    // Work this deployment performed itself is attributed to itself. A blank
+    // provider would let a local result read as a hosted service.
+    expect(job!.provider).toBe('street-banker')
+    expect(job!.adapter).toBe('local-dsp')
+    expect(job!.billable).toBe(false)
+    expect(job!.creditState).toBe('not_billable')
+    // Nothing that could identify the audio goes into the ledger request.
+    expect(JSON.stringify(job!.request)).not.toMatch(/storage|http|signature/i)
+  })
+
+  it('runs work claimed under the same key exactly once', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const claim = () =>
+      runtime.studio.repos.processing.claim({
+        orgId: owner.orgId,
+        studioProjectId: projectId,
+        jobType: 'mix_analysis',
+        subjectType: 'mix_analysis',
+        subjectId: 'stma_subject',
+        provider: 'street-banker',
+        adapter: 'local-dsp',
+        idempotencyKey: 'redelivered-message',
+        createdBy: owner.userId,
+      })
+
+    const first = await claim()
+    const second = await claim()
+    expect(second.id).toBe(first.id)
+
+    const all = await runtime.studio.repos.processing.list(owner.orgId, projectId, 200)
+    expect(all.filter((job) => job.idempotencyKey === 'redelivered-message')).toHaveLength(1)
+  })
+
+  it('consumes a credit only when the work produced something usable', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const billable = async (key: string) =>
+      runtime.studio.repos.processing.claim({
+        orgId: owner.orgId,
+        studioProjectId: projectId,
+        jobType: 'master_render',
+        subjectType: 'master_rendition',
+        subjectId: key,
+        provider: 'some-vendor',
+        adapter: 'vendor-master-v1',
+        idempotencyKey: key,
+        billable: true,
+        creditUnits: 1,
+        createdBy: owner.userId,
+      })
+
+    const good = await runtime.studio.repos.processing.start(owner.orgId, (await billable('good')).id)
+    expect(good.creditState).toBe('reserved')
+    const settledGood = await runtime.studio.repos.processing.settle(owner.orgId, good.id, { status: 'succeeded', usableResult: true })
+    expect(settledGood.creditState).toBe('consumed')
+
+    // Failure, and the two shapes of "finished but useless".
+    for (const [key, outcome] of [
+      ['failed', { status: 'failed' as const, usableResult: false }],
+      ['unsupported', { status: 'unsupported' as const, usableResult: false }],
+      ['empty', { status: 'succeeded' as const, usableResult: false }],
+    ] as const) {
+      const job = await runtime.studio.repos.processing.start(owner.orgId, (await billable(key)).id)
+      const settled = await runtime.studio.repos.processing.settle(owner.orgId, job.id, outcome)
+      expect(settled.creditState).toBe('released')
+    }
+  })
+
+  it('releases the credit when the work throws, and lets the error reach the queue', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId } = await seedProject(owner)
+
+    const job = await runtime.studio.repos.processing.claim({
+      orgId: owner.orgId,
+      studioProjectId: projectId,
+      jobType: 'stem_separation',
+      subjectType: 'studio_version',
+      subjectId: 'stv_throwing',
+      provider: 'some-vendor',
+      adapter: 'vendor-stems-v1',
+      idempotencyKey: 'throwing-work',
+      billable: true,
+      creditUnits: 1,
+      createdBy: owner.userId,
+    })
+
+    await expect(
+      runtime.studio.processing.run({ jobId: job.id, orgId: owner.orgId }, async () => {
+        throw new Error('the provider hung up')
+      }),
+    ).rejects.toThrow('the provider hung up')
+
+    const settled = await runtime.studio.repos.processing.get(owner.orgId, job.id)
+    expect(settled.status).toBe('failed')
+    expect(settled.creditState).toBe('released')
+    expect(settled.errorMessage).toBe('the provider hung up')
+    expect(settled.attempt).toBe(1)
+  })
+
+  it('does not charge for a placeholder master — the customer got their own audio back', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { projectId, versionId } = await seedProject(owner)
+
+    const requested = await call(owner, 'POST', `/api/studio/projects/${projectId}/master`, { versionId, direction: 'warm' })
+    const renditionId = requested.json().rendition.id
+    const rendition = await runtime.studio.master.renderRendition(renditionId, owner.orgId, owner.userId)
+    // The test runtime renders with the passthrough, which is the case this is
+    // about: a completed job whose output is the unprocessed source.
+    expect(rendition.placeholder).toBe(true)
+
+    const outcome = outcomeForRendition(rendition)
+    expect(outcome.usableResult).toBe(false)
+    expect(outcome.status).toBe('unsupported')
+  })
+
+  it('settles the ledger from the analysis it ran, without inventing a cost', async () => {
+    const owner = await signup('owner@example.com', 'Flagship')
+    await grantStudio(owner.orgId)
+    const { analysisId } = await seedProject(owner)
+
+    const analysis = await runtime.studio.repos.analyses.get(owner.orgId, analysisId)
+    const job = await runtime.studio.repos.processing.forSubject(owner.orgId, 'mix_analysis', analysisId)
+    const settled = await runtime.studio.processing.run({ jobId: job!.id, orgId: owner.orgId }, async () => outcomeForAnalysis(analysis))
+
+    expect(settled!.status).toBe('succeeded')
+    // Null, not zero. A provider that reported no cost has not reported a cost
+    // of nothing, and an accounting column must not blur the two.
+    expect(settled!.costMicros).toBeNull()
+    expect(settled!.finishedAt).not.toBeNull()
+  })
+
+  it('serves the ledger for a project, and never for another organization’s', async () => {
+    const flagship = await signup('flagship@example.com', 'Flagship')
+    await grantStudio(flagship.orgId)
+    const { projectId } = await seedProject(flagship)
+
+    const mine = await call(flagship, 'GET', `/api/studio/projects/${projectId}/jobs`)
+    expect(mine.statusCode).toBe(200)
+    expect(mine.json().jobs.length).toBeGreaterThan(0)
+
+    const partner = await provisionOrg('partner@example.com', 'Partner')
+    await grantStudio(partner.orgId, PARTNER_STUDIO_CAPABILITIES)
+    const theirs = await call(partner, 'GET', `/api/studio/projects/${projectId}/jobs`)
+    expect(theirs.statusCode).toBe(404)
   })
 })

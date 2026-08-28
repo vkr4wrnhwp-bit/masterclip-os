@@ -24,6 +24,7 @@ import {
   type StudioReferenceRecord,
 } from '@masterclip/studio-domain'
 import { actorLabel, type Actor, type StudioDeps } from './deps.js'
+import { LOCAL_ADAPTER, LOCAL_PROVIDER } from './processing.js'
 
 /**
  * Mix Station.
@@ -306,10 +307,26 @@ export class StudioMixService {
     })
     await this.deps.repos.references.setAnalysis(input.actor.orgId, reference.id, analysis.id)
 
+    const job = await this.deps.repos.processing.claim({
+      orgId: input.actor.orgId,
+      studioProjectId: project.id,
+      jobType: 'reference_analysis',
+      subjectType: 'mix_analysis',
+      subjectId: analysis.id,
+      provider: LOCAL_PROVIDER,
+      adapter: LOCAL_ADAPTER,
+      idempotencyKey: `reference_analysis:${analysis.id}`,
+      // The reference's title and artist are deliberately absent from the
+      // ledger request: it is a record of work performed, not a second copy of
+      // what the customer is listening to.
+      request: { analyzer_set: this.deps.config.STUDIO_ANALYZER_SET ?? '1.0.0', rights_basis: input.rightsBasis },
+      createdBy: input.actor.userId,
+    })
+
     await this.deps.queue.enqueue({
       queue: QUEUES.studio,
       type: JOB_TYPES.studioAnalyzeReference,
-      payload: { analysisId: analysis.id, referenceId: reference.id, orgId: input.actor.orgId },
+      payload: { analysisId: analysis.id, referenceId: reference.id, orgId: input.actor.orgId, jobId: job.id },
       dedupeKey: `studio.reference:${analysis.id}`,
     })
 

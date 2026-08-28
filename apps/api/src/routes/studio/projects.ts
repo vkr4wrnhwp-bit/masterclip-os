@@ -144,7 +144,24 @@ export async function registerStudioProjectRoutes(app: FastifyInstance, runtime:
       permissions: await studio.access.projectPermissionsFor(actor, id),
       approvals: await studio.collaboration.approvalState(actor, id),
       activity: await studio.repos.activity.list(actor.orgId, id, 50),
+      // What is queued or running right now, so a screen with no numbers on it
+      // can say "still measuring" rather than looking broken.
+      processing: await studio.processing.active(actor, id),
     }
+  })
+
+  /**
+   * The processing ledger for a project.
+   *
+   * Every unit of asynchronous work with the provider that performed it, what
+   * it cost, how many attempts it took and how it ended. This is the screen a
+   * support question is answered from.
+   */
+  app.get('/api/studio/projects/:id/jobs', async (request) => {
+    const { id } = request.params as { id: string }
+    const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'view' } })
+    const query = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).parse(request.query ?? {})
+    return { jobs: await studio.processing.list(actor, id, query.limit ?? 50) }
   })
 
   app.patch('/api/studio/projects/:id', async (request) => {

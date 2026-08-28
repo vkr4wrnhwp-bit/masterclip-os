@@ -51,7 +51,40 @@ Two more worth knowing:
 
 ## Jobs
 
-All on the `studio` queue.
+All on the `studio` queue, and all recorded in `studio_processing_jobs` — one
+row per unit of work, whoever performed it.
+
+| Column | Answers |
+|---|---|
+| `provider` / `adapter` | Who did the work. Local work is named `street-banker` / `local-dsp`, never left blank |
+| `idempotency_key` | Unique per org. A redelivered message resolves to the job that exists rather than doing the work twice |
+| `attempt` / `max_attempts` | How many times this has been tried |
+| `cost_micros` | What the provider reported. **Null means no cost was reported** — not zero |
+| `credit_state` | `not_billable` → `reserved` → `consumed` or `released` |
+| `error_code` / `error_message` | Why it ended that way |
+
+`GET /api/studio/projects/:id/jobs` is the support view.
+
+### The billing rule
+
+A reservation converts to `consumed` in exactly one place: a job that both
+succeeded **and** produced a usable result. Every other terminal state releases
+it, including the two that look like success and are not:
+
+- A rendition that came back `placeholder` — a completed render whose output is
+  the customer's own unprocessed mix. Charging for that would be charging
+  somebody for their own audio.
+- Any path where the work throws. That is the one a caller would forget, so the
+  release happens in `StudioProcessingService.run` before the exception
+  continues on to the queue.
+
+Nothing is billable today: `billable` is `false` everywhere, because no payment
+integration exists and marking work billable against a balance nobody holds
+would be an invented charge. The column is there so a paid adapter can set it
+truthfully.
+
+`jobId` is optional in every queue payload. A message queued before this ledger
+existed still runs — unrecorded — rather than being stranded across the deploy.
 
 | Job | Does | Settles |
 |---|---|---|

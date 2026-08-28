@@ -9,6 +9,7 @@ import {
   type StudioVersionType,
 } from '@masterclip/studio-domain'
 import { actorLabel, STUDIO_ANALYSIS_VERSION, type Actor, type StudioDeps } from './deps.js'
+import { LOCAL_ADAPTER, LOCAL_PROVIDER } from './processing.js'
 
 /**
  * Project lifecycle: create, attach audio, version, advance the stage.
@@ -268,15 +269,36 @@ export class StudioProjectService {
       createdBy: actor.userId,
     })
 
+    // The ledger entry is written before the message is queued. Queuing first
+    // would leave a window in which a worker could pick the message up and find
+    // no job to settle.
+    const job = await this.deps.repos.processing.claim({
+      orgId: actor.orgId,
+      studioProjectId: projectId,
+      studioVersionId: versionId,
+      jobType: 'mix_analysis',
+      subjectType: 'mix_analysis',
+      subjectId: analysis.id,
+      provider: LOCAL_PROVIDER,
+      adapter: LOCAL_ADAPTER,
+      // Keyed on the analysis row, which is what the job settles. A re-analysis
+      // is a new row and deserves its own ledger entry — the checksum is
+      // deliberately not in the key, because "measure these bytes again" is a
+      // request a user can legitimately make and the ledger should show both.
+      idempotencyKey: `mix_analysis:${analysis.id}`,
+      request: { analyzer_set: STUDIO_ANALYSIS_VERSION, input_kind: 'stereo_mix', source_checksum: checksum },
+      createdBy: actor.userId,
+    })
+
     await this.deps.queue.enqueue({
       queue: QUEUES.studio,
       type: JOB_TYPES.studioAnalyzeMix,
-      payload: { analysisId: analysis.id, orgId: actor.orgId, userId: actor.userId },
+      payload: { analysisId: analysis.id, orgId: actor.orgId, userId: actor.userId, jobId: job.id },
       // Two analyses of the same bytes for the same version would produce the
       // same answer at twice the cost.
       dedupeKey: `studio.analyze:${analysis.id}`,
     })
-    this.logger.info('studio.analysis_queued', { analysis_id: analysis.id, project_id: projectId, version_id: versionId })
+    this.logger.info('studio.analysis_queued', { analysis_id: analysis.id, job_id: job.id, project_id: projectId, version_id: versionId })
     return analysis.id
   }
 

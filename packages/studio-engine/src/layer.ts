@@ -14,6 +14,7 @@ import {
   MixAnalysisRepo,
   MixIssueRepo,
   OpportunityRepo,
+  ProcessingJobRepo,
   RackRepo,
   RecordPassportRepo,
   ReleaseMetadataRepo,
@@ -47,6 +48,7 @@ import { StudioPassportService } from './passport.js'
 import { StudioRightsService } from './rights.js'
 import { StudioRackService } from './rack.js'
 import { StudioMarketService } from './market.js'
+import { StudioProcessingService } from './processing.js'
 import type { StudioDeps, StudioProviders, StudioRepos } from './deps.js'
 
 /**
@@ -73,6 +75,7 @@ export interface StudioLayer {
   rights: StudioRightsService
   racks: StudioRackService
   market: StudioMarketService
+  processing: StudioProcessingService
 }
 
 export interface CreateStudioLayerOptions {
@@ -114,6 +117,7 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
     racks: new RackRepo(opts.db, clock),
     analyses: new MixAnalysisRepo(opts.db, clock),
     issues: new MixIssueRepo(opts.db, clock),
+    processing: new ProcessingJobRepo(opts.db, clock),
     references: new StudioReferenceRepo(opts.db, clock),
     renditions: new MasterRenditionRepo(opts.db, clock),
     albums: new StudioAlbumRepo(opts.db, clock),
@@ -169,5 +173,6 @@ export function createStudioLayer(opts: CreateStudioLayerOptions): StudioLayer {
     rights: new StudioRightsService(deps),
     racks: new StudioRackService(deps),
     market: new StudioMarketService(deps),
+    processing: new StudioProcessingService(deps),
   }
 }

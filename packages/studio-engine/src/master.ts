@@ -14,6 +14,7 @@ import {
 import type { MasterRenditionRecord, StudioAlbumRecord } from '@masterclip/studio-domain'
 import { actorLabel, STUDIO_ANALYSIS_VERSION, type Actor, type StudioDeps } from './deps.js'
 import { toMixMetrics } from './mix.js'
+import { LOCAL_ADAPTER, LOCAL_PROVIDER, LOCAL_RENDER_ADAPTER } from './processing.js'
 
 /**
  * Master Station.
@@ -86,10 +87,27 @@ export class StudioMasterService {
       createdBy: input.actor.userId,
     })
 
+    const job = await this.deps.repos.processing.claim({
+      orgId: input.actor.orgId,
+      studioProjectId: input.projectId,
+      studioVersionId: version.id,
+      jobType: 'master_render',
+      subjectType: 'master_rendition',
+      subjectId: rendition.id,
+      provider: LOCAL_PROVIDER,
+      // The adapter recorded here is the one requested. Which one actually ran
+      // is written back on settle, because the resilient renderer decides that
+      // at render time and a fallback must not be invisible.
+      adapter: LOCAL_RENDER_ADAPTER,
+      idempotencyKey: `master_render:${rendition.id}`,
+      request: { direction: input.direction, target_lufs: plan.targetLufs, target_true_peak: plan.targetTruePeakDbtp },
+      createdBy: input.actor.userId,
+    })
+
     await this.deps.queue.enqueue({
       queue: QUEUES.studio,
       type: JOB_TYPES.studioRenderMaster,
-      payload: { renditionId: rendition.id, orgId: input.actor.orgId, userId: input.actor.userId },
+      payload: { renditionId: rendition.id, orgId: input.actor.orgId, userId: input.actor.userId, jobId: job.id },
       dedupeKey: `studio.master:${rendition.id}`,
     })
 
@@ -197,10 +215,23 @@ export class StudioMasterService {
       analyzerSetVersion: STUDIO_ANALYSIS_VERSION,
       createdBy: userId,
     })
+    const analysisJob = await this.deps.repos.processing.claim({
+      orgId,
+      studioProjectId: rendition.studioProjectId,
+      studioVersionId: rendition.sourceVersionId,
+      jobType: 'rendition_analysis',
+      subjectType: 'mix_analysis',
+      subjectId: outputAnalysis.id,
+      provider: LOCAL_PROVIDER,
+      adapter: LOCAL_ADAPTER,
+      idempotencyKey: `rendition_analysis:${outputAnalysis.id}`,
+      request: { rendition_id: renditionId, analyzer_set: STUDIO_ANALYSIS_VERSION },
+      createdBy: userId,
+    })
     await this.deps.queue.enqueue({
       queue: QUEUES.studio,
       type: JOB_TYPES.studioAnalyzeRendition,
-      payload: { analysisId: outputAnalysis.id, renditionId, orgId },
+      payload: { analysisId: outputAnalysis.id, renditionId, orgId, jobId: analysisJob.id },
       dedupeKey: `studio.master_analyze:${outputAnalysis.id}`,
     })
     await this.deps.repos.renditions.setOutputAnalysis(orgId, renditionId, outputAnalysis.id, null)

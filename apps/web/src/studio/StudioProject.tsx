@@ -71,6 +71,18 @@ export function StudioProject({ projectId, tab, at }: { projectId: string; tab: 
 // session
 // ---------------------------------------------------------------------------
 
+/** Job types in the words a person would use for them. */
+const JOB_LABELS: Record<string, string> = {
+  mix_analysis: 'measuring the mix',
+  reference_analysis: 'measuring a reference',
+  master_render: 'rendering a master',
+  rendition_analysis: 'measuring the master',
+  waveform_peaks: 'drawing the waveform',
+  playback_proxy: 'preparing playback',
+  stem_separation: 'separating stems',
+  album_assessment: 'assessing the album',
+}
+
 function Session({
   data,
   projectId,
@@ -213,6 +225,25 @@ function Session({
           <AskTheRoom projectId={projectId} onSeek={seek} />
         </Card>
       </div>
+
+      {/* What is running right now. Without this, a screen waiting on an
+          analysis is indistinguishable from a screen that failed to load one. */}
+      {data.processing.length > 0 && (
+        <Card title="In progress">
+          <ul className="activity">
+            {data.processing.map((job) => (
+              <li key={job.id}>
+                <Badge tone={job.status === 'running' ? 'info' : undefined}>{job.status}</Badge> {JOB_LABELS[job.jobType] ?? job.jobType.replace(/_/g, ' ')}
+                <span className="faint">
+                  {' '}
+                  — {job.provider}/{job.adapter}
+                  {job.attempt > 1 ? `, attempt ${job.attempt} of ${job.maxAttempts}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card title="Activity">
         {data.activity.length === 0 ? (

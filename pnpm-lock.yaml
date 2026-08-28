@@ -387,6 +387,9 @@ importers:
       '@masterclip/song-lab-engine':
         specifier: workspace:*
         version: link:../../packages/song-lab-engine
+      '@masterclip/studio-engine':
+        specifier: workspace:*
+        version: link:../../packages/studio-engine
 
   packages/agents:
     dependencies:

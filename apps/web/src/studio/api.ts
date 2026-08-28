@@ -289,6 +289,21 @@ export interface SessionPayload {
   permissions: string[]
   approvals: ApprovalState
   activity: Array<{ id: string; actorLabel: string; action: string; detail: string; createdAt: string }>
+  processing: ProcessingJob[]
+}
+
+export interface ProcessingJob {
+  id: string
+  jobType: string
+  status: string
+  provider: string
+  adapter: string
+  attempt: number
+  maxAttempts: number
+  creditState: string
+  errorMessage: string | null
+  durationMs: number | null
+  createdAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +328,7 @@ export const studioApi = {
     post<{ version: StudioVersion }>(`/api/studio/projects/${id}/import`, body),
   importable: () => get<{ assets: Array<{ id: string; fileName: string; projectType: string; durationMs: number | null }> }>('/api/studio/importable'),
   reanalyze: (id: string, versionId?: string) => post<{ analysisId: string }>(`/api/studio/projects/${id}/analyze`, versionId ? { versionId } : {}),
+  jobs: (id: string, limit?: number) => get<{ jobs: ProcessingJob[] }>(`/api/studio/projects/${id}/jobs${limit ? `?limit=${limit}` : ''}`),
 
   notes: (id: string) => get<{ notes: StudioNote[] }>(`/api/studio/projects/${id}/notes`),
   addNote: (id: string, body: { kind?: string; timestampMs?: number | null; category: string; body: string; studioVersionId?: string }) =>

@@ -155,6 +155,7 @@ export type IdPrefix =
   | 'stso' // marketplace service order
   | 'stopp' // opportunity
   | 'stask' // Ask the Room exchange
+  | 'stjob' // studio processing job
 
 export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   return `${prefix}_${encodeTime(now)}${encodeBase32(randomBytes(10))}`
