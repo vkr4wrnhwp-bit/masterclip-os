@@ -58,6 +58,32 @@ export interface PlanResult {
  * {@link RenderService.submitRender}, and that method cannot reach the provider
  * without passing the cost controller first.
  */
+/**
+ * Whether requests to this provider are free, and therefore exempt from the
+ * spend rails.
+ *
+ * This is a fact about the PROVIDER, not about the deployment posture, and the
+ * distinction is the whole safety property. `sandbox: true` is the flag the
+ * cost controller reads to decide **not** to enforce: it skips the live-spend
+ * cap, the human-approval gate, the unknown-price denial and the zero-price
+ * denial (packages/cost-engine/src/controller.ts:104,114,128,198,219).
+ *
+ * This function previously also returned true whenever `MASTERCLIP_MODE=sandbox`.
+ * That inverted every one of those rails in the default, documented-as-safe
+ * posture: a real fal/Google/Runway request was stamped `sandbox: true`, so
+ * `mode.sandbox_required` could never fire, the HTTP call went out, the money
+ * was spent, and the charge was written to the ledger as `sandbox = 1` — where
+ * the cap would never count it again either. Sandbox mode disabled the guard
+ * rails instead of refusing the request.
+ *
+ * Keep this a pure function of the provider id. If a deployment should refuse
+ * billable work, that is `MASTERCLIP_MODE` reaching the controller with
+ * `sandbox: false` — which is exactly what `mode.sandbox_required` is for.
+ */
+export function isFreeProvider(providerId: string): boolean {
+  return providerId === 'mock'
+}
+
 export class RenderService {
   constructor(private readonly rt: Runtime) {}
 
@@ -244,7 +270,7 @@ export class RenderService {
   }
 
   private isSandboxProvider(providerId: string): boolean {
-    return providerId === 'mock' || this.rt.config.isSandbox
+    return isFreeProvider(providerId)
   }
 
   /** Builds a provider-agnostic request, resolving reference assets to inputs. */

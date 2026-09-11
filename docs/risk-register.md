@@ -7,7 +7,7 @@ Ordered by expected cost of being wrong.
 | 1 | **Google's "per 1 count" pricing unit is per-clip, not per-second** | low-medium | 8× cost error either way | quotes marked `estimated`; warning surfaced in the UI and in every quote's `raw`; global live-spend cap bounds it. Re-checked 2026-08-18 against Vertex's published card, now reachable: prices confirmed to the cent, and "count" shown to be Google's generic unit word (used for images, video inputs, and 1,000-count tokens), which argues against the per-clip reading | **open** — narrowed, not settled; one cheap live render reads the charge and ends it |
 | 2 | **Provider API drift** (renamed models, changed fields) | high | submissions fail after a shot is planned | capabilities and prices carry `retrievedAt` + `sourceUrl`; live catalogues preferred; contract battery per adapter; static fallbacks labelled `source: 'static'` | ongoing — re-run `masterclip providers contract` on a schedule |
 | 3 | **No live provider call has ever been made from this build** | certain | adapters are spec-correct but unproven on the wire | every host was egress-blocked during development; adapters written from vendors' own client source, not memory | **open** — first live run needs a sandbox key and `masterclip providers contract --submit` |
-| 4 | **A routing bug spends at scale** | low | unbounded | sandbox default; global `LIVE_SPEND_CAP_USD`; batch-aware authorization; re-authorization at submit; attempt caps; contract battery gated on the cost controller. An adversarial review on 2026-08-18 found the caps were largely inert and fixed it: `sandbox` is now a provider fact rather than the deployment posture (it previously exempted every real provider from every cap), completions with no provider-reported cost are charged at estimate rather than not at all, in-flight jobs hold a reservation, and a zero or negative price is refused | low |
+| 4 | **A routing bug spends at scale** | low | unbounded | sandbox default; global `LIVE_SPEND_CAP_USD`; batch-aware authorization; re-authorization at submit; attempt caps; contract battery gated on the cost controller. An adversarial review on 2026-08-18 found the caps were largely inert. **Its most important finding was written up as fixed and was not fixed**: `isSandboxProvider()` still ORed the deployment posture into a per-provider fact until 2026-08-28, so in the default `MASTERCLIP_MODE=sandbox` every real-provider request was stamped `sandbox: true` — the exact flag the controller reads to skip the live-spend cap, the approval gate and both price denials. Genuinely fixed on 2026-08-28, with `isFreeProvider()` exported and mutation-tested so a re-introduction fails CI. The rest of that review's findings were real: completions with no provider-reported cost are charged at estimate rather than not at all, in-flight jobs hold a reservation, and a zero or negative price is refused | low |
 | 5 | **Acceptance-rate learning overfits a tiny sample** | medium | bad routing that looks data-driven | Beta prior with 8 pseudo-observations; confidence reported on every decision; UI says when a ranking rests on priors | low |
 | 6 | **Identity misuse** — generating a real person without consent | low | serious | consent recorded at upload; `requireAuthorizedForIdentity` refuses unless explicitly authorized and unexpired; rights changes audited | low |
 | 7 | **A vision-QC false negative passes a bad clip** | medium | wasted finishing work | auto-rejection restricted to *demonstrated* technical failures; low confidence routes to a human; nothing auto-promotes | low |
@@ -29,6 +29,40 @@ Ordered by expected cost of being wrong.
 | 23 | **The whole show lives on one Render disk** | low | a disk loss takes the database and every cached asset | the performance package exists precisely so a show survives the cloud being gone — a cached device plays without the server at all. And `/var/data` is *not* unbacked, as this row claimed for nine days: Render snapshots every persistent disk automatically every 24 hours, encrypted at rest, retained at least seven days, on every workspace plan. Nothing had to be switched on and nothing was | **bounded, not closed** — restore is whole-disk and all-or-nothing (there is no recovering one file), and damage unnoticed for a week is past recovery. S3 storage would fix the granularity; nothing bounds the seven days |
 
 ---
+
+## The safety claim that was not true (2026-08-28)
+
+A seven-dimension audit of the deployed tree found that the single most
+load-bearing claim in this document was false. `isSandboxProvider()` read
+
+    return providerId === 'mock' || this.rt.config.isSandbox
+
+so in the default posture — the one `render.yaml` deploys, since it never sets
+`MASTERCLIP_MODE` — every real-provider request carried `sandbox: true`. That is
+the flag `CostController.authorize()` reads to decide **not** to enforce, and it
+gates five separate denials: the unknown-price denial, the zero-price denial,
+`mode.sandbox_required` itself, the live-spend cap, and the human-approval gate.
+Sandbox mode therefore disabled the guard rails rather than refusing the work: a
+provider key added to the deployment would have spent real money with every rail
+off, and the charge would have been ledgered `sandbox = 1` so the cap never saw
+it afterwards either.
+
+Two things made it survive a review that was looking directly at it:
+
+- The predicate was `private`, so nothing could test it.
+- cost-engine's `blocks every billable submission while the mode is sandbox`
+  passes `sandbox: false` to the controller by hand. It proves the gate works;
+  it never proves anything reaches the gate. A test can be green, honest about
+  its own scope, and still guard nothing.
+
+Fixed by making it a pure fact about the provider, exported as `isFreeProvider()`
+and covered by `packages/runtime/test/sandbox-posture.test.ts`, which asserts the
+classification for all seven paid providers under both modes *and* that a request
+so classified is actually refused. Mutation-tested: restoring the original
+expression fails three of its four cases.
+
+**The lesson worth keeping**: this document asserted the fix for ten days. A risk
+register is only as good as the last time someone checked it against the code.
 
 ## Deployed 2026-08-18
 
@@ -64,7 +98,7 @@ candidates survived.** The four that mattered most, all fixed:
 
 | Defect | Why it mattered |
 |---|---|
-| `isSandboxProvider()` returned true for every provider whenever `MASTERCLIP_MODE=sandbox` | the default, documented-as-safe posture marked real fal/Google/Runway requests `sandbox: true`, which skipped the live-spend cap, human approval and attempt caps — and wrote ledger rows `sandbox = 1` so they never counted later either. A verifier reproduced 30 real submissions with the cap never once consulted |
+| `isSandboxProvider()` returned true for every provider whenever `MASTERCLIP_MODE=sandbox` — **documented as fixed on 2026-08-18, actually fixed on 2026-08-28** | the default, documented-as-safe posture marked real fal/Google/Runway requests `sandbox: true`, which skipped the live-spend cap, human approval and attempt caps — and wrote ledger rows `sandbox = 1` so they never counted later either. A verifier reproduced 30 real submissions with the cap never once consulted |
 | Five of seven adapters return `actualMicros: null`, and no charge was recorded without one | every budget, including the global cap, read $0 for ever. Unpriced completions are now charged at estimate and labelled, because a cap fed slightly wrong numbers refuses too early while a cap fed nothing never refuses at all |
 | The live cap counted only settled charges | N concurrent submissions each authorized against a balance none had moved; in-flight jobs now hold a reservation from `authorizing` through `downloading` |
 | A $0 or negative quote satisfied every cap | zero passes every budget by arithmetic and slides under the approval threshold; a billable request now needs a positive price, and `unknown` confidence is the honest way to report no price |
