@@ -306,7 +306,8 @@ async function cmdProjectCreate(ctx: Ctx, runtime: Runtime): Promise<number> {
   const name = String(ctx.flags.name ?? '')
   const orgId = String(ctx.flags.org ?? '')
   if (!name) return usage(ctx, 'masterclip project create --name "<name>" [--org <orgId>]')
-  const resolvedOrg = orgId || (await runtime.db.get<{ id: string }>('SELECT id FROM orgs ORDER BY created_at ASC LIMIT 1'))?.id
+  // Defaults to the house organization, never an artist's own workspace.
+  const resolvedOrg = orgId || (await runtime.auth.houseOrgId())
   if (!resolvedOrg) return usage(ctx, 'no organization exists yet — sign up through the web app first')
 
   const project = await runtime.projects.create({ orgId: String(resolvedOrg), name, createdBy: 'cli' })

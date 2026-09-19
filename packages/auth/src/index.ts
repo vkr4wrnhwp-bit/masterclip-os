@@ -1,6 +1,6 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
-import { type Db, insertRow, toStr } from '@masterclip/database'
+import { type Db, insertRow, toStr, toStrOrNull } from '@masterclip/database'
 import { AppError, forbidden, newId, randomToken, sha256Hex, systemClock, unauthorized, type Clock } from '@masterclip/shared'
 
 const scrypt = promisify(scryptCb) as (p: string | Buffer, s: string | Buffer, k: number) => Promise<Buffer>
@@ -113,6 +113,133 @@ export class AuthService {
     }
     if (!row || row.disabled === 1) throw forbidden('account disabled')
     return { ...(await this.startSession(row)), created }
+  }
+
+  /**
+   * The organization nobody's Street Banker workspace lives in: the one the
+   * seed or the first signup founded, where the owner's data is. Null until
+   * one exists.
+   */
+  async houseOrgId(db: Db = this.db): Promise<string | null> {
+    const row = await db.get('SELECT id FROM orgs WHERE street_banker_identity IS NULL ORDER BY created_at, id LIMIT 1')
+    return row ? toStr(row.id) : null
+  }
+
+  /**
+   * Where a Street Banker arrival works, and as what. Call before
+   * sessionForVouchedEmail and pass the answer on.
+   *
+   * Every artist gets an organization of their own, keyed by `identity`
+   * (workspaceKey in suite-sso.ts), and owns it, so nobody lists or opens
+   * another artist's projects. `owner` (the email is in OWNER_EMAILS) is the
+   * exception: owners land in the house organization.
+   *
+   * Motion used to put every arrival into the house organization as a member.
+   * Such an account moves into its own organization the next time it arrives,
+   * taking the projects it created. Projects carry no creator column, so the
+   * creator is the actor on the project's `project.created` audit entry, which
+   * the API writes for every project it creates. An owner or admin of the house
+   * organization is never moved: that is the operator's account. `moved` says
+   * what changed so the caller can record it.
+   */
+  async streetBankerWorkspace(input: {
+    identity: string
+    email: string
+    displayName: string
+    owner: boolean
+  }): Promise<{ orgId: string; orgRole: OrgRole; moved?: { fromOrgId: string; projectIds: string[] } }> {
+    const email = input.email.trim().toLowerCase()
+    return this.db.transaction(async (tx) => {
+      const row = await tx.get(
+        `SELECT u.id, u.org_id, u.org_role, o.street_banker_identity
+           FROM users u LEFT JOIN orgs o ON o.id = u.org_id
+          WHERE u.email = ?`,
+        [email],
+      )
+      const workspace = row ? toStrOrNull(row.street_banker_identity) : null
+      // A token without an id is keyed by email; once the same person arrives
+      // with their id, that workspace is theirs under either key.
+      const theirs = workspace !== null && (workspace === input.identity || workspace === `email:${email}`)
+      if (row && workspace !== null && !theirs) {
+        throw new AppError({
+          kind: 'conflict',
+          code: 'auth.workspace_taken',
+          message: 'this email already belongs to another Street Banker account in Motion',
+        })
+      }
+
+      if (input.owner) {
+        const house = (await this.houseOrgId(tx)) ?? (await this.insertOrg(tx, 'Street Banker', null))
+        if (!row) return { orgId: house, orgRole: 'owner' }
+        const orgId = toStr(row.org_id)
+        if (orgId === house) {
+          if (toStr(row.org_role) !== 'owner') await tx.run("UPDATE users SET org_role = 'owner' WHERE id = ?", [toStr(row.id)])
+          return { orgId: house, orgRole: 'owner' }
+        }
+        // Named an owner after arriving as an artist: back to the house, with
+        // what they made in their own workspace.
+        if (theirs) return { orgId: house, orgRole: 'owner', moved: await this.moveAccount(tx, toStr(row.id), orgId, house) }
+        return { orgId, orgRole: toStr(row.org_role) as OrgRole }
+      }
+
+      if (!row) return { orgId: await this.ensureWorkspace(tx, input.identity, input.displayName), orgRole: 'owner' }
+      const orgId = toStr(row.org_id)
+      if (theirs) {
+        if (workspace !== input.identity) await this.rekeyWorkspace(tx, orgId, input.identity)
+        return { orgId, orgRole: toStr(row.org_role) as OrgRole }
+      }
+      if (toStr(row.org_role) === 'member') {
+        const own = await this.ensureWorkspace(tx, input.identity, input.displayName)
+        return { orgId: own, orgRole: 'owner', moved: await this.moveAccount(tx, toStr(row.id), orgId, own) }
+      }
+      return { orgId, orgRole: toStr(row.org_role) as OrgRole }
+    })
+  }
+
+  private async insertOrg(db: Db, name: string, identity: string | null): Promise<string> {
+    const id = newId('org', this.clock.now())
+    await insertRow(db, 'orgs', { id, name, created_at: this.clock.isoNow(), street_banker_identity: identity })
+    return id
+  }
+
+  /** Finds or founds `identity`'s workspace. Safe when two first arrivals race. */
+  private async ensureWorkspace(db: Db, identity: string, name: string): Promise<string> {
+    const find = () => db.get('SELECT id FROM orgs WHERE street_banker_identity = ?', [identity])
+    const found = await find()
+    if (found) return toStr(found.id)
+    await db.run(
+      'INSERT INTO orgs (id, name, created_at, street_banker_identity) VALUES (?, ?, ?, ?) ON CONFLICT (street_banker_identity) DO NOTHING',
+      [newId('org', this.clock.now()), name, this.clock.isoNow(), identity],
+    )
+    return toStr((await find())!.id)
+  }
+
+  private async rekeyWorkspace(db: Db, orgId: string, identity: string): Promise<void> {
+    const clash = await db.get('SELECT id FROM orgs WHERE street_banker_identity = ?', [identity])
+    if (!clash) await db.run('UPDATE orgs SET street_banker_identity = ? WHERE id = ?', [identity, orgId])
+  }
+
+  /**
+   * Moves an account to `toOrgId` as its owner, with the projects it created in
+   * `fromOrgId`. A project whose name is already taken in the destination
+   * stays where it is rather than failing the arrival. Everything else hangs
+   * off the project id and follows it; the cost ledger and the audit trail are
+   * append-only and keep the organization each entry was written under.
+   */
+  private async moveAccount(db: Db, userId: string, fromOrgId: string, toOrgId: string): Promise<{ fromOrgId: string; projectIds: string[] }> {
+    const created = await db.query<{ id: string }>(
+      `SELECT p.id FROM projects p
+        WHERE p.org_id = ?
+          AND EXISTS (SELECT 1 FROM audit_log a
+                       WHERE a.target_type = 'project' AND a.target_id = p.id
+                         AND a.action = 'project.created' AND a.actor = ?)
+          AND NOT EXISTS (SELECT 1 FROM projects q WHERE q.org_id = ? AND q.slug = p.slug)`,
+      [fromOrgId, userId, toOrgId],
+    )
+    const projectIds = created.map((p) => toStr(p.id))
+    for (const projectId of projectIds) await db.run('UPDATE projects SET org_id = ? WHERE id = ?', [toOrgId, projectId])
+    await db.run("UPDATE users SET org_id = ?, org_role = 'owner' WHERE id = ?", [toOrgId, userId])
+    return { fromOrgId, projectIds }
   }
 
   private async startSession(row: Record<string, unknown>): Promise<{ token: string; user: AuthUser; expiresAt: string }> {

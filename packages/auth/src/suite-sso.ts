@@ -35,7 +35,17 @@ export interface HandoffIdentity {
   suite: string
 }
 
-const fromB64Url = (value: string): Buffer => Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+/**
+ * The key a person's own Motion workspace is filed under. Street Banker's user
+ * id when the token carries one, because an email can change hands; the
+ * lowercased email otherwise.
+ */
+export function workspaceKey(who: Pick<HandoffIdentity, 'uid' | 'email'>): string {
+  const uid = who.uid.trim()
+  return uid ? `uid:${uid}` : `email:${who.email.trim().toLowerCase()}`
+}
+
+const fromB64Url =(value: string): Buffer => Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
 const toB64Url = (value: Buffer): string => value.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
 export function verifyHandoff(

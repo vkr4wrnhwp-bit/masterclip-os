@@ -33,7 +33,11 @@ export async function registerProjectRoutes(app: FastifyInstance, runtime: Runti
   // ------------------------------------------------------------ projects ----
   app.get('/api/projects', async (request) => {
     const auth = await requireAuth(runtime, request)
-    return { projects: await runtime.projects.list(auth.orgId) }
+    // The same rule as opening one (requireProjectAccess): owners and admins
+    // see every project in their organization, a member only those they have
+    // been added to.
+    if (auth.orgRole === 'owner' || auth.orgRole === 'admin') return { projects: await runtime.projects.list(auth.orgId) }
+    return { projects: await runtime.projects.listForMember(auth.orgId, auth.userId) }
   })
 
   app.post('/api/projects', async (request) => {

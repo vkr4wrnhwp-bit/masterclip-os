@@ -59,6 +59,16 @@ export class ProjectRepo {
     return rows.map(mapProject)
   }
 
+  /** The projects in `orgId` that `userId` has been added to. */
+  async listForMember(orgId: string, userId: string): Promise<Project[]> {
+    const rows = await this.db.query(
+      `SELECT p.* FROM projects p JOIN project_members m ON m.project_id = p.id
+        WHERE p.org_id = ? AND m.user_id = ? ORDER BY p.created_at DESC`,
+      [orgId, userId],
+    )
+    return rows.map(mapProject)
+  }
+
   async update(id: string, patch: { name?: string; brief?: string; styleBible?: StyleBible; status?: 'active' | 'archived' }): Promise<Project> {
     const values: Record<string, string | null> = { updated_at: this.clock.isoNow() }
     if (patch.name !== undefined) values.name = patch.name

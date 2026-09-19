@@ -630,4 +630,16 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_project ON agent_runs(project_id, crea
 CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent, created_at);
 `,
   },
+  {
+    id: '0003_street_banker_workspaces',
+    sql: `
+-- Every artist who opens Motion from Street Banker works in an organization of
+-- their own. This names whose: the identity the hand-off vouched for,
+-- 'uid:<Street Banker user id>', or 'email:<address>' for a token without an
+-- id. NULL for every other organization, including the one the seed or the
+-- first signup founded, which is where OWNER_EMAILS accounts land.
+ALTER TABLE orgs ADD COLUMN street_banker_identity TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_street_banker ON orgs(street_banker_identity);
+`,
+  },
 ]

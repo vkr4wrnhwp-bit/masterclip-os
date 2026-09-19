@@ -4,7 +4,7 @@ import { AppError, formatUsd, maskSecret } from '@masterclip/shared'
 import { toNum, toStr } from '@masterclip/database'
 import { verifyCallbackToken } from '@masterclip/provider-core'
 import { ROUTING_PROFILES } from '@masterclip/model-router'
-import { HandoffRejected, verifyHandoff } from '@masterclip/auth'
+import { HandoffRejected, verifyHandoff, workspaceKey } from '@masterclip/auth'
 import type { Runtime } from '@masterclip/runtime'
 import { SESSION_COOKIE, requireAuth, requireProject } from '../server.js'
 import { clearCsrfCookie, issueCsrfCookie } from '../security/csrf.js'
@@ -76,19 +76,40 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       }
       return refuse(401, words[reason] ?? 'The sign-in link could not be verified.')
     }
-    // One organization per deployment: the first arrival founds it, as the
-    // first signup would. Owners named in OWNER_EMAILS arrive as owners;
-    // everybody else is a member and sees the projects they are added to.
+    // Every artist works in an organization of their own and owns it, so no
+    // one lists or opens another artist's projects. Owners named in
+    // OWNER_EMAILS land in the house organization, where the existing data is.
     const owners = (process.env.OWNER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
-    let org = await runtime.db.get<{ id: string }>('SELECT id FROM orgs ORDER BY created_at LIMIT 1')
-    const founding = !org
-    if (!org) org = await runtime.projects.createOrg('Street Banker')
+    let place
+    try {
+      place = await runtime.auth.streetBankerWorkspace({
+        identity: workspaceKey(who),
+        email: who.email,
+        displayName: who.name,
+        owner: owners.includes(who.email),
+      })
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'auth.workspace_taken') {
+        return refuse(409, 'This email already belongs to a different Street Banker account in Motion. Contact Street Banker support to sort it out.')
+      }
+      throw error
+    }
     const session = await runtime.auth.sessionForVouchedEmail({
       email: who.email,
       displayName: who.name,
-      orgId: toStr(org.id),
-      orgRole: founding || owners.includes(who.email) ? 'owner' : 'member',
+      orgId: place.orgId,
+      orgRole: place.orgRole,
     })
+    if (place.moved) {
+      await runtime.audit.record({
+        orgId: place.orgId,
+        actor: session.user.id,
+        action: 'account.moved_to_own_workspace',
+        targetType: 'user',
+        targetId: session.user.id,
+        data: place.moved,
+      })
+    }
     void reply.setCookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', path: '/', secure: runtime.config.NODE_ENV === 'production' })
     issueCsrfCookie(runtime, reply, session.token)
     return reply.redirect('/')
