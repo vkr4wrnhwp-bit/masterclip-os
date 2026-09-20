@@ -45,6 +45,10 @@ export function navigate(path: string): void {
   window.location.hash = path
 }
 
+// Where a person goes when they leave: Street Banker, the account of record
+// for every suite. Read once from /api/health; the default is the live app.
+let streetBankerHome = 'https://app.streetbankermusic.com'
+
 export function App() {
   const route = useRoute()
   const [user, setUser] = React.useState<User | null>(null)
@@ -60,6 +64,15 @@ export function App() {
   }, [])
 
   if (checking) return <div className="spinner">loading…</div>
+  React.useEffect(() => {
+    void api
+      .health()
+      .then((h) => {
+        if (h.streetBankerUrl) streetBankerHome = h.streetBankerUrl
+      })
+      .catch(() => undefined)
+  }, [])
+
   if (!user) return <LoginScreen onAuthenticated={setUser} />
 
   const projectId = route.params.projectId ?? localStorage.getItem('masterclip.lastProject') ?? ''
@@ -117,7 +130,11 @@ export function App() {
               className="small"
               style={{ marginTop: 8 }}
               onClick={() => {
-                void api.logout().then(() => window.location.reload())
+                // Signing out of a suite returns to Street Banker, where the
+                // sign-in actually lives (suite audit, 2026-09-20).
+                void api.logout().then(() => {
+                  window.location.href = streetBankerHome
+                })
               }}
             >
               Sign out
@@ -149,6 +166,14 @@ function NavLink({ route, to, name, children }: { route: Route; to: string; name
 }
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: User) => void }) {
+  // Street Banker is the front door (suite audit, 2026-09-20): a person who
+  // lands here signed out is sent back through their Street Banker account.
+  // The password form stays for staff, folded away, and "create the org" is
+  // offered only while no organization exists.
+  const [door, setDoor] = React.useState<{ streetBankerUrl: string; signupOpen: boolean }>({
+    streetBankerUrl: streetBankerHome,
+    signupOpen: false,
+  })
   const [mode, setMode] = React.useState<'login' | 'signup'>('login')
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -156,6 +181,17 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: User) => voi
   const [orgName, setOrgName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
+
+  React.useEffect(() => {
+    void api
+      .health()
+      .then((h) => {
+        const url = h.streetBankerUrl || streetBankerHome
+        streetBankerHome = url
+        setDoor({ streetBankerUrl: url, signupOpen: Boolean(h.signupOpen) })
+      })
+      .catch(() => undefined)
+  }, [])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -171,36 +207,55 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: User) => voi
     }
   }
 
+  const doorHref = `${door.streetBankerUrl}/suites/go/motion`
+
   return (
     <div className="login">
-      <Card title={mode === 'login' ? 'Sign in' : 'Create the first account'}>
-        <form onSubmit={submit}>
-          {mode === 'signup' && (
-            <>
-              <Field label="Your name">
-                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
-              </Field>
-              <Field label="Organization">
-                <input value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
-              </Field>
-            </>
-          )}
-          <Field label="Email">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </Field>
-          <Field label="Password" hint={mode === 'signup' ? 'at least 10 characters' : undefined}>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </Field>
-          {error && <Callout tone="danger">{error}</Callout>}
-          <div className="button-row">
-            <button className="primary" type="submit" disabled={busy}>
-              {busy ? 'working…' : mode === 'login' ? 'Sign in' : 'Create account'}
-            </button>
-            <button type="button" className="small" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
-              {mode === 'login' ? 'First run? Create the org' : 'Have an account? Sign in'}
-            </button>
-          </div>
-        </form>
+      <Card title="Open Motion">
+        <p className="muted">Motion opens from your Street Banker account. One sign-in there opens every suite.</p>
+        <div className="button-row">
+          <button
+            className="primary"
+            type="button"
+            onClick={() => {
+              window.location.href = doorHref
+            }}
+          >
+            Open Motion from Street Banker
+          </button>
+        </div>
+        <details style={{ marginTop: 16 }}>
+          <summary className="small">{mode === 'login' ? 'Staff sign-in' : 'Create the first account'}</summary>
+          <form onSubmit={submit} style={{ marginTop: 12 }}>
+            {mode === 'signup' && (
+              <>
+                <Field label="Your name">
+                  <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+                </Field>
+                <Field label="Organization">
+                  <input value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
+                </Field>
+              </>
+            )}
+            <Field label="Email">
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </Field>
+            <Field label="Password" hint={mode === 'signup' ? 'at least 10 characters' : undefined}>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </Field>
+            {error && <Callout tone="danger">{error}</Callout>}
+            <div className="button-row">
+              <button className="small" type="submit" disabled={busy}>
+                {busy ? 'working…' : mode === 'login' ? 'Sign in' : 'Create account'}
+              </button>
+              {door.signupOpen && (
+                <button type="button" className="small" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
+                  {mode === 'login' ? 'First run? Create the org' : 'Have an account? Sign in'}
+                </button>
+              )}
+            </div>
+          </form>
+        </details>
       </Card>
     </div>
   )

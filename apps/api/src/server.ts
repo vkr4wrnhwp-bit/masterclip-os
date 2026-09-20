@@ -93,14 +93,22 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     void reply.status(404).send({ error: { kind: 'not_found', code: 'route', message: 'not found' } })
   })
 
-  app.get('/api/health', async () => ({
-    ok: true,
-    mode: runtime.config.MASTERCLIP_MODE,
-    dialect: runtime.db.dialect,
-    storage: runtime.storage.name,
-    agents: runtime.agents.available,
-    time: runtime.clock.isoNow(),
-  }))
+  app.get('/api/health', async () => {
+    // The suite's front door is Street Banker's: the login screen links there
+    // and offers "create the org" only while no organization exists yet
+    // (suite audit, 2026-09-20).
+    const users = await runtime.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')
+    return {
+      ok: true,
+      mode: runtime.config.MASTERCLIP_MODE,
+      dialect: runtime.db.dialect,
+      storage: runtime.storage.name,
+      agents: runtime.agents.available,
+      time: runtime.clock.isoNow(),
+      streetBankerUrl: (process.env.STREET_BANKER_URL ?? 'https://app.streetbankermusic.com').replace(/\/+$/, ''),
+      signupOpen: Number(users?.n ?? 0) === 0,
+    }
+  })
 
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
