@@ -1,7 +1,7 @@
 import React from 'react'
 import { api, type OutputView, type Project, type User } from '../api.js'
-import { navigate, streetBankerUrl } from '../App.jsx'
 import { useAsync } from '../ui.jsx'
+import { MotionRail, StartDialog } from './motion-shell.jsx'
 import {
   countJobs,
   countMasters,
@@ -9,14 +9,17 @@ import {
   deriveSpend,
   deriveStage,
   modeById,
-  railItems,
-  searchWorkspace,
+  orderProjects,
   STAGES,
   START_MODES,
-  tabTrap,
   type ShotCard,
   type StartMode,
 } from './overview-model.js'
+
+// The rail and the dialog are shared with the film list and live in
+// motion-shell now. The dialog is re-exported because this module was its
+// address first and everything that imported it from here still can.
+export { StartDialog }
 
 /**
  * Motion's front door, built from the owner's approved design file.
@@ -39,9 +42,6 @@ import {
  */
 const BAND_LIMIT = 6
 
-/** Ordered the way the owner's prototype ordered them, for the Tab loop. */
-const FOCUSABLE = 'button,input,textarea,select,a[href]'
-
 export function Overview({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const projects = useAsync(() => api.projects(), [])
   const providers = useAsync(() => api.providers(), [])
@@ -49,7 +49,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
   // The newest film is the one this screen talks about. Sorting on the
   // timestamp rather than trusting list order keeps that true if the API's
   // ordering ever changes.
-  const ordered = [...(projects.data?.projects ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const ordered = orderProjects(projects.data?.projects ?? [])
   const newest: Project | null = ordered[0] ?? null
   const newestId = newest?.id ?? ''
 
@@ -70,7 +70,6 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
 
   const [modeId, setModeId] = React.useState(START_MODES[0]!.id)
   const [dialogMode, setDialogMode] = React.useState<StartMode | null>(null)
-  const [query, setQuery] = React.useState('')
   const openerRef = React.useRef<HTMLElement | null>(null)
 
   const mode = modeById(modeId)
@@ -93,8 +92,6 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
 
   const cards: ShotCard[] = (film.data?.band ?? []).map((shot, index) => deriveShotCard(shot, takes[index] ?? [], index))
   const spend = deriveSpend(providers.data, providers.loading)
-  const hits = searchWorkspace(query, ordered, film.data?.shots ?? [], newest)
-  const rail = railItems(newestId.length > 0 ? newestId : null, film.data?.shots[0]?.id ?? null)
 
   return (
     <div className="mo">
@@ -102,122 +99,16 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
         Skip to main content
       </a>
 
-      <aside className="mo-rail" aria-label="Motion workspace">
-        <div className="mo-brand">
-          {/* The suite mark itself, a bracket frame around the monogram in
-              Motion's own cyan. It is the same mark the strip in Street Banker
-              shows, so a person recognises where they have arrived. */}
-          <img className="mo-mark" src="/motion-mark.png" alt="" width={128} height={128} />
-          <div className="mo-wordmark">MOTION</div>
-        </div>
-
-        <form className="mo-search" role="search" onSubmit={(event) => event.preventDefault()}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="10" cy="10" r="6.5" />
-            <path d="m15 15 6 6" />
-          </svg>
-          <label className="mo-sr" htmlFor="mo-search">
-            Search your films and the shots in the film shown here
-          </label>
-          {/* The placeholder is the design file's own. The longer "Search your
-              workspace" overruns the 214px rail at these measurements, so the
-              file's value is the one that fits the file's rail. The label above
-              carries the full, honest scope of what is searched. */}
-          <input
-            type="search"
-            id="mo-search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search workspace"
-            autoComplete="off"
-          />
-        </form>
-
-        {query.trim().length > 0 && (
-          <div className="mo-results">
-            <p className="mo-results-status" aria-live="polite">
-              {hits.length === 0 ? 'Nothing matches that.' : `${hits.length} ${hits.length === 1 ? 'match' : 'matches'}.`}
-            </p>
-            {hits.length > 0 && (
-              <ul className="mo-results-list">
-                {hits.map((hit) => (
-                  <li key={`${hit.kind}-${hit.id}`}>
-                    <a href={`#${hit.href}`}>
-                      <span className="mo-results-label">{hit.label}</span>
-                      <span className="mo-results-context">{hit.context}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        <nav className="mo-nav" aria-label="Workspace">
-          {rail.map((item) =>
-            item.href === null ? (
-              <span key={item.key} className="mo-nav-item is-unavailable" aria-disabled="true">
-                {item.label}
-              </span>
-            ) : (
-              <a
-                key={item.key}
-                className="mo-nav-item"
-                href={`#${item.href}`}
-                aria-current={item.key === 'overview' ? 'page' : undefined}
-              >
-                {item.label}
-              </a>
-            ),
-          )}
-        </nav>
-        {/* Outside the <nav> on purpose: on a phone the nav is a horizontally
-            scrolling strip, and a sentence inside it ends up parked off the
-            right-hand edge where nobody will find it. */}
-        {rail.some((item) => item.href === null) && (
-          <p className="mo-nav-note">The dimmed sections open once there is a film for them to show.</p>
-        )}
-
-        <div className="mo-rail-foot">
-          <section className="mo-budget" aria-label="Spend posture">
-            <h2>{spend.modeLabel}</h2>
-            <p>{spend.line}</p>
-          </section>
-
-          <div className="mo-account">
-            <div>
-              <strong>{user.displayName}</strong>
-              <small title={user.email}>{user.email}</small>
-            </div>
-            <button
-              type="button"
-              className="mo-icon-button"
-              onClick={onSignOut}
-              aria-label="Sign out and return to Street Banker"
-              title="Sign out and return to Street Banker"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M13 4H5v16h8m0-8h9m-4-4 4 4-4 4" />
-              </svg>
-            </button>
-          </div>
-
-          <a className="mo-return" href={streetBankerUrl()}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m15 4-8 8 8 8" />
-            </svg>
-            Return to Street Banker.
-          </a>
-
-          <p className="mo-motto">
-            DIRECTORS
-            <br />
-            MOVE
-            <br />
-            DIFFERENTLY.
-          </p>
-        </div>
-      </aside>
+      <MotionRail
+        user={user}
+        onSignOut={onSignOut}
+        current="overview"
+        spend={spend}
+        projects={ordered}
+        shots={film.data?.shots ?? []}
+        shotsProject={newest}
+        searchLabel="Search your films and the shots in the film shown here"
+      />
 
       <div className="mo-shell">
         {/* The soundstage is drawn in CSS, because this repository holds no
@@ -331,17 +222,33 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             <section className="mo-opening" aria-labelledby="mo-opening-heading">
               <div className="mo-opening-head">
                 <div>
-                  <h2 id="mo-opening-heading">Your storyboard, before the spend.</h2>
+                  {/* The heading names the film. The band only ever shows the
+                      newest one, and a storyboard with no name on it invites
+                      the reader to take it for the whole workspace. The name is
+                      also the way into that film, which the right-hand link
+                      used to be before it became the way to all of them. */}
+                  <h2 id="mo-opening-heading">
+                    Your storyboard for <a href={`#/project/${newest.id}`}>{newest.name}</a>, before the spend.
+                  </h2>
                   <p>Approve the visual story, then render only the shots that earn it.</p>
                 </div>
-                <a className="mo-opening-link" href={`#/project/${newest.id}`}>
-                  Open this film <span aria-hidden="true">&rarr;</span>
+                {/* Was "Open this film", which was the only thing it could be
+                    while this screen held the only list. The list is a page
+                    now, so the link out of the band goes to all of them. */}
+                <a className="mo-opening-link" href="#/projects">
+                  All films <span aria-hidden="true">&rarr;</span>
                 </a>
               </div>
 
               {cards.length === 0 ? (
                 <p className="mo-quiet-note">
-                  {film.loading ? 'Reading the shot list.' : `${newest.name} has no shots yet. Open it to build the shot list.`}
+                  {film.loading ? (
+                    'Reading the shot list.'
+                  ) : (
+                    <>
+                      {newest.name} has no shots yet. <a href={`#/project/${newest.id}`}>Open the film</a> to build the shot list.
+                    </>
+                  )}
                 </p>
               ) : (
                 <>
@@ -421,115 +328,5 @@ function ModeIcon({ id }: { id: StartMode['id'] }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8 8h13v13H8zM3 16V3h13v5" />
     </svg>
-  )
-}
-
-/**
- * The dialog behind the primary action.
- *
- * A native `<dialog>` opened with `showModal`, as the owner's file has it: the
- * rest of the page goes inert, Escape closes it and the backdrop is the
- * browser's. The explicit role and aria-modal are kept from that file, the
- * opener is refocused on close, and Tab is held inside the panel.
- *
- * It creates the film through `api.createProject` and then goes to it, which is
- * exactly what the form this screen replaced did.
- */
-export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onClose: () => void; onCreated: () => void }) {
-  const [name, setName] = React.useState('')
-  const [brief, setBrief] = React.useState('')
-  const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const dialogRef = React.useRef<HTMLDialogElement | null>(null)
-  const nameRef = React.useRef<HTMLInputElement | null>(null)
-
-  React.useEffect(() => {
-    const element = dialogRef.current
-    // Guard the call itself: `showModal` does not exist in a server render and
-    // is absent from a few older engines, and the screen behind must not break.
-    if (element && typeof element.showModal === 'function' && !element.open) element.showModal()
-    nameRef.current?.focus()
-    return () => {
-      if (element?.open) element.close()
-    }
-  }, [])
-
-  const onKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
-    if (event.key !== 'Tab') return
-    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-      (element) => !(element as HTMLInputElement).disabled && element.getClientRects().length > 0,
-    )
-    const target = tabTrap(event.key, event.shiftKey, controls.indexOf(document.activeElement as HTMLElement), controls.length)
-    if (target === null) return
-    event.preventDefault()
-    controls[target]?.focus()
-  }
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await api.createProject(name.trim(), brief)
-      onCreated()
-      navigate(`/project/${result.project.id}`)
-    } catch (err) {
-      setError((err as Error).message)
-      setBusy(false)
-    }
-  }
-
-  return (
-    <dialog
-      className="mo-dialog"
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="mo-setup-heading"
-      aria-describedby="mo-setup-description"
-      onKeyDown={onKeyDown}
-      onCancel={(event) => {
-        event.preventDefault()
-        onClose()
-      }}
-      onClose={onClose}
-    >
-      <form onSubmit={submit}>
-        <div className="mo-dialog-head">
-          <span className="mo-eyebrow">{mode.title.toUpperCase()}</span>
-          <button type="button" className="mo-icon-button" onClick={onClose} aria-label="Close project setup">
-            &#10005;
-          </button>
-        </div>
-        <h2 id="mo-setup-heading">{mode.dialogTitle}</h2>
-        <p id="mo-setup-description">Name the film and give it a starting point.</p>
-
-        <label>
-          Project name
-          <input ref={nameRef} value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoComplete="off" />
-        </label>
-        <label>
-          {mode.fieldLabel}
-          <textarea value={brief} onChange={(event) => setBrief(event.target.value)} />
-        </label>
-
-        <p className="mo-account-note">{mode.next}</p>
-
-        {error !== null && (
-          <p className="mo-dialog-error" role="alert">
-            {error}
-          </p>
-        )}
-
-        <div className="mo-actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0}>
-            {busy ? 'Creating' : 'Create the film'} <span aria-hidden="true">&rarr;</span>
-          </button>
-        </div>
-      </form>
-    </dialog>
   )
 }

@@ -207,6 +207,8 @@ export const api = {
     get<{
       mode: string
       liveSpendCapUsd: number
+      /** False when no cap was configured and the figure above is the fallback. */
+      liveSpendCapConfigured: boolean
       liveSpentUsd: string
       providers: Array<{ providerId: string; displayName: string; configured: boolean; keyFingerprint: string; health: Record<string, unknown> | null }>
     }>('/api/providers'),

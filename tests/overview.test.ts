@@ -230,17 +230,32 @@ describe('deriveShotCard', () => {
 /* ------------------------------------------------------ the budget card --- */
 
 describe('deriveSpend', () => {
-  it('shows the real spend against a real cap', () => {
-    expect(deriveSpend({ mode: 'live', liveSpendCapUsd: 2, liveSpentUsd: '$0.4210' })).toEqual({
+  it('shows the real spend against a cap somebody configured', () => {
+    expect(deriveSpend({ mode: 'live', liveSpendCapUsd: 2, liveSpendCapConfigured: true, liveSpentUsd: '$0.4210' })).toEqual({
       modeLabel: 'Live',
       capSet: true,
       line: '$0.4210 of $2.00 authorized.',
+      // One line is the whole story when the figure is the operator's own.
+      detail: null,
     })
   })
 
-  it('says the cap is not set when the API cannot report a usable one', () => {
-    // The providers route always sends a number, so "unset" is a value that
-    // authorizes nothing, or a value that never arrived.
+  it('says the cap is not set, and still names the limit that applies', () => {
+    // The whole point of the change: the route sends the same number either
+    // way, so an unconfigured cap is reported from `liveSpendCapConfigured`
+    // and never from the figure. The figure is then the runtime's fallback,
+    // which is a real limit and is named rather than hidden.
+    const unset = deriveSpend({ mode: 'sandbox', liveSpendCapUsd: 2, liveSpendCapConfigured: false, liveSpentUsd: '$0.0000' })
+    expect(unset).toEqual({
+      modeLabel: 'Sandbox',
+      capSet: false,
+      line: 'Cap not set.',
+      detail: 'Live renders stop at the $2.00 safety limit until one is set.',
+    })
+    // Never "no limit": the sentence that would read that way is not written.
+    expect(unset.detail).not.toContain('no limit')
+
+    // An API too old to send the flag has not told us a cap was configured.
     expect(deriveSpend({ mode: 'sandbox', liveSpendCapUsd: 0, liveSpentUsd: '$0.0000' })).toMatchObject({
       modeLabel: 'Sandbox',
       capSet: false,
@@ -249,12 +264,31 @@ describe('deriveSpend', () => {
     expect(deriveSpend({ mode: 'sandbox', liveSpendCapUsd: -1 }).line).toBe('Cap not set.')
     expect(deriveSpend({ mode: 'sandbox', liveSpendCapUsd: Number.NaN }).line).toBe('Cap not set.')
     expect(deriveSpend({ mode: 'sandbox' }).line).toBe('Cap not set.')
+    // With no usable figure to name, the limit is described rather than priced.
+    expect(deriveSpend({ mode: 'sandbox' }).detail).toBe('Live renders stop at the built-in safety limit until one is set.')
+  })
+
+  it('separates a cap configured at nothing from a cap nobody configured', () => {
+    const zero = deriveSpend({ mode: 'live', liveSpendCapUsd: 0, liveSpendCapConfigured: true, liveSpentUsd: '$0.0000' })
+    expect(zero).toMatchObject({ capSet: true, line: 'No live spend authorized.' })
+    expect(zero.line).not.toBe('Cap not set.')
+    expect(zero.detail).toBe('The cap is configured at nothing, so every live render is refused.')
+    expect(deriveSpend({ mode: 'live', liveSpendCapUsd: -5, liveSpendCapConfigured: true }).line).toBe('No live spend authorized.')
   })
 
   it('never guesses the mode while the request is out or after it failed', () => {
-    expect(deriveSpend(null, true)).toMatchObject({ modeLabel: 'Checking', line: 'Reading the spend posture.' })
+    expect(deriveSpend(null, true)).toMatchObject({ modeLabel: 'Checking', line: 'Reading the spend posture.', detail: null })
     expect(deriveSpend(null, false)).toMatchObject({ modeLabel: 'Mode unknown', line: 'Could not read the spend posture.' })
     expect(deriveSpend({ mode: 'something-else' }).modeLabel).toBe('Mode unknown')
+  })
+
+  it('says a failed read could not read the cap, rather than that none is set', () => {
+    const failed = deriveSpend(null, false)
+    expect(failed.detail).toBe('The cap could not be read, so this is not a claim that none is set.')
+    expect(failed.line).not.toBe('Cap not set.')
+    expect(failed.detail).not.toBe(null)
+    // Nothing is claimed while the request is still out.
+    expect(deriveSpend(null, true).detail).toBeNull()
   })
 })
 
@@ -276,18 +310,20 @@ describe('searchWorkspace and railItems', () => {
   it('leaves the project-scoped rail items without a destination until there is one', () => {
     const empty = railItems(null, null)
     expect(empty.find((item) => item.key === 'overview')?.href).toBe('/')
-    expect(empty.filter((item) => item.href === null).map((item) => item.key)).toEqual([
-      'projects',
-      'queue',
-      'review',
-      'masters',
-      'costs',
-    ])
+    expect(empty.filter((item) => item.href === null).map((item) => item.key)).toEqual(['queue', 'review', 'masters', 'costs'])
 
     const withFilm = railItems('p1', 's1')
-    expect(withFilm.map((item) => item.href)).toEqual(['/', '/project/p1', '/queue/p1', '/shot/s1/review', '/masters/p1', '/costs/p1'])
+    expect(withFilm.map((item) => item.href)).toEqual(['/', '/projects', '/queue/p1', '/shot/s1/review', '/masters/p1', '/costs/p1'])
     // Review needs a shot, not just a film.
     expect(railItems('p1', null).find((item) => item.key === 'review')?.href).toBeNull()
+  })
+
+  it('points Projects at the film list in every state, because that page is where you start one', () => {
+    // It used to point at the newest film, which made the list of every film
+    // unreachable and left the item dead on an account with no films at all.
+    for (const rail of [railItems(null, null), railItems('p1', null), railItems('p1', 's1')]) {
+      expect(rail.find((item) => item.key === 'projects')?.href).toBe('/projects')
+    }
   })
 })
 
@@ -302,9 +338,16 @@ describe('the first-run screen', () => {
   })
 
   it('renders no storyboard band and no skeleton cards', () => {
-    expect(markup).not.toContain('Your storyboard, before the spend.')
+    expect(markup).not.toContain('Your storyboard for')
     expect(markup).not.toContain('mo-shot-frame')
     expect(markup).not.toContain('mo-shots')
+  })
+
+  it('offers the film list even here, because it is where a first film is started', () => {
+    expect(markup).toContain('href="#/projects"')
+    expect(markup).toContain('Projects')
+    // And it is a link rather than one of the dimmed sections.
+    expect(markup).not.toContain('<span class="mo-nav-item is-unavailable" aria-disabled="true">Projects</span>')
   })
 
   it('still shows the rail, the hero, the three modes and the six stages', () => {

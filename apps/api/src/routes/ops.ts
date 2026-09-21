@@ -164,6 +164,10 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       // MASTERCLIP_MODE is the safety posture, surfaced everywhere it matters.
       mode: runtime.config.MASTERCLIP_MODE,
       liveSpendCapUsd: runtime.config.LIVE_SPEND_CAP_USD,
+      // Whether the figure above is the operator's decision or our fallback.
+      // Without it the two are the same number and a screen cannot tell a
+      // deployment that set a two-dollar cap from one that set no cap at all.
+      liveSpendCapConfigured: runtime.config.liveSpendCapConfigured,
       liveSpentUsd: formatUsd(await runtime.ledger.totalLiveSpend(), 4),
       providers: runtime.registry.list().map((provider) => ({
         providerId: provider.providerId,
@@ -243,7 +247,13 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       rejections,
       qcAvoided: { ...avoided, usd: formatUsd(avoided.estimatedAvoidedMicros) },
       budget,
-      liveCap: { capUsd: runtime.config.LIVE_SPEND_CAP_USD, spent: formatUsd(await runtime.ledger.totalLiveSpend(), 4) },
+      liveCap: {
+        capUsd: runtime.config.LIVE_SPEND_CAP_USD,
+        // Same fact as on /api/providers: the cost lab reads this figure too,
+        // and it should be able to say whose figure it is.
+        capConfigured: runtime.config.liveSpendCapConfigured,
+        spent: formatUsd(await runtime.ledger.totalLiveSpend(), 4),
+      },
     }
   })
 

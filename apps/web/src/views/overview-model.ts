@@ -236,6 +236,147 @@ export function countMasters(masters: ReadonlyArray<Record<string, unknown>>): {
   }
 }
 
+/* --------------------------------------------------------- the film list -- */
+
+/**
+ * The queue route answers with at most this many jobs for a project
+ * (`listJobs({ projectId, limit: 200 })` in apps/api/src/routes/render.ts).
+ *
+ * The film list counts renders out of that list, so a project that fills it has
+ * been read in part and the row has to say so rather than print a total it did
+ * not see. Two hundred jobs in one film is a lot; it is also exactly the case
+ * where an unmarked undercount would be most believed.
+ */
+export const QUEUE_PAGE_LIMIT = 200
+
+/**
+ * What the film list managed to read about one project.
+ *
+ * `api.project(id)` carries scenes and shots together, so a row costs three
+ * requests: that one, the queue and the masters. Outputs are not read at all:
+ * there is no project-wide outputs endpoint, and one request per shot per film
+ * is not a list, it is a crawl. What that costs is one stage of precision,
+ * described on `deriveProjectRow`.
+ */
+export interface ProjectRead {
+  sceneCount: number
+  shotCount: number
+  /** The project's queue, which is where a landed render is visible. */
+  jobs: readonly QueueJobView[]
+  masters: ReadonlyArray<Record<string, unknown>>
+}
+
+export interface ProjectRow {
+  id: string
+  name: string
+  /** Route hash for the row, without the leading '#'. */
+  href: string
+  /** The brief, trimmed, or null when the film has none. Never an empty line. */
+  brief: string | null
+  /** 'Storyboard', or words saying the film was not read on this page. */
+  stageLabel: string
+  /** False when `stageLabel` is those words rather than a stage name. */
+  stageKnown: boolean
+  /** '12 shots', 'No shots yet', or the not-read words. Never a bare zero. */
+  shotLine: string
+  /** '4 of 12 rendered', 'Nothing rendered', or the not-read words. */
+  renderedLine: string
+  /** True when the render count came from a queue that was itself capped. */
+  renderedSampled: boolean
+}
+
+/** Said in three places, so it is written once. */
+const NOT_READ = 'Not read on this page'
+
+/**
+ * One row of the film list.
+ *
+ * `detail` is null for a film the page did not read, either because it fell
+ * past the read limit or because its requests failed. Such a row still shows
+ * its name and brief and still opens, and says plainly that the rest was not
+ * read. It does not show zeroes, which is the only thing worse than showing
+ * nothing.
+ *
+ * Where the stage comes from, and the one place it can be behind: scenes,
+ * shots, the queue and the masters are all project-wide, so stages one through
+ * five and the promoted and delivered readings of six are as conclusive here as
+ * they are on the Overview. The gap is a take that was approved and never
+ * promoted, which leaves no project-wide trace and would need the outputs of
+ * every shot to see. `deriveStage` is therefore given no approvals and told the
+ * outputs were not fully read, so such a film reports Review rather than
+ * Export: the house rule, which is to report the earlier stage when the data
+ * cannot separate two.
+ */
+export function deriveProjectRow(project: Project, detail: ProjectRead | null): ProjectRow {
+  const brief = project.brief.trim()
+  const base = {
+    id: project.id,
+    name: project.name,
+    href: `/project/${project.id}`,
+    brief: brief.length > 0 ? brief : null,
+  }
+  if (detail === null) {
+    return {
+      ...base,
+      stageLabel: NOT_READ,
+      stageKnown: false,
+      shotLine: NOT_READ,
+      renderedLine: NOT_READ,
+      renderedSampled: false,
+    }
+  }
+
+  const jobs = countJobs(detail.jobs)
+  const masters = countMasters(detail.masters)
+  const stage = deriveStage({
+    hasProject: true,
+    briefLength: brief.length,
+    sceneCount: detail.sceneCount,
+    shotCount: detail.shotCount,
+    renderJobCount: jobs.renderJobCount,
+    completedJobCount: jobs.completedJobCount,
+    approvedOutputCount: 0,
+    outputsCoverEveryShot: false,
+    masterCount: masters.masterCount,
+    deliveredMasterCount: masters.deliveredMasterCount,
+  })
+
+  // A shot counts as rendered once one of its jobs has completed, which is the
+  // moment an output lands. Counting shots rather than jobs keeps four attempts
+  // at one shot from reading as four rendered shots, and the clamp keeps a job
+  // left behind by a deleted shot from pushing the count past the list.
+  const renderedShots = new Set(detail.jobs.filter((job) => job.status === 'completed').map((job) => job.shotId))
+  const rendered = Math.min(renderedShots.size, detail.shotCount)
+  const sampled = detail.jobs.length >= QUEUE_PAGE_LIMIT
+
+  return {
+    ...base,
+    stageLabel: stage.label,
+    stageKnown: true,
+    shotLine: detail.shotCount === 0 ? 'No shots yet' : `${detail.shotCount} ${detail.shotCount === 1 ? 'shot' : 'shots'}`,
+    renderedLine:
+      detail.shotCount === 0
+        ? 'Nothing rendered'
+        : rendered === 0
+          ? sampled
+            ? 'None rendered in the jobs read'
+            : 'Nothing rendered'
+          : `${rendered} of ${detail.shotCount} rendered${sampled ? ', at least' : ''}`,
+    renderedSampled: sampled,
+  }
+}
+
+/**
+ * The films, newest first.
+ *
+ * Sorted on the timestamp rather than trusting list order, the same way the
+ * Overview picks the film it talks about, so both screens agree on which one is
+ * newest however the API happens to order its answer.
+ */
+export function orderProjects(projects: readonly Project[]): Project[] {
+  return [...projects].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
 /* ----------------------------------------------------------- shot cards --- */
 
 export interface ShotCard {
@@ -328,34 +469,46 @@ export function deriveShotCard(shot: Shot, outputs: readonly OutputView[], posit
 export interface SpendReading {
   /** The real mode, or a word saying we could not read it. Never assumed. */
   modeLabel: string
-  /** True only when a usable cap came back, which is what turns on the figure. */
+  /** True only when the deployment configured a cap, which turns on the figure. */
   capSet: boolean
-  /** The single line in the card's body. */
+  /** The first line in the card's body. */
   line: string
+  /** The line beneath it, or null when one line says the whole thing. */
+  detail: string | null
 }
 
 export interface SpendInput {
   mode?: string
   liveSpendCapUsd?: number
+  /**
+   * From `/api/providers`. False means `liveSpendCapUsd` is the runtime's own
+   * fallback rather than a figure anybody chose. Absent is read as false: an
+   * older API that cannot tell us has not told us the cap was configured.
+   */
+  liveSpendCapConfigured?: boolean
   liveSpentUsd?: string
 }
 
 /**
  * The SANDBOX card.
  *
- * On the cap, what the API actually does: `/api/providers` returns
- * `liveSpendCapUsd: runtime.config.LIVE_SPEND_CAP_USD`, and that config field is
- * `num(2)` in the env schema, so it is always a finite number and defaults to
- * two dollars. There is no null, no sentinel and no missing-field case that the
- * server can produce. That leaves two honest readings of "not set":
+ * `/api/providers` always sends a finite `liveSpendCapUsd`, because the runtime
+ * resolves the fallback before anything reads the value. That number alone
+ * cannot say whether a human chose it, so the route sends
+ * `liveSpendCapConfigured` beside it and this is where the difference is
+ * spoken. Three readings, in the order they are tested:
  *
- *   - the value never arrived, because the request has not finished or failed,
- *   - the value is not a usable authorization, which is anything at or below
- *     zero, since the cost controller denies a submission when
- *     `liveSpend + estimated > cap` and every estimate is above zero.
+ *   - the call has not answered, or failed, so nothing is claimed about a cap,
+ *   - a cap was configured, and the real spend shows against it,
+ *   - no cap was configured, which is said plainly and paired with the limit
+ *     that still applies, because there is always a limit.
  *
- * Both say "Cap not set." A positive cap shows the real spend against it. The
- * spend string already carries its own dollar sign, from `formatUsd`.
+ * The fourth case is a cap configured to nothing: zero, or a negative. That is
+ * a real decision and it authorizes no live render at all, since the controller
+ * denies when `liveSpend + estimated > cap` and every estimate is above zero.
+ * Calling it "not set" would be the same lie in the other direction.
+ *
+ * The spend string already carries its own dollar sign, from `formatUsd`.
  */
 export function deriveSpend(input: SpendInput | null, loading = false): SpendReading {
   if (input === null) {
@@ -363,14 +516,39 @@ export function deriveSpend(input: SpendInput | null, loading = false): SpendRea
       modeLabel: loading ? 'Checking' : 'Mode unknown',
       capSet: false,
       line: loading ? 'Reading the spend posture.' : 'Could not read the spend posture.',
+      // Not "cap not set": the difference between an unset cap and an unread
+      // one is the whole point of this card, so a failed read says so.
+      detail: loading ? null : 'The cap could not be read, so this is not a claim that none is set.',
     }
   }
   const modeLabel = input.mode === 'live' ? 'Live' : input.mode === 'sandbox' ? 'Sandbox' : 'Mode unknown'
   const cap = input.liveSpendCapUsd
-  const capSet = typeof cap === 'number' && Number.isFinite(cap) && cap > 0
-  if (!capSet) return { modeLabel, capSet: false, line: 'Cap not set.' }
-  const spent = typeof input.liveSpentUsd === 'string' && input.liveSpentUsd.length > 0 ? input.liveSpentUsd : '$0.0000'
-  return { modeLabel, capSet: true, line: `${spent} of $${(cap as number).toFixed(2)} authorized.` }
+  const usable = typeof cap === 'number' && Number.isFinite(cap) && cap > 0
+
+  if (input.liveSpendCapConfigured === true) {
+    if (!usable) {
+      return {
+        modeLabel,
+        capSet: true,
+        line: 'No live spend authorized.',
+        detail: 'The cap is configured at nothing, so every live render is refused.',
+      }
+    }
+    const spent = typeof input.liveSpentUsd === 'string' && input.liveSpentUsd.length > 0 ? input.liveSpentUsd : '$0.0000'
+    return { modeLabel, capSet: true, line: `${spent} of $${cap.toFixed(2)} authorized.`, detail: null }
+  }
+
+  return {
+    modeLabel,
+    capSet: false,
+    line: 'Cap not set.',
+    // The figure is the runtime's fallback, which the route sends as the cap,
+    // so it is named rather than described. Saying only "not set" would read as
+    // "no limit", and there is a limit.
+    detail: usable
+      ? `Live renders stop at the $${cap.toFixed(2)} safety limit until one is set.`
+      : 'Live renders stop at the built-in safety limit until one is set.',
+  }
 }
 
 /* --------------------------------------------------------- the focus trap - */
@@ -441,15 +619,20 @@ export interface RailItem {
 /**
  * The six rail items the owner drew, resolved against real routes.
  *
- * Five of them are project-scoped, which is how this app's routing works: the
+ * Four of them are project-scoped, which is how this app's routing works: the
  * queue, masters and costs views all take a project id, and review takes a shot
  * id. With no film yet they have nowhere to go, so they are rendered as
  * unavailable rather than as links that land on a blank screen.
+ *
+ * Projects is not one of them. It used to point at the newest film, which made
+ * a list of every film unreachable and left the item dead on a new account; it
+ * now has a page of its own that is worth opening with no films in it, because
+ * that is where you start one.
  */
 export function railItems(projectId: string | null, firstShotId: string | null): RailItem[] {
   return [
     { key: 'overview', label: 'Overview', href: '/' },
-    { key: 'projects', label: 'Projects', href: projectId ? `/project/${projectId}` : null },
+    { key: 'projects', label: 'Projects', href: '/projects' },
     { key: 'queue', label: 'Render queue', href: projectId ? `/queue/${projectId}` : null },
     { key: 'review', label: 'Review', href: firstShotId ? `/shot/${firstShotId}/review` : null },
     { key: 'masters', label: 'Masters', href: projectId ? `/masters/${projectId}` : null },

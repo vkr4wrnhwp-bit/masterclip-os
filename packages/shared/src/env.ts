@@ -17,6 +17,22 @@ const num = (dflt: number) =>
     .transform((v) => (v === undefined || v === '' ? dflt : Number(v)))
     .pipe(z.number().finite())
 
+/**
+ * A number the environment may or may not have set, with no fallback folded in.
+ *
+ * `num` above applies its default inside the schema, which is right for a port
+ * or a poll interval and wrong for a value whose absence is itself worth
+ * reporting: once the default is applied here, nothing downstream can tell a
+ * deployment that chose the default from one that never configured anything.
+ * The caller applies the fallback instead, and records that it did.
+ */
+const optionalNum = () =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : Number(v)))
+    .pipe(z.number().finite().optional())
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -28,7 +44,17 @@ const EnvSchema = z.object({
    * capped by LIVE_SPEND_CAP_USD.
    */
   MASTERCLIP_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
-  LIVE_SPEND_CAP_USD: num(2),
+  /**
+   * The global live-spend ceiling, in dollars.
+   *
+   * No schema default on purpose. It used to be `num(2)`, which meant a
+   * deployment that never configured a cap was indistinguishable from one that
+   * deliberately chose two dollars, and every screen reported the second. The
+   * fallback now lives in `loadConfig`, which records whether it had to use it
+   * as `liveSpendCapConfigured`. `AppConfig.LIVE_SPEND_CAP_USD` is still always
+   * a number, so nothing that enforces the cap changes.
+   */
+  LIVE_SPEND_CAP_USD: optionalNum(),
 
   API_HOST: z.string().default('127.0.0.1'),
   API_PORT: num(4310),
@@ -159,7 +185,29 @@ function assertProductionSecrets(env: RawEnv): void {
   }
 }
 
+/**
+ * The live-spend ceiling a deployment gets when it never set one.
+ *
+ * It is a real, enforced limit rather than a placeholder: the cost controller
+ * refuses any live submission that would carry spend past it, configured or
+ * not. What is new is that the runtime remembers the figure was ours, so a
+ * screen can say the cap is not set and still name the limit that applies.
+ */
+export const DEFAULT_LIVE_SPEND_CAP_USD = 2
+
 export interface AppConfig extends RawEnv {
+  /**
+   * Always a usable number: the configured cap, or DEFAULT_LIVE_SPEND_CAP_USD.
+   * Narrowed from the schema's `number | undefined` deliberately, so every
+   * existing reader of `config.LIVE_SPEND_CAP_USD` keeps the number it had.
+   */
+  LIVE_SPEND_CAP_USD: number
+  /**
+   * True only when LIVE_SPEND_CAP_USD came from the environment. Reporting
+   * only, and the only thing that separates "we chose two dollars" from "we
+   * chose nothing and two dollars is what protects you".
+   */
+  liveSpendCapConfigured: boolean
   liveSpendCapMicros: MicroUsd
   isSandbox: boolean
   isTest: boolean
@@ -193,9 +241,16 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
   ] as const) {
     registerSecret(env[key])
   }
+  // The cap is the one value whose absence is reported rather than papered
+  // over, so the fallback is applied here and the fact kept alongside it. Every
+  // consumer below this line still sees a plain number.
+  const liveSpendCapConfigured = env.LIVE_SPEND_CAP_USD !== undefined
+  const liveSpendCapUsd = env.LIVE_SPEND_CAP_USD ?? DEFAULT_LIVE_SPEND_CAP_USD
   cached = {
     ...env,
-    liveSpendCapMicros: usdToMicros(env.LIVE_SPEND_CAP_USD),
+    LIVE_SPEND_CAP_USD: liveSpendCapUsd,
+    liveSpendCapConfigured,
+    liveSpendCapMicros: usdToMicros(liveSpendCapUsd),
     isSandbox: env.MASTERCLIP_MODE === 'sandbox',
     isTest: env.NODE_ENV === 'test',
   }

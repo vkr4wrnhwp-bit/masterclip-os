@@ -2,6 +2,7 @@ import React from 'react'
 import { api, type User } from './api.js'
 import { Callout, Card, Field, useAsync } from './ui.jsx'
 import { Overview } from './views/Overview.jsx'
+import { Projects } from './views/Projects.jsx'
 import { ProjectView } from './views/Project.jsx'
 import { ShotBuilder } from './views/ShotBuilder.jsx'
 import { QueueView } from './views/Queue.jsx'
@@ -27,6 +28,9 @@ function parseHash(): Route {
   if (segments[0] === 'queue' && segments[1]) return { name: 'queue', params: { ...params, projectId: segments[1] } }
   if (segments[0] === 'masters' && segments[1]) return { name: 'masters', params: { ...params, projectId: segments[1] } }
   if (segments[0] === 'costs' && segments[1]) return { name: 'costs', params: { ...params, projectId: segments[1] } }
+  // Plural, and above nothing it could be confused with: `project` is matched
+  // by the rule far above and only with an id after it.
+  if (segments[0] === 'projects') return { name: 'projects', params }
   if (segments[0] === 'providers') return { name: 'providers', params }
   return { name: segments[0] ?? 'dashboard', params }
 }
@@ -119,6 +123,17 @@ export function App() {
     )
   }
 
+  // The film list is the Overview's other half and wears the same rail, so it
+  // sits beside it here rather than inside the console's sidebar layout.
+  if (route.name === 'projects') {
+    return (
+      <>
+        {banner}
+        <Projects user={user} onSignOut={signOut} />
+      </>
+    )
+  }
+
   return (
     <>
       {banner}
@@ -133,6 +148,12 @@ export function App() {
           <div className="nav">
             <NavLink route={route} to="/" name="dashboard">
               Overview
+            </NavLink>
+            {/* The console's sidebar only ever showed the project you were in.
+                The film list is a real page now, so it is reachable from here
+                too rather than only by going back out to the Overview. */}
+            <NavLink route={route} to="/projects" name="projects">
+              All films
             </NavLink>
             {projectId && (
               <>
