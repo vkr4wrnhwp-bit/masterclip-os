@@ -9,6 +9,12 @@
  *
  * House rule that runs through the whole file: when the data cannot tell two
  * states apart, report the earlier one. A stage we cannot prove stays unlit.
+ *
+ * Two things here outgrew the Overview and are now shared: `deriveProjectRow`,
+ * which the film list uses, and `readCap`, which the cost lab and the providers
+ * screen use to reach the same conclusion about the live-spend cap that the
+ * rail does. They stay in this file because this is where the reasoning and its
+ * tests already live; what must not happen is a second copy of either.
  */
 import type { OutputView, Project, QueueJobView, Shot } from '../api.js'
 
@@ -464,6 +470,78 @@ export function deriveShotCard(shot: Shot, outputs: readonly OutputView[], posit
   }
 }
 
+/* --------------------------------------------- what the cap actually is --- */
+
+/**
+ * The four things a live-spend cap can be, from outside the runtime.
+ *
+ * This lives here because more than one screen reports the cap and none of them
+ * should decide this for itself. The Overview's rail, the cost lab and the
+ * providers screen each say it in their own words, but all three read it from
+ * here, so there is one place where "nobody set this" is decided and one place
+ * to correct if it is ever decided wrongly. Each state carries exactly the
+ * figure that state is entitled to name, which is why this is a union rather
+ * than a string beside a nullable number.
+ */
+export type CapReading =
+  /** Nothing came back to read. Says nothing at all about whether a cap is set. */
+  | { state: 'unread' }
+  /** A positive cap that somebody chose for this deployment. */
+  | { state: 'configured'; capUsd: number }
+  /** A cap somebody chose and set to nothing, authorizing no live render. */
+  | { state: 'forbidden'; capUsd: number }
+  /** Nobody chose one. `fallbackUsd` is the limit still in force, if we know it. */
+  | { state: 'unconfigured'; fallbackUsd: number | null }
+
+export type CapState = CapReading['state']
+
+export interface CapFacts {
+  /** `liveSpendCapUsd` from /api/providers, or `liveCap.capUsd` from the costs route. */
+  capUsd?: number
+  /** `liveSpendCapConfigured`, or `liveCap.capConfigured`. */
+  capConfigured?: boolean
+}
+
+/**
+ * A cap as a dollar figure, including the ones that are not positive.
+ *
+ * `$-5.00` is not how a negative amount is written, and an operator who typed
+ * one into LIVE_SPEND_CAP_USD should see it back the way they would read it.
+ * Shared because the cost lab and the providers screen both print a forbidden
+ * cap, and two copies of a money formatter is exactly how two screens end up
+ * disagreeing about what the same number says.
+ */
+export function capFigure(usd: number): string {
+  return usd < 0 ? `-$${Math.abs(usd).toFixed(2)}` : `$${usd.toFixed(2)}`
+}
+
+/**
+ * Which of the four a reading is.
+ *
+ * Three decisions are made here and nowhere else:
+ *
+ *   - `null` is a reading nobody took, which is not a cap nobody set. Reporting
+ *     the first as the second is the failure this whole change exists to stop.
+ *   - An answer carrying no `capConfigured` is an API too old to tell us, and
+ *     so has not told us a cap was configured. Unconfigured is the safe
+ *     direction to be wrong in, because it sends somebody to go and set one.
+ *   - A cap at or below zero authorizes nothing, because the cost controller
+ *     denies when `liveSpend + estimated > cap` and every estimate is above
+ *     zero. Configured at nothing is a decision; it is not an absence.
+ *
+ * Being told a cap is configured without being told what it is, is an unread
+ * reading rather than a cap of nothing: we know less, not worse.
+ */
+export function readCap(facts: CapFacts | null): CapReading {
+  if (facts === null) return { state: 'unread' }
+  const figure = typeof facts.capUsd === 'number' && Number.isFinite(facts.capUsd) ? facts.capUsd : null
+  if (facts.capConfigured === true) {
+    if (figure === null) return { state: 'unread' }
+    return figure > 0 ? { state: 'configured', capUsd: figure } : { state: 'forbidden', capUsd: figure }
+  }
+  return { state: 'unconfigured', fallbackUsd: figure !== null && figure > 0 ? figure : null }
+}
+
 /* ------------------------------------------------------- the spend card --- */
 
 export interface SpendReading {
@@ -490,23 +568,14 @@ export interface SpendInput {
 }
 
 /**
- * The SANDBOX card.
+ * The SANDBOX card, which is the rail's voice for `readCap` above.
  *
  * `/api/providers` always sends a finite `liveSpendCapUsd`, because the runtime
  * resolves the fallback before anything reads the value. That number alone
  * cannot say whether a human chose it, so the route sends
- * `liveSpendCapConfigured` beside it and this is where the difference is
- * spoken. Three readings, in the order they are tested:
- *
- *   - the call has not answered, or failed, so nothing is claimed about a cap,
- *   - a cap was configured, and the real spend shows against it,
- *   - no cap was configured, which is said plainly and paired with the limit
- *     that still applies, because there is always a limit.
- *
- * The fourth case is a cap configured to nothing: zero, or a negative. That is
- * a real decision and it authorizes no live render at all, since the controller
- * denies when `liveSpend + estimated > cap` and every estimate is above zero.
- * Calling it "not set" would be the same lie in the other direction.
+ * `liveSpendCapConfigured` beside it, `readCap` turns the pair into one of four
+ * states, and this function does nothing but put the rail's words to them. The
+ * cost lab and the providers screen put their own words to the same four.
  *
  * The spend string already carries its own dollar sign, from `formatUsd`.
  */
@@ -522,32 +591,42 @@ export function deriveSpend(input: SpendInput | null, loading = false): SpendRea
     }
   }
   const modeLabel = input.mode === 'live' ? 'Live' : input.mode === 'sandbox' ? 'Sandbox' : 'Mode unknown'
-  const cap = input.liveSpendCapUsd
-  const usable = typeof cap === 'number' && Number.isFinite(cap) && cap > 0
+  const reading = readCap({ capUsd: input.liveSpendCapUsd, capConfigured: input.liveSpendCapConfigured })
 
-  if (input.liveSpendCapConfigured === true) {
-    if (!usable) {
+  switch (reading.state) {
+    case 'configured': {
+      const spent = typeof input.liveSpentUsd === 'string' && input.liveSpentUsd.length > 0 ? input.liveSpentUsd : '$0.0000'
+      return { modeLabel, capSet: true, line: `${spent} of $${reading.capUsd.toFixed(2)} authorized.`, detail: null }
+    }
+    case 'forbidden':
       return {
         modeLabel,
         capSet: true,
         line: 'No live spend authorized.',
         detail: 'The cap is configured at nothing, so every live render is refused.',
       }
-    }
-    const spent = typeof input.liveSpentUsd === 'string' && input.liveSpentUsd.length > 0 ? input.liveSpentUsd : '$0.0000'
-    return { modeLabel, capSet: true, line: `${spent} of $${cap.toFixed(2)} authorized.`, detail: null }
-  }
-
-  return {
-    modeLabel,
-    capSet: false,
-    line: 'Cap not set.',
-    // The figure is the runtime's fallback, which the route sends as the cap,
-    // so it is named rather than described. Saying only "not set" would read as
-    // "no limit", and there is a limit.
-    detail: usable
-      ? `Live renders stop at the $${cap.toFixed(2)} safety limit until one is set.`
-      : 'Live renders stop at the built-in safety limit until one is set.',
+    case 'unread':
+      // The mode arrived but the cap did not. The posture is half known, so the
+      // card says which half, rather than borrowing the failed-call wording.
+      return {
+        modeLabel,
+        capSet: false,
+        line: 'Cap could not be read.',
+        detail: 'The cap could not be read, so this is not a claim that none is set.',
+      }
+    case 'unconfigured':
+      return {
+        modeLabel,
+        capSet: false,
+        line: 'Cap not set.',
+        // The figure is the runtime's fallback, which the route sends as the
+        // cap, so it is named rather than described. Saying only "not set"
+        // would read as "no limit", and there is a limit.
+        detail:
+          reading.fallbackUsd !== null
+            ? `Live renders stop at the $${reading.fallbackUsd.toFixed(2)} safety limit until one is set.`
+            : 'Live renders stop at the built-in safety limit until one is set.',
+      }
   }
 }
 

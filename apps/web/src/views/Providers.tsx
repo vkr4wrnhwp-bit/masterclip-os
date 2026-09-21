@@ -1,6 +1,31 @@
 import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, statusTone, useAsync } from '../ui.jsx'
+import { capFigure, readCap } from './overview-model.js'
+
+/**
+ * What the mode banner says once live mode is on.
+ *
+ * The cap states come from `readCap`, shared with the Overview's rail and the
+ * cost lab. The words are this screen's: it is the page about what is connected
+ * and what it may do, so each state ends on what the controller will actually
+ * refuse. Nothing here changes that refusal.
+ */
+function liveModeLine(spent: string, reading: ReturnType<typeof readCap>): string {
+  const refuses = 'The cost controller refuses any submission that would carry live spend past it.'
+  switch (reading.state) {
+    case 'configured':
+      return `Real provider calls are permitted. ${spent} of the $${reading.capUsd.toFixed(2)} configured for this deployment has been spent. ${refuses}`
+    case 'forbidden':
+      return `Live mode is on, but the cap is configured at ${capFigure(reading.capUsd)}, which authorizes nothing. Every real provider call is refused until it is raised.`
+    case 'unread':
+      return `Real provider calls are permitted. The cap could not be read here, so this page is not saying what it is or whether one was set. ${refuses}`
+    case 'unconfigured':
+      return reading.fallbackUsd === null
+        ? `Real provider calls are permitted, and no cap was configured for this deployment, so they run against the built-in safety limit. ${spent} has been spent. ${refuses} Set LIVE_SPEND_CAP_USD to choose your own figure.`
+        : `Real provider calls are permitted, and no cap was configured for this deployment, so they run against the built-in $${reading.fallbackUsd.toFixed(2)} safety limit, of which ${spent} has been spent. ${refuses} Set LIVE_SPEND_CAP_USD to choose your own figure.`
+  }
+}
 
 export function ProvidersView() {
   const providers = useAsync(() => api.providers(), [])
@@ -33,8 +58,12 @@ export function ProvidersView() {
           <>
             <Callout tone={data.mode === 'live' ? 'danger' : 'ok'} title={`Mode: ${data.mode}`}>
               {data.mode === 'live'
-                ? `Real provider calls are permitted. ${data.liveSpentUsd} of $${data.liveSpendCapUsd.toFixed(2)} authorized has been spent; the cost controller refuses any submission that would exceed it.`
-                : 'Sandbox mode. Adapters use provider sandbox modes where they exist, and the local ffmpeg mock otherwise. Nothing is billable.'}
+                ? // Same four states as the cost lab and the rail, from the same
+                  // reader. This line used to print the figure flat, so a
+                  // deployment that had configured nothing was told two dollars
+                  // had been authorized for it.
+                  liveModeLine(data.liveSpentUsd, readCap({ capUsd: data.liveSpendCapUsd, capConfigured: data.liveSpendCapConfigured }))
+                : 'Sandbox mode. Adapters use provider sandbox modes where they exist, and the local ffmpeg mock otherwise. Nothing is billable. The live-spend cap is not consulted here.'}
             </Callout>
 
             <Card title="Connected providers">

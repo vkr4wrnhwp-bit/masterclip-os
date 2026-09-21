@@ -10,7 +10,9 @@ import {
   deriveSpend,
   deriveStage,
   modeById,
+  capFigure,
   railItems,
+  readCap,
   searchWorkspace,
   START_MODES,
   tabTrap,
@@ -227,6 +229,62 @@ describe('deriveShotCard', () => {
   })
 })
 
+/* --------------------------------------------------------- the cap read --- */
+
+describe('readCap', () => {
+  it('reports a positive configured cap as the deployment’s own figure', () => {
+    expect(readCap({ capUsd: 25, capConfigured: true })).toEqual({ state: 'configured', capUsd: 25 })
+  })
+
+  it('reports a cap configured at nothing as a decision, not as an absence', () => {
+    // Zero and below authorize nothing: the controller denies when
+    // `liveSpend + estimated > cap` and every estimate is above zero.
+    expect(readCap({ capUsd: 0, capConfigured: true })).toEqual({ state: 'forbidden', capUsd: 0 })
+    expect(readCap({ capUsd: -5, capConfigured: true })).toEqual({ state: 'forbidden', capUsd: -5 })
+  })
+
+  it('reports an unconfigured cap, and carries the limit that still applies', () => {
+    expect(readCap({ capUsd: 2, capConfigured: false })).toEqual({ state: 'unconfigured', fallbackUsd: 2 })
+    // No usable figure to carry, so none is carried rather than one invented.
+    expect(readCap({ capUsd: 0, capConfigured: false })).toEqual({ state: 'unconfigured', fallbackUsd: null })
+    expect(readCap({ capConfigured: false })).toEqual({ state: 'unconfigured', fallbackUsd: null })
+  })
+
+  it('reads an API too old to send the flag as not having told us a cap was set', () => {
+    expect(readCap({ capUsd: 2 })).toEqual({ state: 'unconfigured', fallbackUsd: 2 })
+    expect(readCap({})).toEqual({ state: 'unconfigured', fallbackUsd: null })
+  })
+
+  it('never reports a reading it could not take as a cap nobody set', () => {
+    expect(readCap(null)).toEqual({ state: 'unread' })
+    // Told a cap is configured but not what it is: we know less, not worse.
+    expect(readCap({ capConfigured: true })).toEqual({ state: 'unread' })
+    expect(readCap({ capUsd: Number.NaN, capConfigured: true })).toEqual({ state: 'unread' })
+    expect(readCap({ capUsd: Number.POSITIVE_INFINITY, capConfigured: true })).toEqual({ state: 'unread' })
+  })
+
+  it('writes a cap the way an operator would read it back, negatives included', () => {
+    expect(capFigure(2)).toBe('$2.00')
+    expect(capFigure(0)).toBe('$0.00')
+    expect(capFigure(-5)).toBe('-$5.00')
+    // Never `$-5.00`, which is how the two screens would each have written it
+    // if they had kept their own formatter.
+    expect(capFigure(-5)).not.toContain('$-')
+  })
+
+  it('is the one reader the rail, the cost lab and the providers screen share', () => {
+    // The proof that matters is that the rail's copy follows this state and
+    // nothing else. Every state the reader can return has rail words for it.
+    const states = [
+      readCap(null).state,
+      readCap({ capUsd: 2, capConfigured: true }).state,
+      readCap({ capUsd: 0, capConfigured: true }).state,
+      readCap({ capUsd: 2, capConfigured: false }).state,
+    ]
+    expect(new Set(states)).toEqual(new Set(['unread', 'configured', 'forbidden', 'unconfigured']))
+  })
+})
+
 /* ------------------------------------------------------ the budget card --- */
 
 describe('deriveSpend', () => {
@@ -289,6 +347,19 @@ describe('deriveSpend', () => {
     expect(failed.detail).not.toBe(null)
     // Nothing is claimed while the request is still out.
     expect(deriveSpend(null, true).detail).toBeNull()
+  })
+
+  it('keeps the mode when only the cap was unreadable', () => {
+    // The call answered with a mode and a configured flag but no figure. The
+    // posture is half known, and the card says which half rather than throwing
+    // the mode away or calling the cap unset.
+    const half = deriveSpend({ mode: 'live', liveSpendCapConfigured: true, liveSpentUsd: '$1.0000' })
+    expect(half).toEqual({
+      modeLabel: 'Live',
+      capSet: false,
+      line: 'Cap could not be read.',
+      detail: 'The cap could not be read, so this is not a claim that none is set.',
+    })
   })
 })
 

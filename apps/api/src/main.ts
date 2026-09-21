@@ -16,6 +16,10 @@ async function main(): Promise<void> {
     url: `http://${config.API_HOST}:${config.API_PORT}`,
     mode: config.MASTERCLIP_MODE,
     live_spend_cap_usd: config.LIVE_SPEND_CAP_USD,
+    // Without this the boot log cannot tell a deployment that chose this cap
+    // from one that never set a cap at all, which is the same gap the screens
+    // had. It is the one line somebody reads when a render was refused.
+    live_spend_cap_configured: config.liveSpendCapConfigured,
     db: runtime.db.dialect,
     storage: runtime.storage.name,
     web_root: webRoot,

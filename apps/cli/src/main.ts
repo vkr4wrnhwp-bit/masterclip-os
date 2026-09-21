@@ -162,8 +162,15 @@ async function cmdDoctor(ctx: Ctx): Promise<number> {
     const liveSpend = await runtime.ledger.totalLiveSpend()
     checks.push({
       name: 'live-spend allowance',
+      // Unchanged: this reports, it does not authorize. What the cost
+      // controller refuses is decided in the cost engine and not here.
       ok: liveSpend < config.liveSpendCapMicros,
-      detail: `${formatUsd(liveSpend, 4)} of ${formatUsd(config.liveSpendCapMicros, 2)} used — mode is ${config.MASTERCLIP_MODE}`,
+      // Whose figure it is, said out loud. `doctor` is where an operator checks
+      // a deployment before pointing it at real money, and a cap nobody set
+      // reading the same as a cap somebody chose is the thing worth catching.
+      detail: `${formatUsd(liveSpend, 4)} of ${formatUsd(config.liveSpendCapMicros, 2)} used. The cap was ${
+        config.liveSpendCapConfigured ? 'configured for this deployment' : 'not configured, so this is the built-in safety limit'
+      }. Mode is ${config.MASTERCLIP_MODE}.`,
       required: true,
     })
 
