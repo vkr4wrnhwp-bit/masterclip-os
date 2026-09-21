@@ -104,7 +104,10 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
 
       <aside className="mo-rail" aria-label="Motion workspace">
         <div className="mo-brand">
-          <div className="mo-monogram">MO</div>
+          {/* The suite mark itself, a bracket frame around the monogram in
+              Motion's own cyan. It is the same mark the strip in Street Banker
+              shows, so a person recognises where they have arrived. */}
+          <img className="mo-mark" src="/motion-mark.png" alt="" width={128} height={128} />
           <div className="mo-wordmark">MOTION</div>
         </div>
 
@@ -184,7 +187,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
           <div className="mo-account">
             <div>
               <strong>{user.displayName}</strong>
-              <small>{user.email}</small>
+              <small title={user.email}>{user.email}</small>
             </div>
             <button
               type="button"

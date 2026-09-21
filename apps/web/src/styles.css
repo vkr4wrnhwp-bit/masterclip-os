@@ -319,6 +319,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   overflow-y: auto;
 }
 .mo-brand { padding-left: 12px; }
+.mo-mark { display: block; width: 46px; height: 46px; margin-left: -4px; }
 .mo-monogram { font-weight: 700; font-size: 38px; letter-spacing: -2px; line-height: 1; }
 .mo-wordmark { font-size: 12px; font-weight: 700; letter-spacing: 4px; margin-top: 10px; }
 
@@ -354,7 +355,13 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   color: var(--mo-muted);
   border-radius: 3px;
 }
-.mo-nav-item:hover { text-decoration: none; color: var(--mo-paper); }
+/* .mo a paints every link cyan, and it outranks a lone class, so the rail
+   said all six sections were actions. They are quiet until you are on one.
+   Cyan stays for the current bar, the stage ring, the button and real links. */
+.mo-nav .mo-nav-item { color: var(--mo-muted); }
+.mo-nav .mo-nav-item:hover { text-decoration: none; color: var(--mo-paper); }
+.mo-nav .mo-nav-item[aria-current="page"] { color: var(--mo-paper); }
+.mo-nav .mo-nav-item.is-unavailable { color: #6f7273; }
 .mo-nav-item[aria-current="page"] { color: var(--mo-paper); }
 .mo-nav-item[aria-current="page"]::before {
   content: "";
@@ -375,7 +382,10 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 
 .mo-account { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 2px; margin-top: 13px; }
 .mo-account strong { font-size: 12px; font-weight: 400; display: block; margin-bottom: 5px; }
-.mo-account small { font-size: 12px; color: var(--mo-muted); display: block; overflow-wrap: anywhere; line-height: 1.4; }
+/* An address is easier to read whole and truncated than broken across two
+   lines mid-word. The full value stays in the title attribute. */
+.mo-account small { font-size: 12px; color: var(--mo-muted); display: block; line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-icon-button { width: 44px; height: 44px; border: 0; display: grid; place-items: center; padding: 10px; color: var(--mo-muted); }
 .mo-icon-button:hover { color: var(--mo-paper); border: 0; }
 
