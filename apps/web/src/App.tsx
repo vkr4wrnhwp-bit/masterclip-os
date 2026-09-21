@@ -1,7 +1,7 @@
 import React from 'react'
 import { api, type User } from './api.js'
 import { Callout, Card, Field, useAsync } from './ui.jsx'
-import { Dashboard } from './views/Dashboard.jsx'
+import { Overview } from './views/Overview.jsx'
 import { ProjectView } from './views/Project.jsx'
 import { ShotBuilder } from './views/ShotBuilder.jsx'
 import { QueueView } from './views/Queue.jsx'
@@ -49,6 +49,11 @@ export function navigate(path: string): void {
 // for every suite. Read once from /api/health; the default is the live app.
 let streetBankerHome = 'https://app.streetbankermusic.com'
 
+/** The current Street Banker home, for any view that offers a way back to it. */
+export function streetBankerUrl(): string {
+  return streetBankerHome
+}
+
 export function App() {
   const route = useRoute()
   const [user, setUser] = React.useState<User | null>(null)
@@ -63,7 +68,6 @@ export function App() {
       .finally(() => setChecking(false))
   }, [])
 
-  if (checking) return <div className="spinner">loading…</div>
   React.useEffect(() => {
     void api
       .health()
@@ -73,6 +77,20 @@ export function App() {
       .catch(() => undefined)
   }, [])
 
+  // Signing out of a suite returns to Street Banker, where the sign-in actually
+  // lives (suite audit, 2026-09-20). Shared so the rail on the new Overview and
+  // the sidebar on every other view do the same thing.
+  const signOut = () => {
+    void api.logout().then(() => {
+      window.location.href = streetBankerHome
+    })
+  }
+
+  // Every hook above this line, without exception: the health effect used to
+  // sit below the `checking` guard, so it was registered only on the renders
+  // that got past it and React saw the hook count grow.
+  if (checking) return <div className="spinner">loading…</div>
+
   if (!user) return <LoginScreen onAuthenticated={setUser} />
 
   const projectId = route.params.projectId ?? localStorage.getItem('masterclip.lastProject') ?? ''
@@ -80,15 +98,30 @@ export function App() {
 
   const mode = health.data?.mode ?? 'sandbox'
 
+  // The spend posture is visible on every screen: which mode you are in decides
+  // whether the next click costs real money.
+  const banner = (
+    <div className={`mode-banner ${mode === 'live' ? 'live' : 'sandbox'}`}>
+      {mode === 'live'
+        ? 'LIVE MODE — submissions may be billed by providers'
+        : 'SANDBOX MODE — no provider will be billed; renders use the local ffmpeg mock'}
+    </div>
+  )
+
+  // The Overview is a door rather than a page inside the console, so it brings
+  // its own rail and replaces the sidebar layout instead of sitting in it.
+  if (route.name === 'dashboard') {
+    return (
+      <>
+        {banner}
+        <Overview user={user} onSignOut={signOut} />
+      </>
+    )
+  }
+
   return (
     <>
-      {/* The spend posture is visible on every screen: which mode you are in
-          decides whether the next click costs real money. */}
-      <div className={`mode-banner ${mode === 'live' ? 'live' : 'sandbox'}`}>
-        {mode === 'live'
-          ? 'LIVE MODE — submissions may be billed by providers'
-          : 'SANDBOX MODE — no provider will be billed; renders use the local ffmpeg mock'}
-      </div>
+      {banner}
       <div className="app">
         <nav className="sidebar">
           <div className="brand">
@@ -99,7 +132,7 @@ export function App() {
           </div>
           <div className="nav">
             <NavLink route={route} to="/" name="dashboard">
-              Dashboard
+              Overview
             </NavLink>
             {projectId && (
               <>
@@ -126,24 +159,13 @@ export function App() {
           <div style={{ marginTop: 'auto', padding: '14px 18px', borderTop: '1px solid var(--border)', fontSize: 11 }}>
             <div className="muted">{user.displayName}</div>
             <div className="faint">{user.email}</div>
-            <button
-              className="small"
-              style={{ marginTop: 8 }}
-              onClick={() => {
-                // Signing out of a suite returns to Street Banker, where the
-                // sign-in actually lives (suite audit, 2026-09-20).
-                void api.logout().then(() => {
-                  window.location.href = streetBankerHome
-                })
-              }}
-            >
+            <button className="small" style={{ marginTop: 8 }} onClick={signOut}>
               Sign out
             </button>
           </div>
         </nav>
 
         <main className="main">
-          {route.name === 'dashboard' && <Dashboard />}
           {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} />}
           {route.name === 'shot' && <ShotBuilder shotId={route.params.shotId ?? ''} />}
           {route.name === 'review' && <ReviewGrid shotId={route.params.shotId ?? ''} />}

@@ -235,3 +235,512 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 }
 .mode-banner.sandbox { background: #1d2a1d; color: var(--ok); border-bottom: 1px solid #2d422d; }
 .mode-banner.live { background: #2d1a1a; color: var(--danger); border-bottom: 1px solid #4a2a2a; }
+
+/* ==========================================================================
+   MOTION OVERVIEW, the front door.
+   ==========================================================================
+   Ported from the owner's approved design file (motion-first-run.html). Every
+   value below, the palette, the type scale, the letterspacing, the 214px rail,
+   the band spacing, the borders, the radii and the four breakpoints, is lifted
+   from that file rather than eyeballed from the pictures.
+
+   It is self-contained: every rule is namespaced under `.mo` and every value it
+   needs is a new `--mo-*` token, so nothing here can move the console screens
+   that share this stylesheet. The gold `--accent` belongs to those screens and
+   is not touched. Cyan is Motion's own suite colour and stays small: the
+   current rail item's bar, the current stage ring, links, and one button.
+
+   The design file embeds Oswald as a base64 woff2 under the name 'Motion
+   Condensed'. No webfont and no binary is added here, so the same fallback
+   chain is kept and the reader gets whatever condensed face they have.
+   ========================================================================== */
+:root {
+  --mo-ink: #090b0c;
+  --mo-panel: #101214;
+  --mo-paper: #f1eadc;
+  --mo-muted: #a9abad;
+  --mo-line: #303336;
+  --mo-cyan: #12c8ff;
+  --mo-rail-bg: #0c0e0f;
+  --mo-rail-w: 214px;
+  --mo-condensed: "Motion Condensed", "Arial Narrow", sans-serif;
+  --mo-condensed-ui: "Motion Condensed", Arial, sans-serif;
+}
+
+.mo {
+  display: grid;
+  grid-template-columns: var(--mo-rail-w) 1fr;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  color: var(--mo-paper);
+  background: var(--mo-ink);
+}
+.mo button, .mo input, .mo textarea, .mo select { font: inherit; color: inherit; }
+.mo button, .mo a, .mo input, .mo select, .mo textarea { touch-action: manipulation; }
+.mo button, .mo a { -webkit-tap-highlight-color: transparent; min-height: 44px; }
+.mo button { cursor: pointer; border: 1px solid var(--mo-line); border-radius: 3px; background: transparent; padding: 12px 16px; }
+.mo button:hover { border-color: var(--mo-paper); }
+.mo a { color: var(--mo-cyan); text-decoration: none; }
+.mo a:hover { text-decoration: underline; }
+.mo :focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
+.mo input::placeholder, .mo textarea::placeholder { color: var(--mo-muted); opacity: 1; }
+.mo svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.mo h1, .mo h2, .mo h3, .mo p { margin: 0; }
+.mo ol { list-style: none; margin: 0; padding: 0; }
+
+.mo-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mo-skip { position: fixed; top: -90px; left: 16px; z-index: 99; padding: 15px; background: var(--mo-ink); }
+.mo-skip:focus { top: 10px; }
+
+/* ------------------------------------------------------------- the rail --- */
+/* The design file fixes the rail to the viewport. Sticky does the same job
+   without covering the mode banner that sits above this screen. */
+.mo-rail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid var(--mo-line);
+  background: var(--mo-rail-bg);
+  padding: 28px 24px 25px;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+  overflow-y: auto;
+}
+.mo-brand { padding-left: 12px; }
+.mo-monogram { font-weight: 700; font-size: 38px; letter-spacing: -2px; line-height: 1; }
+.mo-wordmark { font-size: 12px; font-weight: 700; letter-spacing: 4px; margin-top: 10px; }
+
+.mo-search {
+  display: flex;
+  align-items: center;
+  border: 1px solid #3b3e40;
+  border-radius: 4px;
+  margin: 27px 0 20px;
+  padding-left: 10px;
+  min-height: 44px;
+  color: var(--mo-muted);
+}
+.mo-search svg { width: 16px; height: 16px; }
+.mo-search input { width: 100%; min-width: 0; background: transparent; border: 0; font-size: 12px; padding: 12px 8px; }
+.mo-search:focus-within { outline: 2px solid var(--mo-cyan); outline-offset: 3px; }
+.mo-search input:focus-visible { outline: 0; }
+
+.mo-results { border: 1px solid var(--mo-line); border-radius: 2px; padding: 12px; margin-bottom: 20px; }
+.mo-results-status { font-size: 12px; color: var(--mo-muted); }
+.mo-results-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.mo-results-label { display: block; font-size: 12px; color: var(--mo-paper); }
+.mo-results-context { display: block; font-size: 12px; color: var(--mo-muted); }
+
+.mo-nav { display: grid; gap: 3px; }
+.mo-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  padding: 12px;
+  min-height: 46px;
+  color: var(--mo-muted);
+  border-radius: 3px;
+}
+.mo-nav-item:hover { text-decoration: none; color: var(--mo-paper); }
+.mo-nav-item[aria-current="page"] { color: var(--mo-paper); }
+.mo-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  width: 2px;
+  left: -24px;
+  top: 8px;
+  bottom: 8px;
+  background: var(--mo-cyan);
+}
+.mo-nav-item.is-unavailable { color: #6f7273; cursor: default; }
+.mo-nav-note { font-size: 12px; line-height: 1.5; color: var(--mo-muted); padding: 8px 12px 0; margin: 0; }
+
+.mo-rail-foot { margin-top: auto; padding-top: 40px; }
+.mo-budget { border: 1px solid var(--mo-line); border-radius: 2px; padding: 17px 15px; }
+.mo-budget h2 { font: inherit; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 15px; }
+.mo-budget p { font-size: 12px; margin: 0; line-height: 1.5; font-variant-numeric: tabular-nums; }
+
+.mo-account { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 2px; margin-top: 13px; }
+.mo-account strong { font-size: 12px; font-weight: 400; display: block; margin-bottom: 5px; }
+.mo-account small { font-size: 12px; color: var(--mo-muted); display: block; overflow-wrap: anywhere; line-height: 1.4; }
+.mo-icon-button { width: 44px; height: 44px; border: 0; display: grid; place-items: center; padding: 10px; color: var(--mo-muted); }
+.mo-icon-button:hover { color: var(--mo-paper); border: 0; }
+
+.mo-return {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-top: 1px solid var(--mo-line);
+  margin-top: 14px;
+  padding: 12px 0;
+}
+.mo-return svg { width: 13px; height: 16px; }
+.mo-motto { font-size: 12px; line-height: 1.7; letter-spacing: 2.5px; color: #929597; margin: 44px 0 0 12px; }
+
+/* ------------------------------------------------------------ the stage --- */
+.mo-shell { min-height: 100vh; position: relative; isolation: isolate; min-width: 0; }
+.mo-main { max-width: 1600px; margin: auto; padding: 32px 42px 60px; position: relative; }
+.mo-topline { text-align: right; letter-spacing: 3px; font-size: 12px; color: var(--mo-muted); margin: 0 0 37px; position: relative; z-index: 2; }
+
+.mo-hero { position: relative; min-height: 238px; display: flex; align-items: flex-start; flex-direction: column; padding: 0 0 28px; z-index: 1; }
+.mo-eyebrow { font-size: 12px; letter-spacing: 2.4px; font-weight: 400; text-transform: uppercase; }
+.mo-hero .mo-eyebrow { margin: 0 0 16px; color: #c3c4c2; }
+.mo-hero h1 {
+  font-family: var(--mo-condensed);
+  font-size: clamp(62px, 6.8vw, 102px);
+  line-height: 0.98;
+  font-weight: 700;
+  letter-spacing: -1.4px;
+  margin: 0 0 20px;
+}
+.mo-support { font-size: 16px; line-height: 1.6; color: #c0c2c2; max-width: 440px; margin: 0; }
+
+/* The soundstage, drawn rather than photographed. Setting --mo-hero-image on
+   .mo-scenery paints a real photograph over the whole drawing. */
+.mo-scenery {
+  --mo-hero-image: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 420px;
+  width: 68%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+  isolation: isolate;
+  opacity: 0.9;
+  background-image: var(--mo-hero-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.mo-wall { position: absolute; inset: 0 0 35%; background: linear-gradient(90deg, #090b0c, #181b1a 48%, #0d1010); border-bottom: 1px solid #454740; }
+.mo-rig { position: absolute; top: 0; bottom: 35%; right: 18%; width: 1px; background: #3b3e39; box-shadow: -150px 0 #262c28, -320px 0 #262b28; }
+.mo-rig::before {
+  content: "";
+  position: absolute;
+  top: 53px;
+  left: -550px;
+  width: 800px;
+  height: 9px;
+  border-top: 1px solid #3a3f37;
+  border-bottom: 1px solid #252a24;
+  transform: rotate(-5deg);
+}
+.mo-floor { position: absolute; inset: 65% 0 0; background: linear-gradient(155deg, #33362f, #101311 63%); transform-origin: top; }
+.mo-door {
+  position: absolute;
+  left: 65%;
+  top: 31%;
+  height: 34%;
+  width: 11%;
+  background: #c9c3b0;
+  border: 6px solid #494b42;
+  border-bottom: 0;
+  box-shadow: 3px 0 0 #6d6b5c;
+}
+.mo-door::after {
+  content: "";
+  position: absolute;
+  inset: 0 25% 0 0;
+  background: #3d4038;
+  clip-path: polygon(0 0, 100% 6%, 100% 94%, 0 100%);
+  border-right: 1px solid #716f5d;
+}
+.mo-light {
+  position: absolute;
+  left: 32%;
+  top: 65%;
+  width: 44%;
+  height: 33%;
+  background: linear-gradient(#c7c0a783, #b6b0a700);
+  clip-path: polygon(75% 0, 100% 0, 79% 100%, 0 100%);
+}
+.mo-roadcase { position: absolute; bottom: 30%; left: 30%; width: 17%; height: 19%; background: #171b18; border: 2px solid #56594c; transform: skewY(-4deg); }
+.mo-roadcase::before { content: ""; position: absolute; inset: 8px; border: 1px solid #363c33; }
+.mo-roadcase::after { content: ""; position: absolute; left: 42%; top: 43%; width: 22%; height: 9%; border: 2px solid #727262; }
+.mo-case-two { left: 42%; width: 11%; height: 12%; bottom: 33%; transform: skewY(3deg); }
+.mo-stand { position: absolute; right: 9%; top: 40%; height: 32%; width: 2px; background: #55584b; transform: rotate(-2deg); }
+.mo-stand::before {
+  content: "";
+  position: absolute;
+  width: 32px;
+  height: 20px;
+  left: -16px;
+  top: -4px;
+  background: #242a25;
+  border: 1px solid #464d40;
+  transform: rotate(-15deg);
+}
+.mo-stand::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: -14px;
+  width: 29px;
+  height: 20px;
+  border: 1px solid #55584b;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.mo-scenery::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--mo-ink), transparent 36%), linear-gradient(0deg, var(--mo-ink), transparent 30%);
+}
+
+/* ------------------------------------------------------ the three modes --- */
+.mo-modes { min-width: 0; border: 0; padding: 0; margin: 0; }
+.mo-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.mo-mode {
+  position: relative;
+  display: block;
+  border: 1px solid #5d6060;
+  border-radius: 2px;
+  min-height: 164px;
+  padding: 24px 35px 20px 22px;
+  cursor: pointer;
+  background: #0b0e0ecc;
+}
+.mo-mode:hover { border-color: var(--mo-paper); }
+.mo-mode:has(input:focus-visible) { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
+.mo-mode:has(input:checked) { border-color: #a5a8a6; }
+.mo-mode:has(input:checked) .mo-selection { display: inline; }
+.mo-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mo-mode svg { display: block; width: 27px; height: 27px; margin-bottom: 15px; }
+.mo-mode strong { font-size: 18px; display: block; font-weight: 500; margin-bottom: 7px; }
+.mo-mode small { font-size: 14px; line-height: 1.5; color: var(--mo-muted); display: block; }
+.mo-chevron { position: absolute; right: 17px; top: 60%; font-size: 23px; font-weight: 300; color: var(--mo-paper); }
+.mo-selection { position: absolute; right: 14px; top: 14px; font-size: 12px; color: var(--mo-muted); display: none; }
+
+/* -------------------------------------------------------- the stage row --- */
+.mo-workflow { display: flex; align-items: center; gap: 30px; padding: 31px 0 28px; min-height: 125px; }
+.mo-stages { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); flex: 1; min-width: 0; }
+.mo-stage { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; font-size: 12px; letter-spacing: 1.8px; }
+.mo-stage::before { content: ""; position: absolute; left: 34px; right: 0; top: 17px; height: 1px; background: #434746; }
+.mo-stage:last-child::before { display: none; }
+.mo-circle {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  height: 35px;
+  border: 1px solid #8a8e8b;
+  border-radius: 50%;
+  font-size: 14px;
+  background: var(--mo-ink);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.mo-stage-label { font-family: var(--mo-condensed-ui); color: var(--mo-muted); }
+.mo-stage.is-done .mo-stage-label, .mo-stage.is-current .mo-stage-label { color: var(--mo-paper); }
+.mo-stage.is-current .mo-circle { border-color: var(--mo-cyan); }
+.mo-stage-now { display: block; margin-top: 6px; font-size: 12px; letter-spacing: 0.5px; color: var(--mo-muted); }
+
+.mo-start {
+  border: 1px solid var(--mo-cyan);
+  color: var(--mo-cyan);
+  min-width: 145px;
+  letter-spacing: 1.8px;
+  font-size: 12px;
+  padding: 13px 20px;
+  white-space: nowrap;
+}
+.mo-start:hover:not(:disabled) { border-color: var(--mo-paper); color: var(--mo-paper); }
+.mo-start:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* --------------------------------------------------- the storyboard band -- */
+.mo-opening { border-top: 1px solid var(--mo-line); padding: 29px 0; min-height: 290px; }
+.mo-opening h2 { font-family: var(--mo-condensed); font-size: 32px; line-height: 1.2; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.3px; }
+.mo-opening p { font-size: 16px; color: var(--mo-muted); line-height: 1.65; margin: 0; max-width: 660px; }
+.mo-opening-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.mo-opening-link { display: inline-flex; align-items: center; font-size: 14px; }
+.mo-quiet-note { font-size: 12px; margin-top: 26px; color: var(--mo-muted); line-height: 1.6; }
+
+.mo-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
+.mo-shot { border: 1px solid var(--mo-line); border-radius: 2px; overflow: hidden; background: var(--mo-panel); }
+.mo-shot-frame { aspect-ratio: 16 / 9; position: relative; background: #0b0d0e; }
+.mo-num { position: absolute; top: 16px; left: 16px; z-index: 1; font-size: 12px; letter-spacing: 1.2px; color: var(--mo-muted); font-variant-numeric: tabular-nums; }
+.mo-still { display: block; width: 100%; height: 100%; object-fit: cover; }
+.mo-frame-note { position: absolute; left: 16px; right: 16px; bottom: 16px; font-size: 12px; color: var(--mo-muted); }
+.mo-shot-info { padding: 18px; }
+.mo-shot-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.mo-shot-heading h3 { font-size: 14px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+/* The title is a way into the shot, but the design sets it in ivory, and
+   cyan is kept for the rail bar, the stage ring, the button and real links.
+   The underline on hover and focus carries the affordance instead. */
+.mo-shot-heading h3 a { color: var(--mo-paper); }
+.mo-shot-heading h3 a:hover { color: var(--mo-cyan); }
+.mo-shot-heading span { font-size: 12px; color: var(--mo-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mo-shot-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--mo-muted); }
+
+/* ----------------------------------------------------------- the dialog --- */
+.mo-dialog {
+  width: min(500px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid #505456;
+  border-radius: 5px;
+  padding: 25px;
+  background: var(--mo-panel);
+  color: var(--mo-paper);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+.mo-dialog::backdrop { background: #000b; }
+.mo-dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+.mo-dialog h2 { font-family: var(--mo-condensed-ui); font-size: 35px; margin: 14px 0; }
+.mo-dialog p { color: var(--mo-muted); line-height: 1.6; }
+.mo-dialog label { display: block; margin-top: 20px; font-size: 14px; }
+.mo-dialog input, .mo-dialog textarea {
+  width: 100%;
+  margin-top: 9px;
+  border: 1px solid #505456;
+  background: var(--mo-ink);
+  padding: 12px;
+  min-height: 46px;
+  border-radius: 3px;
+  color: inherit;
+  font: inherit;
+}
+.mo-dialog textarea { resize: vertical; min-height: 110px; }
+.mo-dialog button { cursor: pointer; border: 1px solid var(--mo-line); border-radius: 3px; background: transparent; padding: 12px 16px; min-height: 44px; color: inherit; font: inherit; }
+.mo-dialog button:hover { border-color: var(--mo-paper); }
+.mo-dialog .mo-icon-button { border: 0; padding: 10px; }
+.mo-dialog :focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
+.mo-account-note { font-size: 12px; margin-top: 20px; }
+.mo-dialog-error { color: #ff9b9b; font-size: 12px; margin-top: 14px; border-left: 2px solid #ff9b9b; padding-left: 10px; }
+.mo-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 25px; }
+.mo-actions .mo-start { letter-spacing: 0; }
+
+/* ------------------------------------------------------------- at width --- */
+@media (min-width: 1440px) {
+  .mo-main { padding-top: 37px; }
+  .mo-hero { min-height: 252px; }
+  .mo-workflow { padding-top: 36px; padding-bottom: 32px; }
+  .mo-scenery { height: 445px; }
+  .mo-rail { padding-top: 34px; }
+  .mo-motto { margin-top: 56px; }
+}
+
+@media (max-width: 1100px) {
+  .mo { grid-template-columns: 195px 1fr; }
+  .mo-rail { padding-left: 18px; padding-right: 18px; }
+  .mo-main { padding: 28px; }
+  .mo-nav-item[aria-current="page"]::before { left: -18px; }
+  .mo-hero h1 { font-size: 75px; }
+  .mo-support { max-width: 360px; font-size: 15px; }
+  .mo-scenery { width: 78%; opacity: 0.65; }
+  .mo-cards { gap: 12px; }
+  .mo-mode { padding: 20px 27px 18px 17px; min-height: 180px; }
+  .mo-mode strong { font-size: 16px; }
+  .mo-mode small { font-size: 13px; }
+  .mo-workflow { gap: 16px; flex-wrap: wrap; }
+  .mo-stages { flex-basis: 100%; }
+  .mo-workflow > .mo-start { margin-left: auto; }
+  .mo-motto { margin-top: 28px; }
+  .mo-rail-foot { padding-top: 28px; }
+  .mo-shots { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 768px) and (max-width: 850px) {
+  .mo { grid-template-columns: 176px 1fr; }
+  .mo-rail { padding-left: 13px; padding-right: 13px; }
+  .mo-main { padding: 24px; }
+  .mo-cards { gap: 10px; }
+  .mo-mode { padding: 18px 22px 16px 12px; min-height: 203px; }
+  .mo-mode strong { font-size: 15px; }
+  .mo-mode small { font-size: 12px; }
+  .mo-chevron { right: 10px; }
+  .mo-stage { letter-spacing: 0.6px; }
+  /* STORYBOARD is 89px of Arial in an 88px column here. The design tracks
+     a condensed face this stylesheet does not ship, so the tracking comes
+     off the labels at this one width rather than letting them collide. */
+  .mo-stage-label { letter-spacing: normal; }
+  .mo-hero h1 { font-size: 65px; }
+  .mo-nav-item[aria-current="page"]::before { left: -13px; }
+  .mo-search input { font-size: 12px; padding-left: 5px; }
+  .mo-brand { padding-left: 8px; }
+  .mo-motto { letter-spacing: 1.6px; }
+  .mo-topline { letter-spacing: 1.3px; }
+}
+
+@media (max-width: 767px) {
+  .mo { grid-template-columns: 1fr; }
+  .mo-rail {
+    position: relative;
+    top: auto;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--mo-line);
+    padding: 20px 18px 0;
+    display: grid;
+    grid-template-columns: 90px minmax(0, 1fr);
+    gap: 16px;
+    overflow: visible;
+  }
+  .mo-brand { padding: 0; }
+  .mo-monogram { font-size: 30px; }
+  .mo-wordmark { font-size: 12px; letter-spacing: 2px; margin-top: 7px; }
+  .mo-search { margin: 0; align-self: center; }
+  .mo-results { grid-column: 1 / -1; margin-bottom: 0; }
+  .mo-nav { display: flex; grid-column: 1 / -1; overflow-x: auto; gap: 6px; padding: 0 0 10px; }
+  .mo-nav-item { white-space: nowrap; padding: 9px 12px; font-size: 12px; }
+  .mo-nav-item[aria-current="page"]::before { left: 12px; right: 12px; width: auto; top: auto; bottom: 1px; height: 2px; }
+  .mo-nav-note { grid-column: 1 / -1; padding: 0 0 10px; }
+  .mo-rail-foot { grid-column: 1 / -1; display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; padding: 0 0 12px; margin: 0; }
+  .mo-budget { padding: 11px 12px; align-self: start; }
+  .mo-budget h2 { font-size: 12px; margin-bottom: 6px; }
+  .mo-account { margin: 0; gap: 0; }
+  .mo-account strong, .mo-account small { font-size: 12px; }
+  .mo-return { grid-column: 1 / -1; margin: 0; padding: 8px 0; border-top: 1px solid var(--mo-line); }
+  .mo-motto { display: none; }
+  .mo-main { padding: 22px 18px 35px; }
+  .mo-topline { font-size: 12px; text-align: left; letter-spacing: 1.5px; margin-bottom: 27px; }
+  .mo-hero { min-height: 280px; padding-bottom: 25px; }
+  .mo-hero h1 { font-size: 64px; margin-bottom: 16px; }
+  .mo-hero .mo-eyebrow { font-size: 12px; letter-spacing: 1.7px; }
+  .mo-support { font-size: 14px; max-width: 310px; }
+  .mo-scenery { top: 60px; height: 360px; width: 100%; opacity: 0.42; }
+  .mo-cards { grid-template-columns: 1fr; gap: 12px; }
+  .mo-mode { min-height: 135px; padding: 22px 43px 20px 68px; }
+  .mo-mode svg { position: absolute; left: 23px; top: 25px; }
+  .mo-mode strong { font-size: 18px; }
+  .mo-mode small { font-size: 14px; max-width: 280px; }
+  .mo-chevron { top: 49%; right: 20px; }
+  .mo-selection { right: 15px; top: 12px; }
+  .mo-workflow { padding: 28px 0; gap: 24px; }
+  .mo-stages { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 25px; }
+  .mo-stage:nth-child(3)::before { display: none; }
+  .mo-stage { font-size: 12px; letter-spacing: 1.6px; }
+  .mo-stage-label { font-size: 14px; }
+  .mo-workflow > .mo-start { width: 100%; }
+  .mo-opening { min-height: 230px; padding-top: 28px; }
+  .mo-opening h2 { font-size: 31px; }
+  .mo-opening p { font-size: 14px; }
+  .mo-shots { grid-template-columns: 1fr; }
+  .mo-actions { flex-wrap: wrap; }
+  .mo-actions button { flex: 1; min-width: 100px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mo, .mo *, .mo *::before, .mo *::after, .mo-dialog, .mo-dialog *, .mo-dialog *::before, .mo-dialog *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
