@@ -602,8 +602,6 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
    carrying the affordance and cyan kept for hover. */
 .mo-opening h2 a { color: var(--mo-paper); text-decoration: underline; text-decoration-color: #5d6060; text-underline-offset: 5px; }
 .mo-opening h2 a:hover { color: var(--mo-cyan); text-decoration-color: currentColor; }
-.mo-opening-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.mo-opening-link { display: inline-flex; align-items: center; font-size: 14px; }
 .mo-quiet-note { font-size: 12px; margin-top: 26px; color: var(--mo-muted); line-height: 1.6; }
 
 .mo-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }

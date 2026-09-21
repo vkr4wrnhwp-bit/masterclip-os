@@ -220,25 +220,20 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             </section>
           ) : (
             <section className="mo-opening" aria-labelledby="mo-opening-heading">
-              <div className="mo-opening-head">
-                <div>
-                  {/* The heading names the film. The band only ever shows the
-                      newest one, and a storyboard with no name on it invites
-                      the reader to take it for the whole workspace. The name is
-                      also the way into that film, which the right-hand link
-                      used to be before it became the way to all of them. */}
-                  <h2 id="mo-opening-heading">
-                    Your storyboard for <a href={`#/project/${newest.id}`}>{newest.name}</a>, before the spend.
-                  </h2>
-                  <p>Approve the visual story, then render only the shots that earn it.</p>
-                </div>
-                {/* Was "Open this film", which was the only thing it could be
-                    while this screen held the only list. The list is a page
-                    now, so the link out of the band goes to all of them. */}
-                <a className="mo-opening-link" href="#/projects">
-                  All films <span aria-hidden="true">&rarr;</span>
-                </a>
-              </div>
+              {/* The heading names the film. The band only ever shows the
+                  newest one, and a storyboard with no name on it invites the
+                  reader to take it for the whole workspace. The name is also
+                  the way into that film.
+
+                  Nothing else sits beside the heading. The owner's design fills
+                  this slot with a label, not a control, and the second link
+                  that stood here went to the film list, which the rail's own
+                  Projects item already reaches from this screen and every
+                  other one. */}
+              <h2 id="mo-opening-heading">
+                Your storyboard for <a href={`#/project/${newest.id}`}>{newest.name}</a>, before the spend.
+              </h2>
+              <p>Approve the visual story, then render only the shots that earn it.</p>
 
               {cards.length === 0 ? (
                 <p className="mo-quiet-note">
