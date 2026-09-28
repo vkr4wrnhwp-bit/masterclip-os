@@ -213,6 +213,20 @@ button.small { padding: 4px 9px; font-size: 12px; }
 .empty { color: var(--text-faint); padding: 26px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); }
 .muted { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
+
+/* Sidebar account block: who is signed in, and the way back to Street
+   Banker. Owner, 2026-09-28: every suite says who you are signed in as and
+   carries a back-to-Street-Banker control; every target here is 44px. */
+.sidebar-account { margin-top: auto; padding: 14px 18px; border-top: 1px solid var(--border); font-size: 11px; }
+.sidebar-account .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); margin-bottom: 2px; }
+.sidebar-back {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; margin-top: 10px; padding: 0 12px; box-sizing: border-box;
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  color: var(--text); text-decoration: none; font-size: 12px; font-weight: 600;
+}
+.sidebar-back:hover { border-color: var(--accent-dim); color: var(--text); text-decoration: none; }
+.sidebar-signout { display: block; width: 100%; min-height: 44px; margin-top: 8px; box-sizing: border-box; }
 .mono { font-family: var(--mono); font-size: 12px; }
 .spinner { color: var(--text-faint); padding: 20px; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
@@ -385,6 +399,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-budget .mo-budget-note { margin-top: 8px; color: var(--mo-muted); font-variant-numeric: tabular-nums; }
 
 .mo-account { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 2px; margin-top: 13px; }
+.mo-account-label { display: block; font-size: 12px; color: var(--mo-muted); margin-bottom: 3px; }
 .mo-account strong { font-size: 12px; font-weight: 400; display: block; margin-bottom: 5px; }
 /* An address is easier to read whole and truncated than broken across two
    lines mid-word. The full value stays in the title attribute. */
@@ -402,6 +417,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   border-top: 1px solid var(--mo-line);
   margin-top: 14px;
   padding: 12px 0;
+  min-height: 44px;
 }
 .mo-return svg { width: 13px; height: 16px; }
 .mo-motto { font-size: 12px; line-height: 1.7; letter-spacing: 2.5px; color: #929597; margin: 44px 0 0 12px; }

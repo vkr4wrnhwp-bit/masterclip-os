@@ -137,6 +137,7 @@ export function MotionRail({
 
         <div className="mo-account">
           <div>
+            <span className="mo-account-label">Signed in as</span>
             <strong>{user.displayName}</strong>
             <small title={user.email}>{user.email}</small>
           </div>
@@ -153,11 +154,13 @@ export function MotionRail({
           </button>
         </div>
 
-        <a className="mo-return" href={streetBankerUrl()}>
+        {/* The signed-in account's Command Center, never the bare root: every
+            suite's way back lands there (owner, 2026-09-28). */}
+        <a className="mo-return" href={`${streetBankerUrl()}/command-center`}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m15 4-8 8 8 8" />
           </svg>
-          Return to Street Banker.
+          Back to Street Banker
         </a>
 
         <p className="mo-motto">

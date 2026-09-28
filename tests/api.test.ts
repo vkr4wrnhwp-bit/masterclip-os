@@ -561,3 +561,30 @@ describe('money-path regressions', () => {
     expect(Number(rows?.n ?? 0)).toBe(1)
   })
 })
+
+describe('the sidebar\'s way back to Street Banker', () => {
+  // Owner, 2026-09-28: every suite's bar names who is signed in and a
+  // "Back to Street Banker" control opens the Command Center, not the
+  // sign-in door. /api/auth/me is where the SPA gets the address from
+  // (apps/web/src/App.tsx appends "/command-center" itself); this pins
+  // the contract on the wire.
+  afterEach(() => {
+    delete process.env.STREET_BANKER_URL
+  })
+
+  it('falls back to the production address when unset', async () => {
+    delete process.env.STREET_BANKER_URL
+    const { session } = await signup()
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', cookies: { [SESSION_COOKIE]: session } })
+    expect(me.statusCode).toBe(200)
+    expect(me.json().streetBankerUrl).toBe('https://app.streetbankermusic.com')
+  })
+
+  it('honours a configured Street Banker address, trailing slash trimmed', async () => {
+    const { session } = await signup()
+    process.env.STREET_BANKER_URL = 'https://staging.streetbankermusic.com/'
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', cookies: { [SESSION_COOKIE]: session } })
+    expect(me.statusCode).toBe(200)
+    expect(me.json().streetBankerUrl).toBe('https://staging.streetbankermusic.com')
+  })
+})

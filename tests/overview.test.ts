@@ -432,7 +432,9 @@ describe('the first-run screen', () => {
   it('carries the signed-in person and a way back to Street Banker', () => {
     expect(markup).toContain('A Director')
     expect(markup).toContain('director@example.com')
-    expect(markup).toContain('Return to Street Banker.')
+    expect(markup).toContain('Back to Street Banker')
+    expect(markup).toContain('/command-center"')
+    expect(markup).toContain('Signed in as')
     expect(markup).toContain('Sign out and return to Street Banker')
   })
 

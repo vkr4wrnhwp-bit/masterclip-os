@@ -302,7 +302,9 @@ describe('the film list screen', () => {
     expect(markup).toContain('aria-label="Motion workspace"')
     expect(markup).toContain('aria-current="page"')
     expect(markup).toContain('href="#/projects"')
-    expect(markup).toContain('Return to Street Banker.')
+    expect(markup).toContain('Back to Street Banker')
+    expect(markup).toContain('/command-center"')
+    expect(markup).toContain('Signed in as')
     expect(markup).toContain('A Director')
     // The rail's search field says what it really covers on this screen.
     expect(markup).toContain('Search your films by name or brief')

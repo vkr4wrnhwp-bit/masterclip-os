@@ -61,13 +61,17 @@ export function streetBankerUrl(): string {
 export function App() {
   const route = useRoute()
   const [user, setUser] = React.useState<User | null>(null)
+  const [sbUrl, setSbUrl] = React.useState(streetBankerHome)
   const [checking, setChecking] = React.useState(true)
   const health = useAsync(() => api.health(), [])
 
   React.useEffect(() => {
     api
       .me()
-      .then((r) => setUser(r.user))
+      .then((r) => {
+        setUser(r.user)
+        if (r.streetBankerUrl) setSbUrl(r.streetBankerUrl)
+      })
       .catch(() => setUser(null))
       .finally(() => setChecking(false))
   }, [])
@@ -76,7 +80,10 @@ export function App() {
     void api
       .health()
       .then((h) => {
-        if (h.streetBankerUrl) streetBankerHome = h.streetBankerUrl
+        if (h.streetBankerUrl) {
+          streetBankerHome = h.streetBankerUrl
+          setSbUrl(h.streetBankerUrl)
+        }
       })
       .catch(() => undefined)
   }, [])
@@ -177,10 +184,18 @@ export function App() {
               Providers &amp; models
             </NavLink>
           </div>
-          <div style={{ marginTop: 'auto', padding: '14px 18px', borderTop: '1px solid var(--border)', fontSize: 11 }}>
+          <div className="sidebar-account">
+            <div className="label">Signed in as</div>
             <div className="muted">{user.displayName}</div>
             <div className="faint">{user.email}</div>
-            <button className="small" style={{ marginTop: 8 }} onClick={signOut}>
+            {/* Opens the signed-in account's Command Center, not the
+                sign-in door (owner, 2026-09-28: a suite whose back link
+                pointed at the bare root re-showed the sign-in form to an
+                already signed-in visitor). */}
+            <a className="sidebar-back" href={`${sbUrl}/command-center`}>
+              Back to Street Banker
+            </a>
+            <button className="sidebar-signout" onClick={signOut}>
               Sign out
             </button>
           </div>

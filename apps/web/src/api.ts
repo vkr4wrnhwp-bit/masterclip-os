@@ -180,7 +180,7 @@ export interface OutputView {
 
 export const api = {
   health: () => get<{ ok: boolean; mode: string; dialect: string; storage: string; agents: boolean; streetBankerUrl?: string; signupOpen?: boolean }>('/api/health'),
-  me: () => get<{ user: User }>('/api/auth/me'),
+  me: () => get<{ user: User; streetBankerUrl?: string }>('/api/auth/me'),
   login: (email: string, password: string) => post<{ user: User }>('/api/auth/login', { email, password }),
   signup: (input: { email: string; password: string; displayName: string; orgName: string }) => post<{ user: User }>('/api/auth/signup', input),
   logout: () => post<{ ok: boolean }>('/api/auth/logout'),

@@ -151,7 +151,11 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
     // deploy would be refused with no way to recover but logging out.
     const token = request.cookies[SESSION_COOKIE]
     if (token) issueCsrfCookie(runtime, reply, token)
-    return { user }
+    // Street Banker's address, for the sidebar's "Back to Street Banker"
+    // button: the same env var the hand-off route reads, never a copy that
+    // could drift (owner, 2026-09-28).
+    const streetBankerUrl = (process.env.STREET_BANKER_URL ?? 'https://app.streetbankermusic.com').replace(/\/+$/, '')
+    return { user, streetBankerUrl }
   })
 
   // ----------------------------------------------------------- providers ----
