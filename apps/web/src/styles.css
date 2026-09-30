@@ -868,3 +868,46 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
     scroll-behavior: auto !important;
   }
 }
+
+/* The suite footer (templates/_suite_footer.html; owner, 2026-09-29).
+   Neutral on purpose: it inherits each suite's own text colour and font and
+   only dims it, so it sits under REACH's cyan, Noise Lab's yellow and The
+   Room's orange without borrowing any of them. 12px floor, 44px-tall tap
+   rows on a phone, wraps instead of scrolling sideways. */
+.sb-suite-footer {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 32px 0 0;
+  padding: 18px 16px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  color: inherit;
+  opacity: 0.82;
+}
+.sb-suite-footer .sb-suite-footer-suites {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 4px;
+}
+.sb-suite-footer .sb-suite-footer-suites a,
+.sb-suite-footer .sb-suite-footer-suites span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  font-weight: 600;
+}
+.sb-suite-footer .sb-suite-footer-suites span { opacity: 0.6; }
+.sb-suite-footer a { color: inherit; text-decoration: none; }
+.sb-suite-footer a:hover,
+.sb-suite-footer a:focus-visible { text-decoration: underline; }
+.sb-suite-footer a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.sb-suite-footer .sb-suite-footer-line { margin: 8px auto 4px; max-width: 60ch; }
+.sb-suite-footer .sb-suite-footer-legal { margin: 0; font-size: 12px; opacity: 0.85; }
+@media (max-width: 640px) {
+  .sb-suite-footer .sb-suite-footer-suites a,
+  .sb-suite-footer .sb-suite-footer-suites span { min-height: 44px; }
+}
