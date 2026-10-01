@@ -23,3 +23,13 @@ describe('suite footer', () => {
     expect(main).toContain("getElementById('sb-footer')")
   })
 })
+
+describe('what is in Motion', () => {
+  it('lists what the suite does with boxes only the person ticks', () => {
+    expect(src).toContain('What&rsquo;s in Motion')
+    expect(src).toContain('type="checkbox"')
+    expect(src).toContain('Saved on this device')
+    expect(src).toContain("sbFeatures:motion")
+    expect(src).not.toMatch(/setTicks\(\{[^}]*true/)
+  })
+})
