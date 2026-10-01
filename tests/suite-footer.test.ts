@@ -8,15 +8,15 @@ const main = readFileSync('apps/web/src/main.tsx', 'utf8')
 const html = readFileSync('apps/web/index.html', 'utf8')
 
 describe('suite footer', () => {
-  it('links the other five suites and the legal pages through Street Banker', () => {
-    for (const label of ['The Room', 'Noise Lab', 'REACH', 'Tour', 'Royalty Sweep']) expect(src).toContain(`label: '${label}'`)
+  it('links the legal pages through Street Banker and no other suite', () => {
+    for (const label of ['The Room', 'Noise Lab', 'REACH', 'Tour', 'Royalty Sweep']) expect(src).not.toContain(`label: '${label}'`)
     expect(src).toContain('/terms')
     expect(src).toContain('/privacy')
     expect(src).toContain('Street Banker Inc.')
   })
-  it('names Motion as plain text, not a link', () => {
+  it('shows the Motion checklist only under Motion', () => {
     expect(src).toContain("current = 'motion'")
-    expect(src).toContain('aria-current="page"')
+    expect(src).toContain("current === 'motion'")
   })
   it('is mounted in its own root under the app', () => {
     expect(html).toContain('id="sb-footer"')
@@ -26,7 +26,7 @@ describe('suite footer', () => {
 
 describe('what is in Motion', () => {
   it('lists what the suite does with boxes only the person ticks', () => {
-    expect(src).toContain('What&rsquo;s in Motion')
+    expect(src).toContain('Do you know all the features Motion has? Click here.')
     expect(src).toContain('type="checkbox"')
     expect(src).toContain('Saved on this device')
     expect(src).toContain("sbFeatures:motion")

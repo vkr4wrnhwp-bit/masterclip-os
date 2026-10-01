@@ -1,30 +1,19 @@
 import { useEffect, useState } from 'react'
 import { streetBankerUrl } from './App.jsx'
 
-// A little footer on every suite (owner, 2026-09-29: "put some terms of use in
-// the bottom of all these suites and some high level verbiage and then also
-// have links to the other suites in them"). The same footer as REACH, Noise
-// Lab, The Room and Tour: the suites as links through Street Banker's own doors
-// (the suite you are in is plain text), one line, and the legal links.
-const SUITES: Array<{ key: string; label: string; href: string }> = [
-  { key: 'the-room', label: 'The Room', href: '/suites/go/the-room' },
-  { key: 'noise-lab', label: 'Noise Lab', href: '/suites/go/noise-lab' },
-  { key: 'reach', label: 'REACH', href: '/suites/go/reach' },
-  { key: 'tour', label: 'Tour', href: '/tours' },
-  { key: 'motion', label: 'Motion', href: '/suites/go/motion' },
-  { key: 'royalty-sweep', label: 'Royalty Sweep', href: '/royalties' },
-]
-
+// A little footer on every suite (owner, 2026-09-29: terms of use and a line about
+// Street Banker; owner, 2026-10-01: no links to the other suites, instead the suite
+// asks "Do you know all the features it has? Click here." and opens its own list).
 // "What's in Motion" (owner, 2026-09-30): a checklist the person ticks ("I've
 // tried this"). Nothing ticks itself; saved in this browser only.
 const FEATURES = [
-  'Start a video project',
-  'Build shots in the Shot Builder',
-  'Compare shots side by side in the Review grid',
-  'Keep your approved masters',
-  'Watch the render queue',
-  'Check the cost before you render in the Cost Lab',
-  'Connect your video providers',
+  'Plan a video as a set of shots, shot by shot',
+  'Generate shots with your connected AI video providers',
+  'Review the shots in a grid and approve the best ones',
+  'See what a render will cost before you start it',
+  'Watch the render queue while it works',
+  'Keep every approved master in one place',
+  'Connect and manage your video providers',
 ]
 const FEATURES_KEY = 'sbFeatures:motion'
 
@@ -50,11 +39,18 @@ function FeatureChecklist() {
     }
   }
   return (
-    <details className="sb-suite-features" data-suite="motion">
+    <details
+      className="sb-suite-features"
+      data-suite="motion"
+      onToggle={(e) => {
+        const el = e.currentTarget
+        if (el.open) el.scrollIntoView({ block: 'end', behavior: 'smooth' })
+      }}
+    >
       <summary>
-        What&rsquo;s in Motion <span className="sb-suite-features-count" aria-live="polite">{done} of {FEATURES.length} tried</span>
+        Do you know all the features Motion has? Click here. <span className="sb-suite-features-count" aria-live="polite">{done} of {FEATURES.length} tried</span>
       </summary>
-      <p className="sb-suite-features-note">Tick what you&rsquo;ve tried so you don&rsquo;t miss anything. Saved on this device.</p>
+      <p className="sb-suite-features-note">Tick what you have tried so you do not miss anything. Saved on this device.</p>
       <ul className="sb-suite-features-list">
         {FEATURES.map((f, i) => (
           <li key={f}>
@@ -73,19 +69,6 @@ export function SuiteFooter({ current = 'motion' }: { current?: string }) {
   return (
     <div className="sb-suite-footer" role="contentinfo" aria-label="Street Banker">
       {current === 'motion' && <FeatureChecklist />}
-      <nav className="sb-suite-footer-suites" aria-label="Street Banker suites">
-        {SUITES.map((s) =>
-          s.key === current ? (
-            <span key={s.key} aria-current="page">
-              {s.label}
-            </span>
-          ) : (
-            <a key={s.key} href={`${base}${s.href}`}>
-              {s.label}
-            </a>
-          ),
-        )}
-      </nav>
       <p className="sb-suite-footer-line">
         Street Banker: one account for your music business, from the studio to the stage to the statements.
       </p>

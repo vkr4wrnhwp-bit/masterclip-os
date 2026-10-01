@@ -927,3 +927,5 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px; cursor: pointer;
 }
 .sb-suite-footer .sb-suite-features-list input { width: 20px; height: 20px; flex: none; accent-color: currentColor; }
+/* The prompt reads as a link; one tap opens the list. */
+.sb-suite-features summary { flex-wrap: wrap; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
