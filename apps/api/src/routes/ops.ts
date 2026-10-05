@@ -62,7 +62,7 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
           `<a href="${home}/login" style="display:inline-block;padding:.7rem 1.1rem;border-radius:10px;background:#D4A93C;color:#1A1006;font-weight:700;text-decoration:none">Go to Street Banker</a>` +
           '</main></body></html>',
       )
-    const query = request.query as { token?: string }
+    const query = request.query as { token?: string; next?: string }
     if (!query.token) return refuse(401, 'This address needs a link from Street Banker.')
     if (!secret) return refuse(503, 'Motion is not connected to Street Banker sign-in yet.')
     let who
@@ -112,7 +112,11 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
     }
     void reply.setCookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', path: '/', secure: runtime.config.NODE_ENV === 'production' })
     issueCsrfCookie(runtime, reply, session.token)
-    return reply.redirect('/')
+    // Street Banker may name the screen to open (2026-10-05: Rollout's "New
+    // film" and "All films" buttons). Only this app's own home or one of its
+    // hash routes is honoured, so the link can never send anyone elsewhere.
+    const next = typeof query.next === 'string' && /^\/(#\/[A-Za-z0-9/_-]{0,64})?$/.test(query.next) ? query.next : '/'
+    return reply.redirect(next)
   })
 
   app.post('/api/auth/login', async (request, reply) => {

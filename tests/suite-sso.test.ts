@@ -94,6 +94,17 @@ describe('GET /auth/street-banker', () => {
     await rm(storageRoot, { recursive: true, force: true })
   })
 
+  it('opens the screen Street Banker names, and only screens of its own', async () => {
+    process.env.SUITE_SSO_SECRET = SECRET
+    const go = async (next: string) =>
+      (await app.inject({ method: 'GET', url: `/auth/street-banker?token=${mint({ uid: '701', email: 'n@artists.test' })}&next=${encodeURIComponent(next)}` })).headers.location
+    expect(await go('/#/projects')).toBe('/#/projects')
+    expect(await go('/')).toBe('/')
+    expect(await go('https://evil.test/')).toBe('/')
+    expect(await go('//evil.test')).toBe('/')
+    expect(await go('/#/projects?x=<script>')).toBe('/')
+  })
+
   it('refuses a bare visit plainly, and says so when the suite is not connected', async () => {
     const bare = await app.inject({ method: 'GET', url: '/auth/street-banker' })
     expect(bare.statusCode).toBe(401)
