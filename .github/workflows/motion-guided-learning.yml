@@ -37,6 +37,10 @@ jobs:
         run: pnpm exec vitest run tests/motion-learning.test.ts
       - name: Bundle real MOTION screens with preview-only transport
         run: pnpm exec vite build --config prototypes/motion-learning-preview/vite.config.ts
+      - name: Install Chromium for distinct-screen and mobile tests
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Render real React views and verify three different tutorials
+        run: pnpm exec playwright test --config prototypes/motion-learning-preview/playwright.config.ts
       - name: Confirm three-hash-entry static artifact
         run: |
           test -s prototypes/motion-learning-preview/dist/index.html
