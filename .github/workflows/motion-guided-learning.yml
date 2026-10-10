@@ -1,0 +1,48 @@
+name: MOTION Guided Learning — isolated QA
+on:
+  push:
+    branches:
+      - design/motion-guided-learning-20261009
+  pull_request:
+    branches:
+      - motion-live
+    paths:
+      - "apps/web/src/learning/**"
+      - "apps/web/src/main.tsx"
+      - "prototypes/motion-learning-preview/**"
+      - "tests/motion-learning.test.ts"
+      - ".github/workflows/motion-guided-learning.yml"
+  workflow_dispatch:
+jobs:
+  motion-learning:
+    name: Mock-only walkthrough, typecheck and static build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Verify MOTION web TypeScript
+        run: pnpm exec tsc --noEmit -p apps/web/tsconfig.json
+      - name: Unique routes, fictional-only data and no writes
+        run: pnpm exec vitest run tests/motion-learning.test.ts
+      - name: Bundle real MOTION screens with preview-only transport
+        run: pnpm exec vite build --config prototypes/motion-learning-preview/vite.config.ts
+      - name: Confirm three-hash-entry static artifact
+        run: |
+          test -s prototypes/motion-learning-preview/dist/index.html
+          grep -q 'READ-ONLY REVIEW' prototypes/motion-learning-preview/dist/index.html
+          test -s prototypes/motion-learning-preview/dist/motion-mark.png
+          if grep -R -E 'SEED_PASSWORD|STRIPE_SECRET_KEY|FAL_KEY|MASTERCLIP_MODE=live' prototypes/motion-learning-preview/dist/assets; then
+            echo 'Found forbidden live credential strings in preview bundle'
+            exit 1
+          fi
