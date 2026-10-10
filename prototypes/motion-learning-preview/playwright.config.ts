@@ -16,6 +16,7 @@ export default defineConfig({
   },
   projects:[{name:'chromium',use:{...devices['Desktop Chrome']}}],
   webServer:{
+    cwd:'../..',
     command:'pnpm exec vite preview --config prototypes/motion-learning-preview/vite.config.ts --host 127.0.0.1 --port 4321',
     url:'http://127.0.0.1:4321/',
     reuseExistingServer:false,
