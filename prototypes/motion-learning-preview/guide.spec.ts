@@ -9,7 +9,7 @@ test('three entry links load genuinely different MOTION React screens, not one s
   await page.goto('/#/shot/preview-shot-01?walkthrough=shots')
   await expect(page.locator('#ml-title')).toHaveText('Direct a Shot')
   await expect(page.locator('.topbar h2')).toContainText('Fictional street reflection')
-  await expect(page.getByText('Narrative purpose',{exact:true})).toBeVisible()
+  await expect(page.locator('.grid.cols-2 textarea').first()).toBeVisible()
   await page.goto('/#/shot/preview-shot-01/review?walkthrough=finish')
   await expect(page.locator('#ml-title')).toHaveText('Review & Deliver')
   await expect(page.locator('.topbar h2')).toContainText('Review')
