@@ -10,6 +10,7 @@ import { registerProjectRoutes } from './routes/projects.js'
 import { registerQuickCreateRoutes } from './routes/quick-create.js'
 import { registerQuickVariants } from './routes/quick-variants.js'
 import { registerMusicTimelineRoutes } from './routes/music-timelines.js'
+import { registerSceneHandoffRoutes } from './routes/scene-handoff.js'
 import { registerMusicStructureRoutes } from './routes/music-structure.js'
 import { registerCreativeTreatments } from './routes/creative-treatments.js'
 import { registerRenderRoutes } from './routes/render.js'
@@ -120,6 +121,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerQuickCreateRoutes(app, runtime)
   await registerQuickVariants(app, runtime)
   await registerMusicTimelineRoutes(app, runtime)
+  await registerSceneHandoffRoutes(app, runtime)
   await registerMusicStructureRoutes(app, runtime)
   await registerCreativeTreatments(app, runtime)
   await registerAssetRoutes(app, runtime)
