@@ -1,4 +1,4 @@
-import { createRuntime, RenderService, MasterService, assembleApprovedTimeline, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
+import { nativeFinishingEnabled, createRuntime, RenderService, MasterService, assembleApprovedTimeline, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
 import { AppError, applyEnvFile, loadConfig } from '@masterclip/shared'
 
@@ -70,10 +70,12 @@ async function main(): Promise<void> {
       try { await work() } finally { clearInterval(timer) }
     }
     worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishSongMoment, async (payload, ctx) => {
+      if (!nativeFinishingEnabled(config)) { ctx.defer(60_000); return }
       await deferLocked(() => withMediaLease(ctx, () =>
         new MasterService(runtime).finishWithSongMoment(payload.masterId, payload.actor, payload.orgId).then(() => undefined)), ctx)
     })
     worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishCaptionedSong, async (payload, ctx) => {
+      if (!nativeFinishingEnabled(config)) { ctx.defer(60_000); return }
       await deferLocked(() => withMediaLease(ctx, () =>
         finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId).then(() => undefined)), ctx)
     })
@@ -83,6 +85,7 @@ async function main(): Promise<void> {
       spec:{name:string;audio_asset_id:string;song_start_seconds:number;
         clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}
     }>(JOB_TYPES.assembleMusicTimeline, async (payload, ctx) => {
+      if (!nativeFinishingEnabled(config)) { ctx.defer(60_000); return }
       await withMediaLease(ctx, () => assembleApprovedTimeline(runtime, payload).then(() => undefined))
     })
 
