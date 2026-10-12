@@ -64,3 +64,13 @@ The older Review Grid's same-shot candidate comparison remains intact.
 ## Rollback
 
 The draft pull request is unmerged. Close PR #30 to leave motion-live and production unchanged. No migrations or source-media overwrites were introduced. The new caption/variant fields default safely for legacy shots. If deployed after independent approval, stop new feature endpoints before reverting UI and code, preserve all project media and derived assets for recovery, and never delete existing client records as part of rollback.
+
+## October 12 concurrency and rights hardening
+
+- Forward-only migration `0004_media_finish_leases` introduces per-master database leases. Apply this migration to staging before starting upgraded workers or enabling new finishing endpoints; existing data is not deleted.
+- Both the song and caption finishing workers now serialize work on a master, renew the lease and defer competing jobs. Registration of the derivative asset, parent lineage and delivery row happens atomically under a fencing-token check.
+- A separate source-audio rights check runs inside the fenced database transaction. If authorization is revoked during FFmpeg processing, its output is not registered.
+- Local signed media reads now re-check every recorded audio ancestor and return 403 after revocation, even if the caller presents a previously issued signed URL. New URLs are withheld after revocation and playback of sensitive local media uses no-store caching.
+- For S3, newly requested audio-related presigned links use a 120-second lifetime after the authorization check. Already-issued direct S3 provider URLs **cannot be instantly recalled** by this code; storage/gateway revocation remains a release gate. Already-downloaded local user copies cannot be recalled either.
+- The explicit director-only failed-job retry endpoint remains in place. Queue dedupe avoids common duplicate clicks, but administrative recovery and crash/restart staging drills are still required.
+- The implementation now requires reviewing forward-migration results and the complete latest-head CI run before merge.
