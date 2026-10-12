@@ -673,5 +673,21 @@ CREATE TABLE IF NOT EXISTS motion_music_timelines (
 CREATE INDEX IF NOT EXISTS idx_motion_timelines_project ON motion_music_timelines(project_id, updated_at);
 `,
   },
+  {
+    id: '0006_motion_timeline_exports',
+    sql: `
+-- One verified finished delivery per immutable timeline version.
+CREATE TABLE IF NOT EXISTS motion_timeline_exports (
+  id          TEXT PRIMARY KEY,
+  timeline_id TEXT NOT NULL REFERENCES motion_music_timelines(id),
+  version     INTEGER NOT NULL,
+  asset_id    TEXT NOT NULL REFERENCES assets(id),
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  UNIQUE(timeline_id,version)
+);
+CREATE INDEX IF NOT EXISTS idx_motion_timeline_exports_id ON motion_timeline_exports(timeline_id,version);
+`,
+  },
 
 ]
