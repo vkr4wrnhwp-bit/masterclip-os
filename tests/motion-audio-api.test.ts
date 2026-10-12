@@ -120,6 +120,46 @@ describe('MOTION native audio permissions', () => {
     })
   })
 
+  it('protects canonical scene handoffs across projects and after audio revocation', async () => {
+    const endpoint = `/api/projects/${projectId}/scene-plan/handoff`
+    const payload = {
+      requestId:'47bdfe90-ea24-4baa-ad34-9d4df4f33c1e',
+      reviewed:true,promotionalUseAttested:true,audioAssetId:audioId,
+      songStartSeconds:.25,songEndSeconds:2.25,
+      title:'Artist checked camera plan',sectionLabel:'Intro',
+      narrativePurpose:'Vocal performance in a real recording room',
+      cameraDirection:'Slow inward dolly',performanceDirection:'Singer moves toward a single lamp',
+      visualTreatment:'Practical light and natural material detail',aspectRatio:'16:9',
+    }
+    const anonymous=await app.inject({method:'POST',url:endpoint,payload})
+    expect(anonymous.statusCode).toBe(401)
+    const other=await rt.projects.createOrg('Separate Music Company')
+    await rt.auth.createUser({
+      orgId:other.id,email:'foreign-handoff@example.test',
+      password:'safe-password-456',displayName:'Foreign',orgRole:'owner',
+    })
+    const login=await app.inject({method:'POST',url:'/api/auth/login',
+      payload:{email:'foreign-handoff@example.test',password:'safe-password-456'}})
+    const otherSession=login.cookies.find(c=>c.name===SESSION_COOKIE)?.value??''
+    const otherCsrf=login.cookies.find(c=>c.name===CSRF_COOKIE)?.value??''
+    const foreign=await app.inject({method:'POST',url:endpoint,
+      cookies:{[SESSION_COOKIE]:otherSession,[CSRF_COOKIE]:otherCsrf},
+      headers:{[CSRF_HEADER]:otherCsrf},payload})
+    expect(foreign.statusCode).toBe(403)
+    const created=await app.inject({method:'POST',url:endpoint,
+      cookies:{[SESSION_COOKIE]:session,[CSRF_COOKIE]:csrf},
+      headers:{[CSRF_HEADER]:csrf},payload})
+    expect(created.statusCode).toBe(200)
+    expect(created.json()).toMatchObject({rendered:false,queued:false})
+    const original=await rt.projects.currentVersion(created.json().shotId)
+    expect(original.spec.music_cue?.asset_id).toBe(audioId)
+    await rt.assets.setRights(audioId,{consent:'revoked',authorized:false},userId)
+    const revoked=await app.inject({method:'POST',url:endpoint,
+      cookies:{[SESSION_COOKIE]:session,[CSRF_COOKIE]:csrf},
+      headers:{[CSRF_HEADER]:csrf},payload})
+    expect(revoked.statusCode).toBe(403)
+  })
+
   it('persists project-owned creative treatments and refuses duplicate names', async () => {
     const path = `/api/projects/${projectId}/creative-treatments`
     const withoutSession = await app.inject({ method: 'POST', url: path, payload: {
