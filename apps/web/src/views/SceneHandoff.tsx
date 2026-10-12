@@ -31,8 +31,13 @@ export function SceneHandoff({
   })))
   const [busy,setBusy] = React.useState<number|null>(null)
   const [errors,setErrors] = React.useState<Record<number,string>>({})
-  const change = (i:number, patch:Partial<Editor>) =>
-    setEditors(before => before.map((item,j)=>j===i?{...item,...patch}:item))
+  const change = (i:number, patch:Partial<Editor>) => {
+    const creativeChange = Object.keys(patch).some(key =>
+      !['reviewed','promotionalUseAttested','savedShotId'].includes(key))
+    setEditors(before => before.map((item,j)=>j===i
+      ? {...item,...(creativeChange ? {reviewed:false} : {}),...patch}
+      : item))
+  }
   const makeDraft = async (i:number) => {
     const editor=editors[i]
     if(!editor||busy!==null||editor.savedShotId||!editor.reviewed||!editor.promotionalUseAttested)return
