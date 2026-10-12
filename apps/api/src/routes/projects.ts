@@ -19,6 +19,7 @@ import {
 } from '@masterclip/shot-schema'
 import type { Runtime } from '@masterclip/runtime'
 import { requireAuth, requireProject } from '../server.js'
+import { assertMusicCueAsset } from './quick-create.js'
 
 /** Projects, scenes, shots, and the character/world bibles. */
 export async function registerProjectRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
@@ -137,6 +138,7 @@ export async function registerProjectRoutes(app: FastifyInstance, runtime: Runti
         details: { issues: validation.issues },
       })
     }
+    if (validation.shot.music_cue) await assertMusicCueAsset(runtime, projectId, validation.shot.music_cue)
     const created = await runtime.projects.createShot({
       projectId,
       sceneId: body.sceneId ?? null,
@@ -168,6 +170,7 @@ export async function registerProjectRoutes(app: FastifyInstance, runtime: Runti
     if (!validation.ok || !validation.shot) {
       throw new AppError({ kind: 'validation', code: 'shot.invalid', message: 'shot failed validation', details: { issues: validation.issues } })
     }
+    if (validation.shot.music_cue) await assertMusicCueAsset(runtime, shot.projectId, validation.shot.music_cue)
     return {
       version: await runtime.projects.addVersion({
         shotId,
@@ -203,6 +206,7 @@ export async function registerProjectRoutes(app: FastifyInstance, runtime: Runti
     const failed: Array<{ shotId: string; reason: string }> = []
     for (const spec of result.shots) {
       try {
+        if (spec.music_cue) await assertMusicCueAsset(runtime, projectId, spec.music_cue)
         const record = await runtime.projects.createShot({ projectId, spec, createdBy: auth.userId, note: 'imported' })
         created.push(record.shot.id)
       } catch (err) {
