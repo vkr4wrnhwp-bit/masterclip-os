@@ -20,6 +20,7 @@ export const JOB_TYPES = {
   finishMaster: 'media.finish',
   finishSongMoment: 'media.song_moment',
   finishCaptionedSong: 'media.captioned_song',
+  assembleMusicTimeline: 'media.music_timeline',
   refreshCatalog: 'maintenance.refresh_catalog',
   providerHealth: 'maintenance.provider_health',
   recomputeStats: 'maintenance.recompute_stats',
