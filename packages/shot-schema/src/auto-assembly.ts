@@ -26,7 +26,8 @@ export type AutoAssemblyInput = z.infer<typeof AutoAssemblyInput>
 export function proposeFirstCut(raw: AutoAssemblyInput) {
   const input = AutoAssemblyInput.parse(raw)
   const target = input.target_seconds
-  const sections = validateMusicSections(input.sections, input.song_start_seconds + target + 3600)
+  const sectionExtent = Math.max(input.song_start_seconds + target, ...input.sections.map(s => s.end_seconds))
+  const sections = validateMusicSections(input.sections, sectionExtent)
   const usefulBeats = input.beat_confidence >= .3
     ? [...new Set(input.beats)].filter(t => t >= input.song_start_seconds && t <= input.song_start_seconds + target).sort((a,b)=>a-b)
     : []
@@ -41,7 +42,8 @@ export function proposeFirstCut(raw: AutoAssemblyInput) {
     const absoluteStart=input.song_start_seconds+elapsed
     const section=sectionAt(sections,absoluteStart)
     const sectionalPace=section?.kind==='chorus' ? 1.2 : section?.kind==='bridge' ? 3.5 : section?.kind==='verse' ? 2.8 : section?.kind==='intro' ? 4 : null
-    const maxLength=Math.min(remaining,source.duration_seconds,60)
+    const maxLength=Math.min(remaining,source.duration_seconds,60,
+      section ? Math.max(.5,section.end_seconds-absoluteStart) : 60)
     if(maxLength < .5) break
     let planned=Math.min(sectionalPace??intended,maxLength)
     if(section) planned=Math.min(planned, section.end_seconds-absoluteStart)
@@ -49,7 +51,8 @@ export function proposeFirstCut(raw: AutoAssemblyInput) {
       const absolute=input.song_start_seconds+elapsed+planned
       const candidates=usefulBeats.filter(b => {
         const length=b-input.song_start_seconds-elapsed
-        return length >= .5 && length <= maxLength
+        return length >= .5 && length <= maxLength &&
+          (!section || b <= section.end_seconds)
       })
       if(candidates.length) {
         const closest=candidates.reduce((a,b)=>Math.abs(a-absolute) <= Math.abs(b-absolute)?a:b)
