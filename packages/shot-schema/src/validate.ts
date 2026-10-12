@@ -79,7 +79,24 @@ export function validateShot(input: CanonicalShotInput | unknown): ShotValidatio
       break
   }
 
+  for (const [index, item] of shot.timed_captions.entries()) {
+    if (item.end_seconds <= item.start_seconds || item.end_seconds > shot.duration_seconds + 0.05) {
+      error('timed_captions.' + index, 'captions.outside_shot', 'caption must fit within the shot duration')
+    }
+    if (index > 0 && item.start_seconds < shot.timed_captions[index - 1]!.end_seconds) {
+      error('timed_captions.' + index, 'captions.overlap', 'caption times may not overlap')
+    }
+  }
+
   // --- audio ----------------------------------------------------------------
+  // Song moments are metadata only; their range must remain valid even when
+  // imported or edited through the professional Shot Builder.
+  if (shot.music_cue) {
+    const span = shot.music_cue.end_seconds - shot.music_cue.start_seconds
+    if (span < 0.5 || span > 60) {
+      error('music_cue.end_seconds', 'audio.invalid_song_moment', 'song moments must last between 0.5 and 60 seconds')
+    }
+  }
   if (shot.audio_mode === 'native_dialogue' && shot.dialogue.trim().length === 0) {
     error('dialogue', 'audio.missing_dialogue', 'native_dialogue requires dialogue text')
   }
