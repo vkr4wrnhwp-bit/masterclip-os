@@ -103,6 +103,64 @@ describe('MOTION native audio permissions', () => {
     })
   })
 
+  it('persists project-owned creative treatments and refuses duplicate names', async () => {
+    const path = `/api/projects/${projectId}/creative-treatments`
+    const withoutSession = await app.inject({ method: 'POST', url: path, payload: {
+      name: 'After dark', look: 'cinematic', aspect_ratio: '9:16', direction: 'One red practical behind the singer.'
+    } })
+    expect(withoutSession.statusCode).toBe(401)
+    const created = await app.inject({
+      method: 'POST', url: path,
+      cookies: { [SESSION_COOKIE]: session, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+      payload: { name: 'After dark', look: 'cinematic', aspect_ratio: '9:16', direction: 'One red practical behind the singer.' },
+    })
+    expect(created.statusCode).toBe(200)
+    expect((await rt.projects.get(projectId)).styleBible.saved_treatments).toMatchObject([
+      { name: 'After dark', look: 'cinematic', aspect_ratio: '9:16' },
+    ])
+    const listed = await app.inject({ method: 'GET', url: path, cookies: { [SESSION_COOKIE]: session } })
+    expect(listed.json().treatments).toHaveLength(1)
+    const duplicate = await app.inject({
+      method: 'POST', url: path,
+      cookies: { [SESSION_COOKIE]: session, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+      payload: { name: 'AFTER DARK', look: 'editorial', aspect_ratio: '4:5', direction: 'A clean editorial sequence.' },
+    })
+    expect(duplicate.statusCode).toBe(409)
+  })
+
+  it('saves a source-linked visual alternative with captions without rendering it', async () => {
+    const created = await app.inject({
+      method: 'POST', url: `/api/projects/${projectId}/quick-create`,
+      cookies: { [SESSION_COOKIE]: session, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+      payload: {
+        title: 'Performance original',
+        creativeDirection: 'Performing below a believable fluorescent ceiling fixture.',
+        audioAssetId: audioId,
+        startSeconds: 0.5, endSeconds: 2.5,
+        promotionalUseAttested: true,
+        captions: [{ start_seconds: 0, end_seconds: 1.3, text: 'Opening hook' }],
+      },
+    })
+    expect(created.statusCode).toBe(200)
+    const response = await app.inject({
+      method: 'POST', url: `/api/projects/${projectId}/quick-variants`,
+      cookies: { [SESSION_COOKIE]: session, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+      payload: { sourceShotId: created.json().shotId, label: 'Alternate angle',
+        direction: 'Slow, physically grounded tracking shot to the vocalist.', look: 'editorial' },
+    })
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ sourceShotId: created.json().shotId, status: 'draft', rendered: false })
+    const version = await rt.projects.currentVersion(response.json().shotId)
+    expect(version.spec.creative_variant?.source_shot_id).toBe(created.json().shotId)
+    expect(version.spec.timed_captions[0]?.text).toBe('Opening hook')
+    expect(version.spec.music_cue?.creative_look).toBe('editorial')
+    expect(await rt.renders.listOutputs({ shotId: response.json().shotId })).toHaveLength(0)
+  })
+
   it('refuses an audio source when its consent has been revoked', async () => {
     await rt.assets.setRights(audioId, { consent: 'revoked', authorized: false }, userId)
     const denied = await app.inject({
