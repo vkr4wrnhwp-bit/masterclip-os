@@ -947,3 +947,14 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
  .mcq-trim { padding: 10px; }
  .mcq button { min-height: 44px; }
 }
+
+/* Waveform bars are based on measured PCM; highlighted in/out never replace the source. */
+.mcq-waveform { min-width: 0; margin: 12px 0 18px; }
+.mcq-waveform-track { height: 104px; position: relative; border: 1px solid var(--border); background: var(--bg-input); overflow: hidden; border-radius: 4px; }
+.mcq-waveform-bars { display: flex; height: 100%; align-items: center; gap: 1px; padding: 4px; }
+.mcq-waveform-bars span { display: block; background: #69b7d4; flex: 1; min-width: 1px; border-radius: 1px; }
+.mcq-waveform-selection { position: absolute; top: 0; bottom: 0; border-left: 2px solid #6acbe8; border-right: 2px solid #6acbe8; background: rgba(83, 194, 223, .16); pointer-events: none; }
+.mcq-waveform-playhead { position: absolute; top: 0; bottom: 0; border-left: 2px solid white; pointer-events: none; }
+.mcq-waveform input[type="range"] { width: 100%; min-height: 44px; touch-action: pan-y; }
+.mcq-waveform p { margin: 6px 0; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .mcq-waveform * { animation: none !important; transition: none !important; } }
