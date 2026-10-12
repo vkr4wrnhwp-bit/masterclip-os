@@ -1,4 +1,4 @@
-import { createRuntime, RenderService, QueueWorker, QUEUES } from '@masterclip/runtime'
+import { createRuntime, RenderService, MasterService, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
 import { applyEnvFile, loadConfig } from '@masterclip/shared'
 
@@ -48,6 +48,15 @@ async function main(): Promise<void> {
       await ctx.heartbeat()
       const result = await render.runQc(outputId)
       ctx.logger.info('worker.qc', { output_id: outputId, action: result.action, technical_pass: result.technicalPass })
+    })
+
+    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishSongMoment, async (payload, ctx) => {
+      await ctx.heartbeat()
+      await new MasterService(runtime).finishWithSongMoment(payload.masterId, payload.actor, payload.orgId)
+    })
+    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishCaptionedSong, async (payload, ctx) => {
+      await ctx.heartbeat()
+      await finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId)
     })
 
     worker.register<{ outputId: string }>(JOB_TYPES.buildProxies, async ({ outputId }, ctx) => {
