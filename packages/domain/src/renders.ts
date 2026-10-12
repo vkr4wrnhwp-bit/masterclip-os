@@ -556,7 +556,7 @@ export class RenderRepo {
     await updateRow(this.db, 'masters', masterId, { master_asset_id: assetId, status })
   }
 
-  async addDeliverable(input: { masterId: string; format: string; assetId: string; spec: Record<string, unknown> }): Promise<MasterDeliverable> {
+  async addDeliverable(input: { masterId: string; format: string; assetId: string; spec: Record<string, unknown> }, transaction?: Db): Promise<MasterDeliverable> {
     const deliverable: MasterDeliverable = {
       id: newId('del', this.clock.now()),
       masterId: input.masterId,
@@ -565,7 +565,7 @@ export class RenderRepo {
       spec: input.spec,
       createdAt: this.clock.isoNow(),
     }
-    await insertRow(this.db, 'master_deliverables', {
+    await insertRow(transaction ?? this.db, 'master_deliverables', {
       id: deliverable.id,
       master_id: deliverable.masterId,
       format: deliverable.format,
