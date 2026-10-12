@@ -149,7 +149,17 @@ export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runt
       'SELECT * FROM motion_music_timelines WHERE id = ? AND project_id = ?',[timelineId,projectId],
     )
     if(!row)throw notFound('music timeline',timelineId)
-    return {exports:await listTimelineExports(rt,projectId,timelineId)}
+    const query=rt.db.dialect==='postgres'
+      ?`SELECT id,status FROM queue_jobs WHERE queue_name = ? AND job_type = ?
+        AND (payload::jsonb ->> 'timelineId') = ? ORDER BY created_at DESC LIMIT 1`
+      :`SELECT id,status FROM queue_jobs WHERE queue_name = ? AND job_type = ?
+        AND json_valid(payload) = 1 AND json_extract(payload, '$.timelineId') = ?
+        ORDER BY created_at DESC LIMIT 1`
+    const latestJob=await rt.db.get<{id:string;status:string}>(
+      query,[QUEUES.media,JOB_TYPES.assembleMusicTimeline,timelineId],
+    )
+    return {exports:await listTimelineExports(rt,projectId,timelineId),
+      latestJob:latestJob?{id:latestJob.id,status:latestJob.status}:null}
   })
 
   app.get('/api/projects/:projectId/music-timelines/:timelineId/jobs/:jobId', async request => {
