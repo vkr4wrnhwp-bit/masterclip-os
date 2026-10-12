@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, newId, notFound } from '@masterclip/shared'
 import { MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
-import { signedReadableUrl, type Runtime } from '@masterclip/runtime'
+import { listTimelineExports, signedReadableUrl, type Runtime } from '@masterclip/runtime'
+import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { requireProject } from '../server.js'
 import { assertMusicCueAsset } from './quick-create.js'
 
@@ -119,6 +120,51 @@ export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runt
       throw new AppError({ kind: 'conflict', code: 'timeline.version_conflict', message: 'timeline changed or is unavailable; reload before saving' })
     }
     return { timelineId, version: body.expectedVersion + 1, status: 'saved' as const, rendered: false }
+  })
+
+  // Render the saved, immutable version snapshot in the durable media worker.
+  // Creation itself never runs FFmpeg or spends provider credits.
+  app.post('/api/projects/:projectId/music-timelines/:timelineId/assemble', async request => {
+    const {projectId,timelineId}=request.params as {projectId:string;timelineId:string}
+    const {auth}=await requireProject(rt,request,projectId,'director')
+    const row=await rt.db.get<TimelineRow>(
+      'SELECT * FROM motion_music_timelines WHERE id = ? AND project_id = ?',[timelineId,projectId],
+    )
+    if(!row)throw notFound('music timeline',timelineId)
+    const draft=mapTimeline(row)
+    await validateTimeline(rt,projectId,draft.spec)
+    const queued=await rt.queue.enqueue({
+      queue:QUEUES.media,type:JOB_TYPES.assembleMusicTimeline,
+      payload:{projectId,timelineId,version:draft.version,spec:draft.spec,actor:auth.userId,orgId:auth.orgId},
+      dedupeKey:'motion:timeline:'+timelineId+':v'+draft.version,
+      maxAttempts:2,
+    })
+    return {jobId:queued.id,version:draft.version,status:'queued' as const,deduped:queued.deduped}
+  })
+
+  app.get('/api/projects/:projectId/music-timelines/:timelineId/exports', async request => {
+    const {projectId,timelineId}=request.params as {projectId:string;timelineId:string}
+    await requireProject(rt,request,projectId)
+    const row=await rt.db.get<TimelineRow>(
+      'SELECT * FROM motion_music_timelines WHERE id = ? AND project_id = ?',[timelineId,projectId],
+    )
+    if(!row)throw notFound('music timeline',timelineId)
+    return {exports:await listTimelineExports(rt,projectId,timelineId)}
+  })
+
+  app.get('/api/projects/:projectId/music-timelines/:timelineId/jobs/:jobId', async request => {
+    const {projectId,timelineId,jobId}=request.params as {projectId:string;timelineId:string;jobId:string}
+    await requireProject(rt,request,projectId)
+    const row=await rt.db.get<TimelineRow>(
+      'SELECT * FROM motion_music_timelines WHERE id = ? AND project_id = ?',[timelineId,projectId],
+    )
+    if(!row)throw notFound('music timeline',timelineId)
+    const job=await rt.queue.get(jobId)
+    const payload=job?.payload as {timelineId?:string;projectId?:string}|null
+    if(!job||job.type!==JOB_TYPES.assembleMusicTimeline||payload?.timelineId!==timelineId||
+      payload?.projectId!==projectId)throw notFound('assembly job',jobId)
+    return {jobId,status:job.status,
+      error:job.status==='dead'?'Timeline assembly failed. Check your approved sources or contact support.':null}
   })
 
   app.get('/api/projects/:projectId/music-timelines/:timelineId/preview', async request => {
