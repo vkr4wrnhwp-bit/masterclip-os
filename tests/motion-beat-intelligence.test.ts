@@ -15,7 +15,7 @@ beforeAll(async () => {
   // Physical 120-BPM click track at half-second intervals, not a fake
   // waveform. Decoding and beat estimation run on actual file bytes.
   await ffmpeg(['-f', 'lavfi', '-i',
-    'aevalsrc=if(lt(mod(t\,0.5)\,0.025)\,0.8*sin(2*PI*900*t)\,0):s=8000:d=12',
+    String.raw`aevalsrc=if(lt(mod(t\,0.5)\,0.025)\,0.8*sin(2*PI*900*t)\,0):s=8000:d=12`,
     '-c:a', 'pcm_s16le', clickTrack])
   await ffmpeg(['-f', 'lavfi', '-i', 'anullsrc=r=8000:cl=mono', '-t', '5', '-c:a', 'pcm_s16le', silence])
 }, 90_000)
