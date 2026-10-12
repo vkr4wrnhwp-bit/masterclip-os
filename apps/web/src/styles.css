@@ -966,3 +966,19 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mcq-video-delivery { display: grid; gap: 8px; margin: 12px 0; }
 .mcq-video-delivery video { width: 100%; max-height: 300px; background: #050608; border-radius: var(--radius); }
 .mcq-video-delivery a { font-size: 12px; overflow-wrap: anywhere; }
+
+/* Native comparison sits alongside the existing same-shot Review Grid. */
+.mcq-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+.mcq-comparison-side { min-width: 0; padding: 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); }
+.mcq-comparison-side h4 { margin: 0; font-size: 15px; color: var(--text); }
+.mcq-comparison-side video { width: 100%; display: block; background: black; max-height: 360px; margin: 12px 0; }
+.mcq-comparison-facts { display: grid; gap: 8px; }
+.mcq-comparison-facts > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border); }
+.mcq-comparison-facts dt { color: var(--text-dim); }
+.mcq-comparison-facts dd { margin: 0; max-width: 70%; overflow-wrap: anywhere; }
+.mcq-comparison-transport { margin-top: 12px; }
+@media (max-width: 740px) {
+  .mcq-comparison-grid { grid-template-columns: minmax(0,1fr); }
+  .mcq-comparison-side video { max-height: 55vh; }
+  .mcq-comparison-transport button { min-height: 44px; }
+}
