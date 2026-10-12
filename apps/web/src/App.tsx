@@ -10,6 +10,7 @@ import { ReviewGrid } from './views/ReviewGrid.jsx'
 import { MastersView } from './views/Masters.jsx'
 import { CostLab } from './views/CostLab.jsx'
 import { ProvidersView } from './views/Providers.jsx'
+import { MotionLogo } from './motion-logo.jsx'
 
 export interface Route {
   name: string
@@ -147,9 +148,7 @@ export function App() {
       <div className="app">
         <nav className="sidebar">
           <div className="brand">
-            <h1>
-              <img className="brand-mark" src="/motion-wordmark.png" alt="Motion" width={440} height={413} />
-            </h1>
+            <h1><MotionLogo /></h1>
             <div className="sub">cinematic render factory</div>
           </div>
           <div className="nav">

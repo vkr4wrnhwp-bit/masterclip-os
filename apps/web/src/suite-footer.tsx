@@ -39,14 +39,7 @@ function FeatureChecklist() {
     }
   }
   return (
-    <details
-      className="sb-suite-features"
-      data-suite="motion"
-      onToggle={(e) => {
-        const el = e.currentTarget
-        if (el.open) el.scrollIntoView({ block: 'end', behavior: 'smooth' })
-      }}
-    >
+    <details className="sb-suite-features" data-suite="motion">
       <summary>
         Do you know all the features Motion has? Click here. <span className="sb-suite-features-count" aria-live="polite">{done} of {FEATURES.length} tried</span>
       </summary>

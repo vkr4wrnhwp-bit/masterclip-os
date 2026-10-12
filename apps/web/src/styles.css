@@ -28,7 +28,11 @@
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; margin: 0; }
+html, body { min-height: 100%; margin: 0; }
+/* The suite footer is a sibling of #root. A fixed-height #root let long
+   mobile screens overflow underneath that footer at the viewport boundary. */
+#root { height: auto; min-height: 100vh; min-height: 100dvh; margin: 0; }
+#sb-footer { position: static; display: block; clear: both; width: 100%; }
 
 body {
   background: var(--bg);
@@ -43,7 +47,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ---------------------------------------------------------------- layout -- */
-.app { display: grid; grid-template-columns: 210px 1fr; height: 100%; }
+.app { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100vh; height: 100dvh; }
 
 .sidebar {
   background: var(--bg-raised);
@@ -56,7 +60,8 @@ a:hover { text-decoration: underline; }
 
 .brand { padding: 0 18px 18px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .brand h1 { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; margin: 0; color: var(--accent); font-weight: 600; }
-.brand .brand-mark { display: block; width: 132px; height: auto; }
+/* Shared .motion bracket wordmark also appears on the professional sidebar. */
+.brand h1 .motion-logo { font-size: 23px; font-weight: 750; letter-spacing: -0.05em; text-transform: none; }
 .brand .sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
 
 .nav a {
@@ -332,10 +337,19 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   z-index: 10;
   overflow-y: auto;
 }
-.mo-brand { padding-left: 12px; }
-.mo-mark { display: block; width: 46px; height: 46px; margin-left: -4px; }
-.mo-monogram { font-weight: 700; font-size: 38px; letter-spacing: -2px; line-height: 1; }
-.mo-wordmark { font-size: 12px; font-weight: 700; letter-spacing: 4px; margin-top: 10px; }
+/* Official suite wordmark — cyan brackets with .motion, never the monogram. */
+.motion-logo { display: inline-flex; align-items: center; justify-content: flex-start;
+  width: max-content; max-width: 100%; min-height: 44px; gap: 2px;
+  color: var(--mo-paper); font-family: Arial, Helvetica, sans-serif;
+  font-size: 23px; font-weight: 750; letter-spacing: -0.045em; line-height: 1;
+  text-decoration: none; white-space: nowrap; }
+.motion-logo-bracket { color: var(--mo-cyan); font-size: 1.2em; font-weight: 500; }
+.motion-logo-dot { color: var(--mo-cyan); }
+.motion-logo-type { color: var(--mo-paper); }
+.motion-logo:hover { color: var(--mo-paper); text-decoration: none; }
+.motion-logo:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 3px; }
+.mo-brand { padding-left: 0; }
+.mo-brand .motion-logo { font-size: 23px; }
 
 .mo-search {
   display: flex;
@@ -796,13 +810,12 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
     border-bottom: 1px solid var(--mo-line);
     padding: 20px 18px 0;
     display: grid;
-    grid-template-columns: 90px minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: minmax(128px, 1fr) minmax(0, 1fr);
+    gap: 12px;
     overflow: visible;
   }
-  .mo-brand { padding: 0; }
-  .mo-monogram { font-size: 30px; }
-  .mo-wordmark { font-size: 12px; letter-spacing: 2px; margin-top: 7px; }
+  .mo-brand { padding: 0; min-width: 0; align-self: center; }
+  .mo-brand .motion-logo { font-size: clamp(17px, 5.1vw, 23px); }
   .mo-search { margin: 0; align-self: center; }
   .mo-results { grid-column: 1 / -1; margin-bottom: 0; }
   .mo-nav { display: flex; grid-column: 1 / -1; overflow-x: auto; gap: 6px; padding: 0 0 10px; }
@@ -913,7 +926,9 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 }
 
 /* "What's in this suite" checklist (static/js/suite-features.js). */
-.sb-suite-footer .sb-suite-features { max-width: 560px; margin: 0 auto 10px; text-align: left; }
+.sb-suite-footer .sb-suite-features { position: static; max-width: 560px; margin: 0 auto 10px; text-align: left; }
+/* The expandable checklist stays in normal footer flow; it cannot cover the
+   film cards or float over page content at mobile viewport boundaries. */
 .sb-suite-footer .sb-suite-features summary {
   display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px;
   cursor: pointer; font-weight: 700; list-style: none;
