@@ -264,6 +264,8 @@ export const api = {
       body,
     ),
 
+  waveform: (assetId: string) => get<{ assetId: string; peaks: number[]; durationSeconds: number; source: 'decoded_pcm' }>(`/api/assets/${encodeURIComponent(assetId)}/waveform`),
+
   quickCreate: (projectId: string, body: {
     title: string; creativeDirection: string; audioAssetId: string;
     visualAssetId: string | null; startSeconds: number; endSeconds: number;
