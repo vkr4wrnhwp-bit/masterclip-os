@@ -182,6 +182,62 @@ export async function concat(sourcePaths: string[], destPath: string, opts: RunO
   return destPath
 }
 
+/**
+ * Native audio-to-video composition for approved masters.
+ *
+ * Replaces (never mixes ambiguously) the video's original audio with the
+ * explicitly trimmed recording. It does not invent a waveform, alter source
+ * media, call a billable provider, or claim results before probing the MP4.
+ *
+ * Normal H.264 sources are stream-copied to avoid unnecessary generational
+ * loss; other codecs get an explicit H.264 conversion for social delivery.
+ */
+export async function replaceAudioMoment(
+  videoPath: string,
+  audioPath: string,
+  destPath: string,
+  startSeconds: number,
+  endSeconds: number,
+  opts: RunOptions = {},
+): Promise<{ path: string; durationSeconds: number; codec: string }> {
+  const length = endSeconds - startSeconds
+  if (![startSeconds, endSeconds].every(Number.isFinite) || startSeconds < 0 || length < 0.5 || length > 60) {
+    throw new AppError({ kind: 'validation', code: 'song_moment.range', message: 'song moment must last 0.5 to 60 seconds and have nonnegative start time' })
+  }
+  const [video, audio] = await Promise.all([probe(videoPath, opts), probe(audioPath, opts)])
+  if (!video.video || !audio.audio) {
+    throw new AppError({ kind: 'validation', code: 'song_moment.streams', message: 'both a decodable video and an audio recording are required' })
+  }
+  if (video.durationSeconds + 0.12 < length) {
+    throw new AppError({ kind: 'validation', code: 'song_moment.video_short', message: 'approved video is shorter than the selected song moment; adjust the selection or render a longer shot' })
+  }
+  if (audio.durationSeconds + 0.1 < endSeconds) {
+    throw new AppError({ kind: 'validation', code: 'song_moment.audio_short', message: 'song selection runs beyond the available audio recording' })
+  }
+
+  const copyVideo = video.video.codec === 'h264'
+  await mkdir(dirname(destPath), { recursive: true })
+  await ffmpeg([
+    '-i', videoPath,
+    '-ss', startSeconds.toFixed(3), '-i', audioPath,
+    '-map', '0:v:0', '-map', '1:a:0',
+    '-t', length.toFixed(3),
+    ...(copyVideo
+      ? ['-c:v', 'copy']
+      : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p']),
+    '-c:a', 'aac', '-b:a', '192k',
+    '-movflags', '+faststart', '-shortest',
+    destPath,
+  ], { ...opts, timeoutMs: opts.timeoutMs ?? 240_000 })
+
+  const result = await probe(destPath, opts)
+  if (!result.video || !result.audio || !Number.isFinite(result.durationSeconds) ||
+      result.durationSeconds < length - 0.45 || result.durationSeconds > length + 0.45) {
+    throw new AppError({ kind: 'io', code: 'song_moment.invalid_output', message: 'generated MP4 failed audio/video and duration checks; nothing will be stored' })
+  }
+  return { path: destPath, durationSeconds: result.durationSeconds, codec: result.video.codec }
+}
+
 export async function replaceAudio(
   videoPath: string,
   audioPath: string,
