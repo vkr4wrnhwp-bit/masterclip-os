@@ -95,7 +95,7 @@ export async function finishCaptionedSongMoment(
         format: 'social_h264',
         renderedCaptionCount: captions.length,
         shotVersionId: version.id,
-        cleanMusicDeliveryAssetId: clean.id ?? clean.assetId,
+        cleanMusicDeliveryAssetId: clean.assetId,
         captionsHash,
         textSource: 'user-approved-timed-captions',
         note: 'Real FFmpeg burned captions on derived MP4; no automatic lyric detection or publishing',
