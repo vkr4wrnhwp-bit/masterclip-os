@@ -282,6 +282,31 @@ export const api = {
 
   createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
     post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
+  musicTimelineSources: (projectId: string) => get<{
+    videos: Array<{masterId:string;name:string;durationSeconds:number;videoUrl:string}>
+    audio: Array<{id:string;filename:string;durationSeconds:number;audioUrl:string}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/sources`),
+  musicTimelines: (projectId: string) => get<{timelines: Array<{
+    id:string;projectId:string;name:string;version:number;spec:{
+      name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>
+    }
+  }> }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines`),
+  createMusicTimeline: (projectId:string,spec:unknown) =>
+    post<{timelineId:string;version:number;status:string;rendered:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines`,spec),
+  updateMusicTimeline: (projectId:string,timelineId:string,version:number,spec:unknown) =>
+    put<{timelineId:string;version:number;status:string;rendered:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}`,
+      {expectedVersion:version,spec}),
+  musicTimelinePreview: (projectId:string,timelineId:string) =>
+    get<{timeline:{id:string;version:number;spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}};
+      audioUrl:string;durationSeconds:number;rendered:boolean;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number;
+        masterName:string;videoUrl:string;durationSeconds:number}>}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/preview`),
+
   beats: (assetId: string) =>
     get<{ assetId: string; bpm: number|null; confidence: number; beats: number[];
       durationSeconds: number; source: 'decoded_pcm_onset'; analysisVersion: 1; limitation: string }>(
