@@ -58,4 +58,12 @@ test('authorized WAV upload appears in References and Quick Create', async ({ pa
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(2)
+  await page.setViewportSize({ width: 320, height: 640 })
+  const narrow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(narrow, '320px portrait has no sideways page movement').toBeLessThanOrEqual(2)
+  await page.setViewportSize({ width: 844, height: 390 })
+  const landscape = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(landscape, 'landscape has no sideways page movement').toBeLessThanOrEqual(2)
 })
