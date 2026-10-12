@@ -120,6 +120,7 @@ export const MusicCue = z.object({
   asset_id: z.string().min(1),
   start_seconds: z.number().finite().min(0),
   end_seconds: z.number().finite().positive(),
+  creative_look: z.enum(['performance', 'cinematic', 'editorial', 'atmosphere']).default('cinematic'),
 })
 export type MusicCue = z.infer<typeof MusicCue>
 
