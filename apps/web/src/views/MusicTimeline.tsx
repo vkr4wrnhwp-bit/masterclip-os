@@ -90,6 +90,10 @@ export function MusicTimeline({projectId}:{projectId:string}){
   const [renderStatus,setRenderStatus]=React.useState<string|null>(null)
   const [pacing,setPacing]=React.useState<'measured'|'balanced'|'energetic'>('balanced')
   const [targetSeconds,setTargetSeconds]=React.useState(20)
+  const [sceneDirection,setSceneDirection]=React.useState('')
+  const [sceneCount,setSceneCount]=React.useState(6)
+  const [scenePlan,setScenePlan]=React.useState<Awaited<ReturnType<typeof api.proposeScenePlan>>|null>(null)
+
   const [proposal,setProposal]=React.useState<{spec:TimelineDraft;confidence:number;beatAligned:boolean;structureUsed:boolean;structureNotes:string|null;warnings:string[]}|null>(null)
   const [busy,setBusy]=React.useState(false)
   const [error,setError]=React.useState<string|null>(null)
@@ -178,6 +182,19 @@ export function MusicTimeline({projectId}:{projectId:string}){
     finally{setBusy(false)}
   }
 
+  const planScenes=async()=>{
+    if(!draft.audio_asset_id||!sceneDirection.trim()||busy)return
+    setBusy(true);setError(null);setScenePlan(null)
+    try {
+      setScenePlan(await api.proposeScenePlan(projectId,{
+        audio_asset_id:draft.audio_asset_id,
+        song_start_seconds:draft.song_start_seconds,
+        target_seconds:targetSeconds,direction:sceneDirection.trim(),shot_count:sceneCount,
+      }))
+    } catch(err){setError((err as Error).message)}
+    finally{setBusy(false)}
+  }
+
   const propose=async()=>{
     if(!draft.audio_asset_id||busy)return
     setBusy(true);setError(null);setMessage(null);setProposal(null)
@@ -226,6 +243,33 @@ export function MusicTimeline({projectId}:{projectId:string}){
           projectId={projectId} assetId={selectedAudio.id} duration={selectedAudio.durationSeconds}
           onUseStart={seconds=>setDraft(old=>({...old,song_start_seconds:seconds}))}/>}
         {beatInfo&&<p className="faint">Beat estimate: {beatInfo.bpm??'unavailable'} BPM · {Math.round(beatInfo.confidence*100)}% confidence. Snap unavailable if confidence is low.</p>}
+        <section className="mc-timeline-auto" aria-label="Scene Planning Intelligence">
+          <h4>Scene Planning Intelligence</h4>
+          <p className="muted">Draft shot ideas from your own creative direction and saved song-section labels. Review each suggestion before creating any actual shot.</p>
+          <div className="field-row">
+            <Field label="Visual story direction"><textarea rows={3} maxLength={800} value={sceneDirection}
+              onChange={e=>setSceneDirection(e.target.value)} placeholder="Describe performance, world, mood, character and visual progression…" /></Field>
+            <Field label="Suggested shots"><input type="number" min="1" max="12" value={sceneCount}
+              onChange={e=>setSceneCount(Number(e.target.value))}/></Field>
+          </div>
+          <button type="button" disabled={!selectedAudio||!sceneDirection.trim()||busy||
+            sceneCount<1||sceneCount>12||targetSeconds<2||targetSeconds>60||
+            draft.song_start_seconds+targetSeconds>selectedAudio.durationSeconds}
+            onClick={()=>void planScenes()}>{busy?'Planning…':'Propose scene plan'}</button>
+          {scenePlan&&<div className="mc-timeline-proposal">
+            <strong>{scenePlan.shots.length} suggested shots — review required</strong>
+            <p className="faint">{scenePlan.warning}</p>
+            {scenePlan.shots.map(shot=><div key={shot.ordinal} className="mc-timeline-clip">
+              <strong>{shot.title}</strong>
+              <p className="faint">{shot.songStartSeconds.toFixed(1)}–{shot.songEndSeconds.toFixed(1)}s · {shot.sectionKind}</p>
+              <p><b>Camera:</b> {shot.cameraDirection}</p>
+              <p><b>Performance:</b> {shot.performanceDirection}</p>
+              <p><b>Treatment:</b> {shot.visualTreatment}</p>
+              <p className="faint">{shot.narrativePurpose}</p>
+            </div>)}
+            <button type="button" onClick={()=>setScenePlan(null)}>Dismiss scene plan</button>
+          </div>}
+        </section>
         <section className="mc-timeline-auto" aria-label="Auto-Assembly Director">
           <h4>Auto-Assembly Director</h4>
           <p className="muted">Suggest a reversible first cut using your authorized song, real beat estimates and approved master videos. No clips are changed until you apply the suggestion.</p>
