@@ -475,6 +475,7 @@ describe('the mode group', () => {
   })
 
   it('names the primary action after the chosen mode', () => {
+    expect(markup).toContain(`aria-label="Continue: ${START_MODES[0]!.title}"`)
     expect(markup).toContain(`aria-label="${START_MODES[0]!.actionLabel}"`)
     expect(markup).toContain('LET')
     for (const mode of START_MODES) expect(mode.actionLabel).toMatch(/^Start a film with /)
