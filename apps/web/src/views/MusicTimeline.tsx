@@ -87,6 +87,9 @@ export function MusicTimeline({projectId}:{projectId:string}){
   const [snapshot,setSnapshot]=React.useState<string|null>(null)
   const [renderJob,setRenderJob]=React.useState<string|null>(null)
   const [renderStatus,setRenderStatus]=React.useState<string|null>(null)
+  const [pacing,setPacing]=React.useState<'measured'|'balanced'|'energetic'>('balanced')
+  const [targetSeconds,setTargetSeconds]=React.useState(20)
+  const [proposal,setProposal]=React.useState<{spec:TimelineDraft;confidence:number;beatAligned:boolean;warnings:string[]}|null>(null)
   const [busy,setBusy]=React.useState(false)
   const [error,setError]=React.useState<string|null>(null)
   const [message,setMessage]=React.useState<string|null>(null)
@@ -174,6 +177,22 @@ export function MusicTimeline({projectId}:{projectId:string}){
     finally{setBusy(false)}
   }
 
+  const propose=async()=>{
+    if(!draft.audio_asset_id||busy)return
+    setBusy(true);setError(null);setMessage(null);setProposal(null)
+    try{
+      const result=await api.proposeMusicFirstCut(projectId,{
+        name:draft.name||'Suggested first cut',
+        audio_asset_id:draft.audio_asset_id,
+        song_start_seconds:draft.song_start_seconds,
+        target_seconds:targetSeconds,pacing,
+      })
+      setProposal({spec:result.spec,confidence:result.confidence,
+        beatAligned:result.beatAligned,warnings:result.warnings})
+    }catch(error){setError((error as Error).message)}
+    finally{setBusy(false)}
+  }
+
   const save=async()=>{
     if(!valid||busy)return
     setBusy(true);setError(null);setMessage(null)
@@ -203,6 +222,39 @@ export function MusicTimeline({projectId}:{projectId:string}){
           <Field label="Song start (seconds)"><input type="number" min="0" step=".1" value={draft.song_start_seconds} onChange={e=>setDraft(old=>({...old,song_start_seconds:Number(e.target.value)}))}/></Field>
         </div>
         {beatInfo&&<p className="faint">Beat estimate: {beatInfo.bpm??'unavailable'} BPM · {Math.round(beatInfo.confidence*100)}% confidence. Snap unavailable if confidence is low.</p>}
+        <section className="mc-timeline-auto" aria-label="Auto-Assembly Director">
+          <h4>Auto-Assembly Director</h4>
+          <p className="muted">Suggest a reversible first cut using your authorized song, real beat estimates and approved master videos. No clips are changed until you apply the suggestion.</p>
+          <div className="field-row">
+            <Field label="Editing pace"><select value={pacing} onChange={e=>setPacing(e.target.value as typeof pacing)}>
+              <option value="measured">Measured</option>
+              <option value="balanced">Balanced</option>
+              <option value="energetic">Energetic</option>
+            </select></Field>
+            <Field label="Target duration (seconds)"><input type="number" min="2" max="60" step=".5"
+              value={targetSeconds} onChange={e=>setTargetSeconds(Number(e.target.value))}/></Field>
+          </div>
+          <button type="button" disabled={!selectedAudio||videos.length===0||busy||
+            targetSeconds<2||targetSeconds>60||
+            draft.song_start_seconds+targetSeconds>selectedAudio.durationSeconds}
+            onClick={()=>void propose()}>{busy?'Analyzing…':'Propose first cut'}</button>
+          {proposal&&<div className="mc-timeline-proposal">
+            <strong>Proposed {proposal.spec.clips.length} clips · {seconds(total(proposal.spec.clips))}s</strong>
+            <p className="faint">Beat aligned: {proposal.beatAligned?'Estimated beats':'No reliable beat grid'} · Confidence {Math.round(proposal.confidence*100)}%</p>
+            <ol>{proposal.spec.clips.map((item,i)=><li key={i}>
+              {videos.find(v=>v.masterId===item.master_id)?.name??'Approved master'} · {seconds(duration(item))}s
+            </li>)}</ol>
+            {proposal.warnings.map((warning,i)=><p className="faint" key={i}>{warning}</p>)}
+            <div className="button-row">
+              <button type="button" className="primary" onClick={()=>{
+                setDraft(proposal.spec);setTimelineId(null);setVersion(0);
+                setSnapshot(null);setRenderJob(null);setRenderStatus(null);
+                setProposal(null);setMessage('Suggestion applied locally. Review every cut and save the timeline when ready.')
+              }}>Apply editable proposal</button>
+              <button type="button" onClick={()=>setProposal(null)}>Discard suggestion</button>
+            </div>
+          </div>}
+        </section>
         <div className="mc-timeline-assemble">
           <Field label="Approved source clip"><select value={adding} onChange={e=>setAdding(e.target.value)}>
             <option value="">Choose a video master</option>
