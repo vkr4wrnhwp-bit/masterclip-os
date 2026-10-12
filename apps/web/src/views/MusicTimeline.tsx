@@ -72,7 +72,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
   const [timelineId,setTimelineId]=React.useState<string|null>(null)
   const exportsData=useAsync(()=>timelineId
     ?api.musicTimelineExports(projectId,timelineId)
-    :Promise.resolve({exports:[] as Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>}),
+    :Promise.resolve({exports:[] as Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>,latestJob:null as {id:string;status:string}|null}),
     [projectId,timelineId])
   const persistedBusy=Boolean(exportsData.data?.latestJob &&
     ['pending','active'].includes(exportsData.data.latestJob.status))
