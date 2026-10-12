@@ -55,7 +55,7 @@ function CutPreview({draft,videos,audio}:{draft:TimelineDraft;videos:SourceVideo
         setIndex(current=>current+1)
       }}
       onLoadedMetadata={event=>{event.currentTarget.currentTime=clip.source_start_seconds;
-        if(playing)void event.currentTarget.play().catch(()=>setPlaying(false)}}
+        if(playing)void event.currentTarget.play().catch(()=>setPlaying(false))}}
     /> : <div className="mc-timeline-placeholder">Add a human-approved video master to preview.</div>}
     <div className="button-row">
       <button type="button" onClick={()=>void playAll()} disabled={!recording||!clip||!movie}>Play selected cut</button>
