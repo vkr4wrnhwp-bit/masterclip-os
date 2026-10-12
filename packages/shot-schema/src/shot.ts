@@ -121,6 +121,8 @@ export const MusicCue = z.object({
   start_seconds: z.number().finite().min(0),
   end_seconds: z.number().finite().positive(),
   creative_look: z.enum(['performance', 'cinematic', 'editorial', 'atmosphere']).default('cinematic'),
+  /** Per-version declaration by the user, not platform licensing or ad-spend consent. */
+  promotional_use_attested: z.boolean().default(false),
 })
 export type MusicCue = z.infer<typeof MusicCue>
 
