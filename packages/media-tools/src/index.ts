@@ -9,3 +9,5 @@ export * from './waveform.js'
 export * from './captions.js'
 
 export * from './beat-analysis.js'
+
+export * from './music-timeline.js'
