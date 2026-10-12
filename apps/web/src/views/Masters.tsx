@@ -46,6 +46,21 @@ export function MastersView({ projectId }: { projectId: string }) {
     }
   }
 
+  const finishCaptions = async (masterId: string) => {
+    setBusy(masterId)
+    setMessage(null)
+    setError(null)
+    try {
+      const result = await api.finishCaptionedSong(masterId)
+      setMessage(`${result.reused ? 'Reopened' : 'Created'} verified MP4 with ${result.captionCount} burned timed captions.${result.sandbox ? ' Source video came from sandbox.' : ''} Original media unchanged.`)
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const buildPackage = async (masterId: string) => {
     setBusy(masterId)
     setError(null)
@@ -87,6 +102,7 @@ export function MastersView({ projectId }: { projectId: string }) {
                   onFinish={(specs) => finish(String(master.id), specs)}
                   onPackage={() => buildPackage(String(master.id))}
                   onSong={() => finishSong(String(master.id))}
+                  onCaptions={() => finishCaptions(String(master.id))}
                 />
               ))}
             </div>
@@ -103,12 +119,14 @@ function MasterCard({
   onFinish,
   onPackage,
   onSong,
+  onCaptions,
 }: {
   master: Record<string, unknown>
   busy: boolean
   onFinish: (specs: unknown[]) => Promise<void>
   onPackage: () => Promise<void>
   onSong: () => Promise<void>
+  onCaptions: () => Promise<void>
 }) {
   const [format, setFormat] = React.useState('delivery_h264')
   const [aspect, setAspect] = React.useState('')
@@ -117,6 +135,8 @@ function MasterCard({
   const metadata = (master.metadata ?? {}) as Record<string, unknown>
   const song = master.songMoment as { startSeconds: number; endSeconds: number } | null
   const musicDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'song_moment' && typeof item.url === 'string')
+  const captionCount = Number(master.captionCount ?? 0)
+  const captionedDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'captioned_song_moment' && typeof item.url === 'string')
 
   return (
     <Card
@@ -179,6 +199,22 @@ function MasterCard({
           <button className="primary small" type="button" disabled={busy || master.status === 'archived'} onClick={() => void onSong()}>
             {busy ? 'Finishing…' : 'Finish with selected song'}
           </button>
+          {captionCount > 0 && (
+            <div className="mcq-caption-delivery">
+              <p className="muted">This master has {captionCount} approved, timed caption lines.</p>
+              <button className="small" type="button" disabled={busy || master.status === 'archived'} onClick={() => void onCaptions()}>
+                {busy ? 'Rendering captions…' : 'Burn captions into a separate MP4'}
+              </button>
+              <p className="faint">Burning captions creates a second derivative. The clean music master is preserved.</p>
+            </div>
+          )}
+          {captionedDeliveries.map(item => (
+            <div key={String(item.id)} className="mcq-video-delivery">
+              <span>Captioned music video</span>
+              <video controls playsInline preload="metadata" src={String(item.url)} aria-label="Finished music video with timed captions" />
+              <a href={String(item.url)} target="_blank" rel="noopener noreferrer">Open captioned MP4</a>
+            </div>
+          ))}
           {musicDeliveries.map(item => (
             <div key={String(item.id)} className="mcq-video-delivery">
               <video controls playsInline preload="metadata" src={String(item.url)} aria-label="Finished music video with recorded audio" />
