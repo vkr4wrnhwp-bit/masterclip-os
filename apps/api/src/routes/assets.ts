@@ -7,7 +7,7 @@ import { z } from 'zod/v4'
 import { AppError, DEV_ASSET_SIGNING_SECRET, newId, sha256File } from '@masterclip/shared'
 import { LocalStorage, objectKey, sanitizeFilename, verifySignedUrl } from '@masterclip/asset-storage'
 import { probe, waveformPeaks } from '@masterclip/media-tools'
-import type { Runtime } from '@masterclip/runtime'
+import { assertMediaReadable, signedReadableUrl, type Runtime } from '@masterclip/runtime'
 import { requireAuth, requireProject } from '../server.js'
 
 /**
@@ -61,9 +61,22 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     const secret = runtime.config.ASSET_SIGNING_SECRET || DEV_ASSET_SIGNING_SECRET
     const key = verifySignedUrl(secret, query, runtime.clock.now())
     const path = (runtime.storage as LocalStorage).localPath(key)
-    const asset = await runtime.db.get<{ mime: string; filename: string }>('SELECT mime, filename FROM assets WHERE storage_key = ?', [key])
-    void reply.type(String(asset?.mime ?? 'application/octet-stream'))
-    void reply.header('cache-control', 'private, max-age=3600')
+    const assets = await runtime.db.query<{ id: string; mime: string }>(
+      'SELECT id, mime FROM assets WHERE storage_key = ?', [key],
+    )
+    if (assets.length === 0) {
+      throw new AppError({ kind: 'not_found', code: 'assets.unknown_key', message: 'signed asset key is not registered' })
+    }
+    // A signed key can theoretically point to multiple asset records. Every
+    // reference must remain cleared; a duplicate record cannot bypass a
+    // revoked source's recorded lineage.
+    let containsAudio = false
+    for (const item of assets) {
+      const checked = await assertMediaReadable(runtime, item.id)
+      containsAudio ||= checked.containsAudio
+    }
+    void reply.type(assets[0]!.mime)
+    void reply.header('cache-control', containsAudio ? 'private, no-store' : 'private, max-age=3600')
     return reply.send(createReadStream(path))
   })
 
@@ -96,7 +109,7 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     const { assetId } = request.params as { assetId: string }
     const asset = await runtime.assets.get(assetId)
     await requireProject(runtime, request, asset.projectId)
-    return { url: await runtime.storage.signedUrl(asset.storageKey, 3600), asset }
+    return { url: await signedReadableUrl(runtime, asset.id), asset }
   })
 
   app.get('/api/projects/:projectId/assets', async (request) => {
@@ -105,7 +118,15 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     const kind = (request.query as { kind?: string }).kind
     const assets = await runtime.assets.list(projectId, kind as never)
     return {
-      assets: await Promise.all(assets.map(async (asset) => ({ ...asset, url: await runtime.storage.signedUrl(asset.storageKey, 3600) }))),
+      assets: await Promise.all(assets.map(async (asset) => {
+        let url: string | null = null
+        try {
+          url = await signedReadableUrl(runtime, asset.id)
+        } catch (err) {
+          if (!(err instanceof AppError) || err.kind !== 'forbidden') throw err
+        }
+        return { ...asset, url }
+      })),
     }
   })
 
