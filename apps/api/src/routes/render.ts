@@ -427,17 +427,24 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
             ? await runtime.projects.getVersion(versionId).catch(() => null)
             : null
           const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
+          // Exact project-owned JSON master ID comparison in both supported
+          // databases. LIKE treats underscores as wildcards and can leak
+          // another master's status; do not use a pattern match for identity.
+          const finishQuery = runtime.db.dialect === 'postgres'
+            ? `SELECT id, status, job_type, created_at FROM queue_jobs
+                WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
+                  AND (payload::jsonb ->> 'masterId') = ?
+                ORDER BY created_at DESC LIMIT 4`
+            : `SELECT id, status, job_type, created_at FROM queue_jobs
+                WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
+                  AND json_valid(payload) = 1 AND json_extract(payload, '$.masterId') = ?
+                ORDER BY created_at DESC LIMIT 4`
+          const finishingRows = await runtime.db.query<{
+            id: string; status: string; job_type: string; created_at: string
+          }>(finishQuery, [QUEUES.media, JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong, master.id])
           return {
             ...master,
-            finishingJobs: (await runtime.db.query<{
-              id: string; status: string; job_type: string; created_at: string
-            }>(
-              `SELECT id, status, job_type, created_at FROM queue_jobs
-               WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
-                 AND payload LIKE ? ORDER BY created_at DESC LIMIT 100`,
-              [QUEUES.media, JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong,
-                '%"masterId":"' + master.id + '"%'],
-            )).slice(0, 4).map(job => ({
+            finishingJobs: finishingRows.map(job => ({
               id: job.id, status: job.status, type: job.job_type,
               lastError: job.status === 'dead' ? 'Media finishing failed. Review server logs for details.' : null,
               createdAt: job.created_at,
