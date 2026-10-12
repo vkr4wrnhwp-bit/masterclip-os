@@ -415,10 +415,10 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     const { projectId } = request.params as { projectId: string }
     await requireProject(runtime, request, projectId)
     const list = await runtime.renders.listMasters(projectId)
-    // A reload must recover the worker's status, not rely on the browser tab
-    // retaining a useState job id. Only return jobs whose payload identifies
-    // one of the authenticated project's masters.
-    const recentMediaJobs = await runtime.queue.list(QUEUES.media, undefined, 500)
+    // The queue is shared across projects. Looking at only its latest 500 jobs
+    // silently loses recovery state for older masters. Query each authorized
+    // master with bound SQL so user data is neither globally scanned nor
+    // incorrectly truncated by another artist's queue activity.
     return {
       masters: await Promise.all(
         list.map(async (master) => {
@@ -429,15 +429,18 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
           return {
             ...master,
-            finishingJobs: recentMediaJobs.filter(job => {
-              const payload = job.payload as { masterId?: string } | null
-              return (job.type === JOB_TYPES.finishSongMoment ||
-                job.type === JOB_TYPES.finishCaptionedSong) &&
-                payload?.masterId === master.id
-            }).slice(0, 4).map(job => ({
-              id: job.id, status: job.status, type: job.type,
+            finishingJobs: (await runtime.db.query<{
+              id: string; status: string; job_type: string; created_at: string
+            }>(
+              `SELECT id, status, job_type, created_at FROM queue_jobs
+               WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
+                 AND payload LIKE ? ORDER BY created_at DESC LIMIT 100`,
+              [QUEUES.media, JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong,
+                '%"masterId":"' + master.id + '"%'],
+            )).slice(0, 4).map(job => ({
+              id: job.id, status: job.status, type: job.job_type,
               lastError: job.status === 'dead' ? 'Media finishing failed. Review server logs for details.' : null,
-              createdAt: job.createdAt,
+              createdAt: job.created_at,
             })),
             captionCount: cue?.promotional_use_attested ? (version?.spec.timed_captions.length ?? 0) : 0,
             songMoment: cue?.promotional_use_attested
