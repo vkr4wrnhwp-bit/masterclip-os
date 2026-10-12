@@ -6,10 +6,14 @@ import { QuickCreate } from './QuickCreate.jsx'
 import { VariationCompare } from './VariationCompare.jsx'
 import { MusicTimeline } from './MusicTimeline.jsx'
 
-export function ProjectView({ projectId }: { projectId: string }) {
+export function ProjectView({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'>('shots')
+  type ProjectTab = 'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'
+  const routeTab = (value?: string): ProjectTab =>
+    value === 'assets' || value === 'import' || value === 'bible' || value === 'quick' || value === 'timeline' || value === 'compare' ? value : 'shots'
+  const [tab, setTab] = React.useState<ProjectTab>(() => routeTab(initialTab))
+  React.useEffect(() => { setTab(routeTab(initialTab)) }, [projectId, initialTab])
 
   return (
     <>
