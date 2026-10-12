@@ -2,11 +2,12 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
+import { QuickCreate } from './QuickCreate.jsx'
 
 export function ProjectView({ projectId }: { projectId: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'import' | 'assets' | 'bible'>('shots')
+  const [tab, setTab] = React.useState<'shots' | 'quick' | 'import' | 'assets' | 'bible'>('shots')
 
   return (
     <>
@@ -16,6 +17,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
       </div>
 
       <div className="tabs">
+        <button className={tab === 'quick' ? 'active' : ''} onClick={() => setTab('quick')}>Quick Create</button>
         <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>
           Shots
         </button>
@@ -85,6 +87,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
         </Card>
       )}
 
+      {tab === 'quick' && <QuickCreate projectId={projectId} onSaved={() => shots.reload()} onReferences={() => setTab('assets')} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
       {tab === 'assets' && <AssetsPanel projectId={projectId} />}
       {tab === 'bible' && (
