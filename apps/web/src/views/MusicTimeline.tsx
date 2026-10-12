@@ -1,5 +1,6 @@
 import React from 'react'
 import { api } from '../api.js'
+import { SceneHandoff } from './SceneHandoff.jsx'
 import { MusicStructureEditor } from './MusicStructureEditor.jsx'
 import { AsyncBlock, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 
@@ -67,7 +68,7 @@ function CutPreview({draft,videos,audio}:{draft:TimelineDraft;videos:SourceVideo
 }
 
 /** Pure explicit human edit decision list: one audio bed, cut-only sequence. */
-export function MusicTimeline({projectId}:{projectId:string}){
+export function MusicTimeline({projectId,onCreated}:{projectId:string;onCreated:()=>void}){
   const sources=useAsync(()=>api.musicTimelineSources(projectId),[projectId])
   const saved=useAsync(()=>api.musicTimelines(projectId),[projectId])
   const [timelineId,setTimelineId]=React.useState<string|null>(null)
@@ -267,6 +268,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
               <p><b>Treatment:</b> {shot.visualTreatment}</p>
               <p className="faint">{shot.narrativePurpose}</p>
             </div>)}
+            <SceneHandoff key={scenePlan.audioAssetId+'-'+scenePlan.shots.map(item=>item.title+item.songStartSeconds).join('|')} projectId={projectId} plan={scenePlan} onCreated={onCreated}/>
             <button type="button" onClick={()=>setScenePlan(null)}>Dismiss scene plan</button>
           </div>}
         </section>
