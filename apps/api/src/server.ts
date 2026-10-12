@@ -9,6 +9,7 @@ import type { Runtime } from '@masterclip/runtime'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerQuickCreateRoutes } from './routes/quick-create.js'
 import { registerQuickVariants } from './routes/quick-variants.js'
+import { registerMusicTimelineRoutes } from './routes/music-timelines.js'
 import { registerCreativeTreatments } from './routes/creative-treatments.js'
 import { registerRenderRoutes } from './routes/render.js'
 import { registerOpsRoutes } from './routes/ops.js'
@@ -117,6 +118,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerProjectRoutes(app, runtime)
   await registerQuickCreateRoutes(app, runtime)
   await registerQuickVariants(app, runtime)
+  await registerMusicTimelineRoutes(app, runtime)
   await registerCreativeTreatments(app, runtime)
   await registerAssetRoutes(app, runtime)
   await registerRenderRoutes(app, runtime)
