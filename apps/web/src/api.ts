@@ -299,6 +299,15 @@ export const api = {
     put<{timelineId:string;version:number;status:string;rendered:boolean}>(
       `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}`,
       {expectedVersion:version,spec}),
+  assembleMusicTimeline: (projectId:string,timelineId:string) =>
+    post<{jobId:string;version:number;status:'queued';deduped:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/assemble`),
+  musicTimelineExports: (projectId:string,timelineId:string) =>
+    get<{exports:Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/exports`),
+  musicTimelineJob: (projectId:string,timelineId:string,jobId:string) =>
+    get<{jobId:string;status:string;error:string|null}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/jobs/${encodeURIComponent(jobId)}`),
   musicTimelinePreview: (projectId:string,timelineId:string) =>
     get<{timeline:{id:string;version:number;spec:{name:string;audio_asset_id:string;song_start_seconds:number;
       clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}};
