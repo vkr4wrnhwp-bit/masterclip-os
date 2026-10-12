@@ -9,7 +9,7 @@ import { RejectionReason, deriveRequirements } from '@masterclip/shot-schema'
 import { buildMatrix, defaultStopLoss, summarize } from '@masterclip/domain'
 import { compareStrategies, routeShot } from '@masterclip/model-router'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
-import { MasterService, RenderService, finishCaptionedSongMoment, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
+import { MasterService, RenderService, finishCaptionedSongMoment, signedReadableUrl, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
 import { requireProject } from '../server.js'
 
 const CandidateSchema = z.object({
@@ -325,7 +325,14 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           output.contactSheetAssetId ? runtime.assets.find(output.contactSheetAssetId) : null,
           runtime.renders.getJob(output.jobId),
         ])
-        const url = async (key: string | undefined) => (key ? runtime.storage.signedUrl(key, 3600) : null)
+        const url = async (item: { id: string } | null) => {
+          if (!item) return null
+          try { return await signedReadableUrl(runtime, item.id) }
+          catch (err) {
+            if (err instanceof AppError && err.kind === 'forbidden') return null
+            throw err
+          }
+        }
         return {
           ...output,
           prompt: job.compiledPrompt,
@@ -337,10 +344,10 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           qcDetail: qc.find((row) => toStr(row.layer) === 'combined') ?? null,
           review,
           urls: {
-            source: await url(asset?.storageKey),
-            proxy: await url(proxy?.storageKey),
-            thumbnail: await url(thumb?.storageKey),
-            contactSheet: await url(sheet?.storageKey),
+            source: await url(asset),
+            proxy: await url(proxy),
+            thumbnail: await url(thumb),
+            contactSheet: await url(sheet),
           },
         }
       }),
@@ -427,7 +434,10 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
               const permitted = asset?.projectId === master.projectId && asset.kind === 'delivery'
               return {
                 ...delivery,
-                url: permitted ? await runtime.storage.signedUrl(asset.storageKey, 3600) : null,
+                url: permitted ? await signedReadableUrl(runtime, asset.id).catch(err => {
+                  if (err instanceof AppError && err.kind === 'forbidden') return null
+                  throw err
+                }) : null,
               }
             })),
           }
