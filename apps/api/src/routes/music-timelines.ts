@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, newId, notFound } from '@masterclip/shared'
 import { ScenePlanInput, proposeScenePlan, AutoAssemblyInput, proposeFirstCut, MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
-import { listTimelineExports, signedReadableUrl, type Runtime } from '@masterclip/runtime'
+import { requireNativeFinishing, listTimelineExports, signedReadableUrl, type Runtime } from '@masterclip/runtime'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { requireProject } from '../server.js'
 import { assertMusicCueAsset } from './quick-create.js'
@@ -208,6 +208,7 @@ export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runt
   // Render the saved, immutable version snapshot in the durable media worker.
   // Creation itself never runs FFmpeg or spends provider credits.
   app.post('/api/projects/:projectId/music-timelines/:timelineId/assemble', async request => {
+    requireNativeFinishing(rt.config)
     const {projectId,timelineId}=request.params as {projectId:string;timelineId:string}
     const {auth}=await requireProject(rt,request,projectId,'director')
     const row=await rt.db.get<TimelineRow>(
