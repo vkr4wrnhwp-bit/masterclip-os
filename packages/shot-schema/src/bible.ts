@@ -100,7 +100,17 @@ export type EnvironmentRecord = z.infer<typeof EnvironmentRecord>
  * override them, but the negative constraints are appended to every compiled
  * prompt unless a shot explicitly opts out.
  */
+export const CreativeTreatment = z.object({
+  id: z.string().trim().min(1).max(96),
+  name: z.string().trim().min(1).max(80),
+  look: z.enum(['performance', 'cinematic', 'editorial', 'atmosphere']),
+  aspect_ratio: z.enum(['9:16', '1:1', '4:5', '16:9']),
+  direction: z.string().trim().min(8).max(1600),
+})
+export type CreativeTreatment = z.infer<typeof CreativeTreatment>
+
 export const StyleBible = z.object({
+  saved_treatments: z.array(CreativeTreatment).max(24).default([]),
   visual_language: z.string().default(''),
   reference_films: z.array(z.string()).default([]),
   color_palette: z.array(z.string()).default([]),
