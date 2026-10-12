@@ -445,7 +445,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 
 /* ------------------------------------------------------------ the stage --- */
 .mo-shell { min-height: 100vh; position: relative; isolation: isolate; min-width: 0; }
-.mo-main { max-width: 1600px; margin: auto; padding: 32px 42px 60px; position: relative; }
+.mo-main { max-width: 1600px; margin: auto; padding: 32px 42px 60px; position: relative; z-index: 1; }
 .mo-topline { text-align: right; letter-spacing: 3px; font-size: 12px; color: var(--mo-muted); margin: 0 0 37px; position: relative; z-index: 2; }
 
 .mo-hero { position: relative; min-height: 238px; display: flex; align-items: flex-start; flex-direction: column; padding: 0 0 28px; z-index: 1; }
@@ -460,24 +460,24 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   margin: 0 0 20px;
 }
 .mo-support { font-size: 16px; line-height: 1.6; color: #c0c2c2; max-width: 440px; margin: 0; }
+.mo-hero-cta { margin-top: 20px; background: #0b1119cc !important; }
 
-/* The soundstage, drawn rather than photographed. Setting --mo-hero-image on
-   .mo-scenery paints a real photograph over the whole drawing. */
+/* Uploaded studio environment is the actual hero image — never draw a
+   substitute. The photo is decorative and cannot intercept touch or click. */
 .mo-scenery {
-  --mo-hero-image: none;
   position: absolute;
   right: 0;
   top: 0;
-  height: 420px;
-  width: 68%;
+  height: min(620px, 90vh);
+  width: min(82%, 1050px);
   overflow: hidden;
   pointer-events: none;
-  z-index: -1;
+  z-index: 0;
   isolation: isolate;
-  opacity: 0.9;
-  background-image: var(--mo-hero-image);
+  opacity: 0.92;
+  background-image: url('/motion-start-film-bg.webp');
   background-size: cover;
-  background-position: center;
+  background-position: center 56%;
   background-repeat: no-repeat;
 }
 .mo-wall { position: absolute; inset: 0 0 35%; background: linear-gradient(90deg, #090b0c, #181b1a 48%, #0d1010); border-bottom: 1px solid #454740; }
@@ -552,7 +552,11 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, var(--mo-ink), transparent 36%), linear-gradient(0deg, var(--mo-ink), transparent 30%);
+  background:
+    linear-gradient(90deg, var(--mo-ink) 0%, rgba(9,11,12,0.72) 30%, transparent 72%),
+    linear-gradient(0deg, var(--mo-ink) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(9,11,12,0.44), transparent 38%);
+  pointer-events: none;
 }
 
 /* ------------------------------------------------------ the three modes --- */
@@ -561,23 +565,22 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-mode {
   position: relative;
   display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--mo-paper);
   border: 1px solid #5d6060;
   border-radius: 2px;
   min-height: 164px;
   padding: 24px 35px 20px 22px;
   cursor: pointer;
-  background: #0b0e0ecc;
+  background: #0b0e0cf2;
 }
-.mo-mode:hover { border-color: var(--mo-paper); }
-.mo-mode:has(input:focus-visible) { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
-.mo-mode:has(input:checked) { border-color: #a5a8a6; }
-.mo-mode:has(input:checked) .mo-selection { display: inline; }
-.mo-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mo-mode:hover,.mo-mode.is-selected { border-color: var(--mo-cyan); }
+.mo-mode:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
 .mo-mode svg { display: block; width: 27px; height: 27px; margin-bottom: 15px; }
 .mo-mode strong { font-size: 18px; display: block; font-weight: 500; margin-bottom: 7px; }
 .mo-mode small { font-size: 14px; line-height: 1.5; color: var(--mo-muted); display: block; }
 .mo-chevron { position: absolute; right: 17px; top: 60%; font-size: 23px; font-weight: 300; color: var(--mo-paper); }
-.mo-selection { position: absolute; right: 14px; top: 14px; font-size: 12px; color: var(--mo-muted); display: none; }
 
 /* -------------------------------------------------------- the stage row --- */
 .mo-workflow { display: flex; align-items: center; gap: 30px; padding: 31px 0 28px; min-height: 125px; }
@@ -728,7 +731,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-dialog h2 { font-family: var(--mo-condensed-ui); font-size: 35px; margin: 14px 0; }
 .mo-dialog p { color: var(--mo-muted); line-height: 1.6; }
 .mo-dialog label { display: block; margin-top: 20px; font-size: 14px; }
-.mo-dialog input, .mo-dialog textarea {
+.mo-dialog input:not([type='checkbox']), .mo-dialog textarea, .mo-dialog select {
   width: 100%;
   margin-top: 9px;
   border: 1px solid #505456;
@@ -740,6 +743,11 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   font: inherit;
 }
 .mo-dialog textarea { resize: vertical; min-height: 110px; }
+.mo-dialog input[type='file'] { max-width: 100%; overflow-wrap: anywhere; }
+.mo-dialog .mo-consent { display: flex; align-items: flex-start; gap: 12px; line-height: 1.45; }
+.mo-dialog .mo-consent input { width: 22px; height: 22px; flex: 0 0 auto; margin: 0; }
+.mo-dialog .mo-consent span { flex: 1; }
+.mo-dialog select { background: var(--mo-ink); }
 .mo-dialog button { cursor: pointer; border: 1px solid var(--mo-line); border-radius: 3px; background: transparent; padding: 12px 16px; min-height: 44px; color: inherit; font: inherit; }
 .mo-dialog button:hover { border-color: var(--mo-paper); }
 .mo-dialog .mo-icon-button { border: 0; padding: 10px; }
@@ -846,14 +854,13 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-hero h1 { font-size: 64px; margin-bottom: 16px; }
   .mo-hero .mo-eyebrow { font-size: 12px; letter-spacing: 1.7px; }
   .mo-support { font-size: 14px; max-width: 310px; }
-  .mo-scenery { top: 60px; height: 360px; width: 100%; opacity: 0.42; }
+  .mo-scenery { top: 35px; height: 490px; width: 100%; opacity: 0.66; background-position: center 48%; }
   .mo-cards { grid-template-columns: 1fr; gap: 12px; }
   .mo-mode { min-height: 135px; padding: 22px 43px 20px 68px; }
   .mo-mode svg { position: absolute; left: 23px; top: 25px; }
   .mo-mode strong { font-size: 18px; }
   .mo-mode small { font-size: 14px; max-width: 280px; }
   .mo-chevron { top: 49%; right: 20px; }
-  .mo-selection { right: 15px; top: 12px; }
   .mo-workflow { padding: 28px 0; gap: 24px; }
   .mo-stages { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 25px; }
   .mo-stage:nth-child(3)::before { display: none; }
