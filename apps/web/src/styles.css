@@ -28,7 +28,11 @@
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; margin: 0; }
+html, body { min-height: 100%; margin: 0; }
+/* The suite footer is a sibling of #root. A fixed-height #root let long
+   mobile screens overflow underneath that footer at the viewport boundary. */
+#root { height: auto; min-height: 100vh; min-height: 100dvh; margin: 0; }
+#sb-footer { position: static; display: block; clear: both; width: 100%; }
 
 body {
   background: var(--bg);
@@ -43,7 +47,7 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 /* ---------------------------------------------------------------- layout -- */
-.app { display: grid; grid-template-columns: 210px 1fr; height: 100%; }
+.app { display: grid; grid-template-columns: 210px minmax(0, 1fr); height: 100vh; height: 100dvh; }
 
 .sidebar {
   background: var(--bg-raised);
@@ -56,7 +60,8 @@ a:hover { text-decoration: underline; }
 
 .brand { padding: 0 18px 18px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .brand h1 { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; margin: 0; color: var(--accent); font-weight: 600; }
-.brand .brand-mark { display: block; width: 132px; height: auto; }
+/* Use the actual uploaded MOTION image in the professional sidebar too. */
+.brand h1 .motion-logo { width: 128px; max-width: 100%; text-transform: none; }
 .brand .sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
 
 .nav a {
@@ -332,10 +337,26 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   z-index: 10;
   overflow-y: auto;
 }
-.mo-brand { padding-left: 12px; }
-.mo-mark { display: block; width: 46px; height: 46px; margin-left: -4px; }
-.mo-monogram { font-weight: 700; font-size: 38px; letter-spacing: -2px; line-height: 1; }
-.mo-wordmark { font-size: 12px; font-weight: 700; letter-spacing: 4px; margin-top: 10px; }
+/* Authentic MOTION image supplied by the owner. No hand-composed
+   brackets, font substitutes, pseudo-elements or reconstructed lettering. */
+.motion-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 128px;
+  max-width: 100%;
+  text-decoration: none;
+}
+.motion-logo-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.motion-logo:hover { text-decoration: none; }
+.motion-logo:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 3px; }
+.mo-brand { padding-left: 0; }
+.mo-brand .motion-logo { width: 128px; }
 
 .mo-search {
   display: flex;
@@ -443,22 +464,23 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 /* The soundstage, drawn rather than photographed. Setting --mo-hero-image on
    .mo-scenery paints a real photograph over the whole drawing. */
 .mo-scenery {
-  --mo-hero-image: none;
+  --mo-hero-image: url('/motion-film-studio.webp');
   position: absolute;
   right: 0;
   top: 0;
-  height: 420px;
-  width: 68%;
+  height: min(64vh, 760px);
+  width: 100%;
   overflow: hidden;
   pointer-events: none;
   z-index: -1;
   isolation: isolate;
-  opacity: 0.9;
+  opacity: 0.88;
   background-image: var(--mo-hero-image);
   background-size: cover;
-  background-position: center;
+  background-position: 65% 52%;
   background-repeat: no-repeat;
 }
+.mo-scenery > * { display: none; }
 .mo-wall { position: absolute; inset: 0 0 35%; background: linear-gradient(90deg, #090b0c, #181b1a 48%, #0d1010); border-bottom: 1px solid #454740; }
 .mo-rig { position: absolute; top: 0; bottom: 35%; right: 18%; width: 1px; background: #3b3e39; box-shadow: -150px 0 #262c28, -320px 0 #262b28; }
 .mo-rig::before {
@@ -548,9 +570,9 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   background: #0b0e0ecc;
 }
 .mo-mode:hover { border-color: var(--mo-paper); }
-.mo-mode:has(input:focus-visible) { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
-.mo-mode:has(input:checked) { border-color: #a5a8a6; }
-.mo-mode:has(input:checked) .mo-selection { display: inline; }
+.mo-mode:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
+.mo-mode:active { border-color: var(--mo-cyan); }
+.mo-selection { display: none !important; }
 .mo-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .mo-mode svg { display: block; width: 27px; height: 27px; margin-bottom: 15px; }
 .mo-mode strong { font-size: 18px; display: block; font-weight: 500; margin-bottom: 7px; }
@@ -796,13 +818,12 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
     border-bottom: 1px solid var(--mo-line);
     padding: 20px 18px 0;
     display: grid;
-    grid-template-columns: 90px minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: minmax(128px, 1fr) minmax(0, 1fr);
+    gap: 12px;
     overflow: visible;
   }
-  .mo-brand { padding: 0; }
-  .mo-monogram { font-size: 30px; }
-  .mo-wordmark { font-size: 12px; letter-spacing: 2px; margin-top: 7px; }
+  .mo-brand { padding: 0; min-width: 0; align-self: center; }
+  .mo-brand .motion-logo { width: min(118px, 100%); }
   .mo-search { margin: 0; align-self: center; }
   .mo-results { grid-column: 1 / -1; margin-bottom: 0; }
   .mo-nav { display: flex; grid-column: 1 / -1; overflow-x: auto; gap: 6px; padding: 0 0 10px; }
@@ -826,12 +847,43 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-hero h1 { font-size: 64px; margin-bottom: 16px; }
   .mo-hero .mo-eyebrow { font-size: 12px; letter-spacing: 1.7px; }
   .mo-support { font-size: 14px; max-width: 310px; }
-  .mo-scenery { top: 60px; height: 360px; width: 100%; opacity: 0.42; }
+  .mo-scenery { top: 36px; height: min(70vh, 690px); width: 100%; opacity: 0.65; background-position: 57% center; }
   .mo-cards { grid-template-columns: 1fr; gap: 12px; }
-  .mo-mode { min-height: 135px; padding: 22px 43px 20px 68px; }
-  .mo-mode svg { position: absolute; left: 23px; top: 25px; }
-  .mo-mode strong { font-size: 18px; }
-  .mo-mode small { font-size: 14px; max-width: 280px; }
+  /* Reserve a dedicated first column for the icon: no absolute position
+     that can collide with a wrapping title at iPhone text sizes. */
+  .mo-mode {
+    min-height: 140px;
+    padding: 21px 44px 21px 20px;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 18px;
+    align-content: center;
+    align-items: start;
+  }
+  .mo-mode svg {
+    position: static;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 28px;
+    height: 28px;
+    margin: 3px 0 0;
+  }
+  .mo-mode strong {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 18px;
+    line-height: 1.25;
+    min-width: 0;
+    margin: 0 0 10px;
+  }
+  .mo-mode small {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 14px;
+    line-height: 1.5;
+    min-width: 0;
+    max-width: none;
+  }
   .mo-chevron { top: 49%; right: 20px; }
   .mo-selection { right: 15px; top: 12px; }
   .mo-workflow { padding: 28px 0; gap: 24px; }
@@ -913,7 +965,9 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 }
 
 /* "What's in this suite" checklist (static/js/suite-features.js). */
-.sb-suite-footer .sb-suite-features { max-width: 560px; margin: 0 auto 10px; text-align: left; }
+.sb-suite-footer .sb-suite-features { position: static; max-width: 560px; margin: 0 auto 10px; text-align: left; }
+/* The expandable checklist stays in normal footer flow; it cannot cover the
+   film cards or float over page content at mobile viewport boundaries. */
 .sb-suite-footer .sb-suite-features summary {
   display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px;
   cursor: pointer; font-weight: 700; list-style: none;
@@ -930,6 +984,57 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 /* The prompt reads as a link; one tap opens the list. */
 .sb-suite-features summary { flex-wrap: wrap; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
 
+.mo-mode { width: 100%; text-align: left; color: var(--mo-paper); font: inherit; -webkit-tap-highlight-color: transparent; }
+.mo-mode:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 4px; }
+.mo-hero, .mo-modes, .mo-workflow { position: relative; z-index: 2; }
+.mo-scenery { z-index: 0; }
+.mo-scenery::after { background: linear-gradient(90deg, #090b0cd9, #090b0c20 75%), linear-gradient(0deg, #090b0c, transparent 65%); }
+.mo-audio-consent { display:flex; align-items:flex-start; gap:10px; }
+.mo-audio-consent input { width:auto; flex:none; margin-top:4px; }
+
+/* Mobile MOTION project pages are full-width. Desktop sidebar must not
+   consume the phone viewport or push the editor off the right edge. */
+.mobile-console-bar { display:none; }
+.mo-create-progress { display:flex;align-items:center;gap:12px;font-size:14px;color:var(--mo-paper)!important; }
+.mo-create-spinner { display:inline-block;width:20px;height:20px;border:2px solid #ffffff44;
+ border-top-color:var(--mo-cyan);border-radius:50%;animation:mo-create-spin 700ms linear infinite;flex:none; }
+@keyframes mo-create-spin { to { transform:rotate(360deg); } }
+@media (max-width:767px) {
+  html,body,#root { max-width:100%;overflow-x:hidden; }
+  .app { display:block;width:100%;height:auto;min-height:100dvh; }
+  .mobile-console-bar { display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-raised); }
+  .mobile-console-bar .motion-logo { width:104px; }
+  .mobile-console-bar button { width:auto;min-height:44px;padding:9px 14px;
+    border:1px solid var(--border-strong);border-radius:4px;background:transparent;color:var(--text); }
+  .app > .sidebar { display:none;width:100%;height:auto;max-height:65dvh;
+    overflow-y:auto;position:relative;border-right:0;border-bottom:1px solid var(--border); }
+  .app > .sidebar.is-mobile-open { display:flex; }
+  .app > .main { width:100%;min-width:0;max-width:100%;padding:18px 14px 55px;
+    overflow:visible;overflow-wrap:anywhere; }
+  .main .topbar { flex-wrap:wrap; }
+  .main .tabs { display:flex;overflow-x:auto;max-width:100%;gap:5px;scrollbar-width:thin; }
+  .main .tabs button { white-space:nowrap;flex:none;min-height:44px; }
+  .main .card,.main .grid,.main .field-row { min-width:0;max-width:100%; }
+  .main .grid.cols-2,.main .grid.cols-3,.main .grid.cols-4 { grid-template-columns:minmax(0,1fr); }
+  .main table { width:100%; }
+  .main .card:has(table) { overflow-x:auto; }
+  .mo-dialog { position:fixed;inset:0;margin:auto;width:calc(100vw - 24px);max-width:460px;
+    min-width:0;max-height:calc(100dvh - 24px);overflow-x:hidden;overflow-y:auto;
+    padding:18px 15px;overscroll-behavior:contain; }
+  .mo-dialog form,.mo-dialog label,.mo-dialog .mo-start-audio { min-width:0;max-width:100%; }
+  .mo-dialog input:not([type="checkbox"]),.mo-dialog textarea,.mo-dialog select {
+    width:100%;max-width:100%;min-width:0;font-size:16px;
+  }
+  .mo-dialog input[type="file"] { overflow:hidden; }
+  .mo-dialog .mo-audio-consent { display:flex;align-items:flex-start;gap:10px;line-height:1.5; }
+  .mo-dialog .mo-audio-consent input[type="checkbox"] { width:22px;height:22px;flex:0 0 22px;margin:0; }
+  .mo-dialog .mo-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+  .mo-dialog .mo-actions button { min-width:0;width:100%;font-size:14px;padding:12px 8px; }
+}
+@media (prefers-reduced-motion:reduce) { .mo-create-spinner { animation:none;border-top-color:var(--mo-cyan); } }
+
+/* Creative engine component styles from Phase 1–14, retained alongside the live mobile shell. */
 /* Native Quick Create: scoped to MOTION project, never replaces professional editor. */
 .mcq { display: grid; gap: 16px; }
 .mcq .field-row { margin: 10px 0; }
