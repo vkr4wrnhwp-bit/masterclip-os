@@ -3,7 +3,7 @@
  * Navigation and education ONLY; absolutely no calls to api.*, product
  * click(), mutation, spend, generation or external providers.
  */
-export type LessonKey = 'dashboard' | 'projects' | 'project' | 'shot' | 'queue' | 'review' | 'masters' | 'costs' | 'providers';
+export type LessonKey = 'dashboard' | 'projects' | 'project' | 'references' | 'quick' | 'timeline' | 'compare' | 'shot' | 'queue' | 'review' | 'masters' | 'costs' | 'providers';
 export interface LessonStep {
   target: string;
   title: string;
@@ -28,6 +28,10 @@ export const ENTRY_LINKS=[
 ] as const;
 export const DEEP_LINKS=[
   {title:'Film & shot list',path:'/project/'+PREVIEW_FILM+'?walkthrough=1'},
+  {title:'Rights-cleared references',path:'/project/'+PREVIEW_FILM+'?tab=assets&walkthrough=1'},
+  {title:'Quick Create and beat intelligence',path:'/project/'+PREVIEW_FILM+'?tab=quick&walkthrough=1'},
+  {title:'Music Video Timeline and Auto-Assembly',path:'/project/'+PREVIEW_FILM+'?tab=timeline&walkthrough=1'},
+  {title:'Creative variant comparison',path:'/project/'+PREVIEW_FILM+'?tab=compare&walkthrough=1'},
   {title:'Render queue',path:'/queue/'+PREVIEW_FILM+'?walkthrough=1'},
   {title:'Masters and delivery',path:'/masters/'+PREVIEW_FILM+'?walkthrough=1'},
   {title:'Cost lab',path:'/costs/'+PREVIEW_FILM+'?walkthrough=1'},
@@ -68,6 +72,42 @@ export const LESSONS:Record<LessonKey,Lesson>={
    s('.tabs','Build a real music video timeline','The timeline sequences approved footage against an authorized recording, offers Auto-Assembly, and queues MP4 finishing.','Save an editable cut, preview clips, inspect captions and final export status.','No finished MP4 exists until the worker completes and the output becomes playable.'),
    s('.tabs','Compare variants without losing history','Variation comparison shows related drafts and approved render outputs side by side.','Compare original and alternate visual directions before selecting what to promote.','Creative drafts do not become finished videos simply by being compared.'),
    s('.tabs button','Brief and references feed the shot','Authorized music, references, song-section notes and visual identity can all guide creative direction.','Maintain consistency between the creative brief, bibles and individual shots.','A source file has to be authorized before the artist identity can be locked.')
+  ]
+ },
+ references:{
+  title:'Rights-Cleared References',chapter:'01 / SOURCE MATERIAL',intro:'Upload authorized music, video and image references before directing a film. Rights are recorded at upload.',
+  steps:[
+   s('.tabs','The source of truth','Each project has a dedicated References tab containing the files the creative tools may use.','Open References from Start a Film or any film editor.','Audio chosen at first-film setup is already uploaded here when creation succeeds.'),
+   s('.field-row','Record permission before upload','Owner and consent metadata determine which clips can guide music and identity work.','Enter the real rights owner and affirm only permissions you hold.','An unverified file is stored, not authorized for restricted uses.'),
+   s('.card','Continue into Quick Create','An authorized track enables selecting a real song moment and drafting a visual idea.','Use Continue to Quick Create after the track appears.','Neither upload nor draft saving automatically generates a finished MP4.')
+  ]
+ },
+ quick:{
+  title:'Quick Create & Beat Intelligence',chapter:'01 / MUSIC-FIRST CREATION',intro:'Begin with a cleared song, measured audio and a specific directed moment. Quick Create saves a draft, not a finished video.',
+  steps:[
+   s('.mcq','Music-first editing','Quick Create links an authorized track to a short, versioned visual draft.','Start with an approved recording from References.','Do not confuse draft creation with video generation or provider spend.'),
+   s('.mcq-trim','Measured waveform and beats','MOTION draws measured audio waveforms and proposes beat timing from the source.','Scrub, play, refine trim points and check the beat confidence.','Detected beats require human judgment; playback may need a user gesture on phones.'),
+   s('.mcq .field-row','Describe the actual shot','Shot title, direction, look and aspect ratio guide the generated visual candidate later.','Specify narrative reason, subject, performance, camera and practical light.','A text direction does not override rights or guarantee a rendered result.'),
+   s('.mcq-caption-preview, .mcq-trim','Timed captions and lyrics','Caption timing is entered relative to the selected segment.','Use only approved text and check its timing against source playback.','Automatic speech transcription is not implied.'),
+   s('.mcq .button-row','Save and continue to Shot Builder','Saving creates a versioned song-moment draft; the professional editor remains available.','Confirm rights attestation, save a draft, then open Shot Builder.','No paid generation or finished MP4 is created at save time.')
+  ]
+ },
+ timeline:{
+  title:'Music Timeline & Auto-Assembly',chapter:'03 / MUSIC VIDEO FINISHING',intro:'Plan, review, sequence and finish approved shots to a real synchronized music-video MP4.',
+  steps:[
+   s('.mc-timeline','Only approved sources qualify','The timeline requires a cleared recording and human-approved master clips.','Choose a recording and locate approved source clips for your edit.','Without approved masters, an export cannot be treated as a finished production.'),
+   s('.mc-timeline-structure','Song sections are editable','Notes identify song sections and cue start times that help make an intentional cut.','Mark intro, verse, chorus and transitions; refine timing manually.','The song structure can be guided by data but requires a human decision.'),
+   s('.mc-timeline-auto','Plan scenes or propose first cut','Scene Planning and Auto-Assembly generate editable suggestions, not secretly rendered footage.','Review the suggestions and approve handoffs before committing them to shots or edits.','No paid provider calls are made merely by asking for a proposal.'),
+   s('.mc-timeline-preview','Preview trims without changing originals','Timeline edits select sections from existing approved clips against authorized audio.','Scrub, arrange, review timing, and save the cut as a version.','The preview is not evidence that a new MP4 has been finished.'),
+   s('.mc-timeline-render','Finish and verify a real MP4','After a saved valid timeline, the media worker assembles, reports status, and registers a playable export.','Wait for completed status and test synchronized audio, caption timing and output playback.','Queue acceptance is not a successful delivery; only an actual finished file is.')
+  ]
+ },
+ compare:{
+  title:'Creative Variant Comparison',chapter:'03 / CREATIVE REVIEW',intro:'Compare related creative drafts and real approved outputs before promoting a direction.',
+  steps:[
+   s('.card','Choose related alternatives','Related variations can be compared against the original creative direction.','Pick a source draft and a sibling variant for meaningful comparison.','Do not claim a video exists unless an actual rendered asset is available.'),
+   s('.candidate video','Match review playback','When both sides have playable renders, preview and playback controls help compare timing and choices.','Compare direction, identity, physics, movement and narrative effect.','Missing or inaccessible media must remain clearly unavailable.'),
+   s('.card','Return to human review','Creative comparison supports, but does not replace, the human approval and master-promotion gates.','Open Review Grid for the chosen take before any promotion.','A quality score or comparison cannot auto-approve a candidate.')
   ]
  },
  shot:{
