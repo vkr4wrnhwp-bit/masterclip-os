@@ -205,6 +205,29 @@ describe('MOTION native audio permissions', () => {
     expect(listed.json().assets.find((item: {id:string})=>item.id===audioId)?.url).toBeNull()
   })
 
+  it('saves artist-labelled sections only on the authorized project with a version check', async () => {
+    const url=`/api/projects/${projectId}/music-structure/${audioId}`
+    const cookies={ [SESSION_COOKIE]:session,[CSRF_COOKIE]:csrf }
+    const before=await app.inject({method:'GET',url,cookies})
+    expect(before.statusCode).toBe(200)
+    expect(before.json()).toMatchObject({version:0,sections:[]})
+    const sections=[{id:'intro-1',kind:'intro',label:'Intro',start_seconds:0,end_seconds:1.5},
+      {id:'hook-1',kind:'chorus',label:'Hook',start_seconds:1.5,end_seconds:2.5}]
+    const saved=await app.inject({method:'PUT',url,cookies,headers:{[CSRF_HEADER]:csrf},
+      payload:{expectedVersion:0,sections}})
+    expect(saved.statusCode).toBe(200)
+    expect(saved.json()).toMatchObject({version:1,sections})
+    const repeated=await app.inject({method:'PUT',url,cookies,headers:{[CSRF_HEADER]:csrf},
+      payload:{expectedVersion:0,sections}})
+    expect(repeated.statusCode).toBe(409)
+    const crossing=await app.inject({method:'PUT',url,cookies,headers:{[CSRF_HEADER]:csrf},
+      payload:{expectedVersion:1,sections:[{...sections[0],end_seconds:2},sections[1]]}})
+    expect(crossing.statusCode).toBe(400)
+    await rt.assets.setRights(audioId,{consent:'revoked',authorized:false},userId)
+    const blocked=await app.inject({method:'GET',url,cookies})
+    expect(blocked.statusCode).toBe(403)
+  })
+
   it('refuses an audio source when its consent has been revoked', async () => {
     await rt.assets.setRights(audioId, { consent: 'revoked', authorized: false }, userId)
     const denied = await app.inject({
