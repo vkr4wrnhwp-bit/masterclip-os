@@ -74,6 +74,13 @@ export function MusicTimeline({projectId}:{projectId:string}){
     ?api.musicTimelineExports(projectId,timelineId)
     :Promise.resolve({exports:[] as Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>}),
     [projectId,timelineId])
+  const persistedBusy=Boolean(exportsData.data?.latestJob &&
+    ['pending','active'].includes(exportsData.data.latestJob.status))
+  React.useEffect(()=>{
+    if(!persistedBusy)return
+    const timer=window.setInterval(()=>exportsData.reload(),5000)
+    return()=>window.clearInterval(timer)
+  },[persistedBusy,timelineId])
   const [draft,setDraft]=React.useState<TimelineDraft>(blank)
   const [version,setVersion]=React.useState(0)
   const [adding,setAdding]=React.useState('')
@@ -241,12 +248,12 @@ export function MusicTimeline({projectId}:{projectId:string}){
         <section className="mc-timeline-render" aria-label="Real MP4 finishing">
           <h4>Finish a real video</h4>
           <p className="muted">Build a straight-cut MP4 from approved video masters and the original track. Source aspect ratios are preserved with padding; nothing is cropped or published automatically. No AI render credits are used.</p>
-          <button type="button" className="primary" disabled={!valid||!cleanSaved||busy||!!renderJob}
+          <button type="button" className="primary" disabled={!valid||!cleanSaved||busy||!!renderJob||persistedBusy}
             onClick={()=>void assemble()}>
-            {renderJob?'Assembly in progress…':'Assemble MP4 from saved cut'}
+            {renderJob||persistedBusy?'Assembly in progress…':'Assemble MP4 from saved cut'}
           </button>
           {!cleanSaved&&timelineId&&<p className="faint">Save the current edit before assembling this version.</p>}
-          {renderStatus&&<p role="status" className="faint">Assembly status: {renderStatus}</p>}
+          {(renderStatus||exportsData.data?.latestJob?.status)&&<p role="status" className="faint">Assembly status: {renderStatus||exportsData.data?.latestJob?.status}</p>}
           <AsyncBlock state={exportsData}>{data=>data.exports.length===0
             ?<p className="faint">No completed MP4 assemblies for this timeline yet.</p>
             :<div className="mc-timeline-exports">{data.exports.map(item=><div key={item.id}>
