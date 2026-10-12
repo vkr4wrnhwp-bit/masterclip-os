@@ -4,7 +4,7 @@ import { DEEP_LINKS, ENTRY_LINKS, LESSONS, type LessonKey } from './motion-lesso
 
 type View = 'intro' | 'index' | 'step' | 'done'
 type Rect = { left: number; top: number; width: number; height: number }
-const STORE = 'sb-motion-guided-learning-20261009'
+const STORE = 'sb-motion-guided-learning-20261012'
 
 function readState(): Record<string, unknown> {
   try { return JSON.parse(localStorage.getItem(STORE) || '{}') as Record<string, unknown> } catch { return {} }
@@ -171,7 +171,7 @@ export function MotionGuide({ preview = false }: { preview?: boolean }) {
           {highlight && <div className="ml-focus" aria-hidden="true" style={highlight}/>}
           <section ref={panelRef} className="ml-panel" role="dialog" aria-modal="true" aria-labelledby="ml-title">
             <div className="ml-heading">
-              <div className="ml-brand"><img alt="" src="/motion-mark.png" width={38} height={38}/>
+              <div className="ml-brand"><img alt=".motion" src="/motion-official-logo.png" width={50} height={46}/>
                 <div><b>MOTION</b><small>by Street Banker</small></div>
               </div>
               <button type="button" className="ml-dismiss" aria-label="Close walkthrough" onClick={close}>Close</button>
