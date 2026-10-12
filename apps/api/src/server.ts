@@ -7,6 +7,12 @@ import { join, resolve } from 'node:path'
 import { AppError, asAppError, httpStatusFor, type Logger } from '@masterclip/shared'
 import type { Runtime } from '@masterclip/runtime'
 import { registerProjectRoutes } from './routes/projects.js'
+import { registerQuickCreateRoutes } from './routes/quick-create.js'
+import { registerQuickVariants } from './routes/quick-variants.js'
+import { registerMusicTimelineRoutes } from './routes/music-timelines.js'
+import { registerSceneHandoffRoutes } from './routes/scene-handoff.js'
+import { registerMusicStructureRoutes } from './routes/music-structure.js'
+import { registerCreativeTreatments } from './routes/creative-treatments.js'
 import { registerRenderRoutes } from './routes/render.js'
 import { registerOpsRoutes } from './routes/ops.js'
 import { registerAssetRoutes } from './routes/assets.js'
@@ -112,6 +118,12 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
 
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
+  await registerQuickCreateRoutes(app, runtime)
+  await registerQuickVariants(app, runtime)
+  await registerMusicTimelineRoutes(app, runtime)
+  await registerSceneHandoffRoutes(app, runtime)
+  await registerMusicStructureRoutes(app, runtime)
+  await registerCreativeTreatments(app, runtime)
   await registerAssetRoutes(app, runtime)
   await registerRenderRoutes(app, runtime)
 
