@@ -311,14 +311,16 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
       onFocusCapture={onFormFocus}
       onCancel={(event) => {
         event.preventDefault()
-        onClose()
+        // A project/upload request must finish before dismissal: otherwise
+        // the user can unknowingly leave a partially created film behind.
+        if (!busy) onClose()
       }}
       onClose={onClose}
     >
       <form onSubmit={submit}>
         <div className="mo-dialog-head">
           <span className="mo-eyebrow">{mode.title.toUpperCase()}</span>
-          <button type="button" className="mo-icon-button" onClick={onClose} aria-label="Close project setup">
+          <button type="button" className="mo-icon-button" onClick={onClose} disabled={busy} aria-label="Close project setup">
             &#10005;
           </button>
         </div>
@@ -363,7 +365,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
         )}
 
         <div className="mo-actions">
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={onClose} disabled={busy}>
             Cancel
           </button>
           <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!audioFile || !rightsOwner.trim() || !authorized))}>
