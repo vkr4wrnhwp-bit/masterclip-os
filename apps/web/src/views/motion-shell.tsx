@@ -1,4 +1,5 @@
 import React from 'react'
+import { MotionLogo } from '../motion-logo.jsx'
 import { api, type Project, type Shot, type User } from '../api.js'
 import { navigate, streetBankerUrl } from '../App.jsx'
 import { railItems, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
@@ -56,11 +57,7 @@ export function MotionRail({
   return (
     <aside className="mo-rail" aria-label="Motion workspace">
       <div className="mo-brand">
-        {/* The suite mark itself, a bracket frame around the monogram in
-            Motion's own cyan. It is the same mark the strip in Street Banker
-            shows, so a person recognises where they have arrived. */}
-        <img className="mo-mark" src="/motion-mark.png" alt="" width={128} height={128} />
-        <div className="mo-wordmark">MOTION</div>
+        <MotionLogo />
       </div>
 
       <form className="mo-search" role="search" onSubmit={(event) => event.preventDefault()}>
