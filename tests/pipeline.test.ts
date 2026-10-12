@@ -56,6 +56,7 @@ beforeEach(async () => {
       LOG_LEVEL: 'error',
       STORAGE_LOCAL_ROOT: storageRoot,
       ASSET_SIGNING_SECRET: 'pipeline-test-secret',
+      SESSION_SECRET: 'pipeline-test-session-secret',
       PROVIDER_POLL_INTERVAL_MS: '0',
     },
     true,
