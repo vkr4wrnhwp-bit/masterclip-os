@@ -992,3 +992,16 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   font-weight: 650; line-height: 1.3;
 }
 .mcq-caption-preview span { overflow-wrap: anywhere; }
+
+/* Measured tempo cues, independently optional from the waveform controls. */
+.mcq-beats { min-width: 0; margin: 14px 0; }
+.mcq-beats-summary { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.mcq-beats-summary span { color: var(--muted); }
+.mcq-beats-grid { height: 38px; position: relative; overflow: hidden; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); }
+.mcq-beats-grid > span { position: absolute; top: 0; bottom: 0; width: 1px;
+  background: #79c7db; pointer-events: none; }
+.mcq-beats-range { position: absolute; top: 0; bottom: 0; border-inline: 2px solid #ffffff;
+  background: rgba(93, 185, 225, 0.2); pointer-events: none; }
+.mcq-beats button { min-height: 44px; }
+.mcq-beats .faint { overflow-wrap: anywhere; }
