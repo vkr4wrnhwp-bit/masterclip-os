@@ -32,3 +32,17 @@ Fill each **Not run** entry from an actual device; do not mark it passed merely 
 - Collect staging deployment identity, head SHA, environment (no secrets), test times, FFmpeg build info, screenshots, results and any blocking issues.
 
 Do not merge, deploy or expose to customers until these real-world checks are recorded and approved. Claude remains responsible for Street Banker cross-suite integration.
+
+## Read-only hosting audit (2026-10-12)
+
+Checked the connected Render service settings without modifying or restarting anything.
+
+- MOTION live Render service: `motion` / `srv-da233s2jnfac73ahjhi0`, URL `https://masterclip.onrender.com`.
+- Deployed branch: `motion-live`, with auto-deploy on branch commits.
+- Current instance count: **one**, hosted on a Starter Docker service with its persistent storage mounted at `/var/data`.
+- The connected `street-banker-motion-guided-preview` is a **static guided-learning preview**, not an API + media-worker staging environment.
+- This audit has **not** established a second isolated MOTION web service, dedicated worker, shared staging Postgres database, or separate staging asset storage for a reliable two-worker crash drill. It also has not inspected secrets or inferred environment settings.
+
+**Release-blocking conclusion:** DO NOT execute process kills, migration tests, deliberate queue lease expiry, or destructive crash experiments against the live `motion` service. Build an explicitly isolated MOTION staging environment with confirmed shared database and media storage before these tests. Render creation or deployment could incur cost and requires a separate explicit authorization. No such service was created here.
+
+**Current CI status at audit:** the most recent PR #38 head was still running; an earlier PR #37 head passed. A successful CI run still does not substitute for real multi-process staging and physical mobile verification.
