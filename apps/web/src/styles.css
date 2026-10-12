@@ -464,22 +464,23 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 /* The soundstage, drawn rather than photographed. Setting --mo-hero-image on
    .mo-scenery paints a real photograph over the whole drawing. */
 .mo-scenery {
-  --mo-hero-image: none;
+  --mo-hero-image: url('/motion-film-studio.webp');
   position: absolute;
   right: 0;
   top: 0;
-  height: 420px;
-  width: 68%;
+  height: min(64vh, 760px);
+  width: 100%;
   overflow: hidden;
   pointer-events: none;
   z-index: -1;
   isolation: isolate;
-  opacity: 0.9;
+  opacity: 0.88;
   background-image: var(--mo-hero-image);
   background-size: cover;
-  background-position: center;
+  background-position: 65% 52%;
   background-repeat: no-repeat;
 }
+.mo-scenery > * { display: none; }
 .mo-wall { position: absolute; inset: 0 0 35%; background: linear-gradient(90deg, #090b0c, #181b1a 48%, #0d1010); border-bottom: 1px solid #454740; }
 .mo-rig { position: absolute; top: 0; bottom: 35%; right: 18%; width: 1px; background: #3b3e39; box-shadow: -150px 0 #262c28, -320px 0 #262b28; }
 .mo-rig::before {
@@ -569,9 +570,9 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   background: #0b0e0ecc;
 }
 .mo-mode:hover { border-color: var(--mo-paper); }
-.mo-mode:has(input:focus-visible) { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
-.mo-mode:has(input:checked) { border-color: #a5a8a6; }
-.mo-mode:has(input:checked) .mo-selection { display: inline; }
+.mo-mode:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 5px; }
+.mo-mode:active { border-color: var(--mo-cyan); }
+.mo-selection { display: none !important; }
 .mo-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .mo-mode svg { display: block; width: 27px; height: 27px; margin-bottom: 15px; }
 .mo-mode strong { font-size: 18px; display: block; font-weight: 500; margin-bottom: 7px; }
@@ -846,7 +847,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-hero h1 { font-size: 64px; margin-bottom: 16px; }
   .mo-hero .mo-eyebrow { font-size: 12px; letter-spacing: 1.7px; }
   .mo-support { font-size: 14px; max-width: 310px; }
-  .mo-scenery { top: 60px; height: 360px; width: 100%; opacity: 0.42; }
+  .mo-scenery { top: 36px; height: min(70vh, 690px); width: 100%; opacity: 0.65; background-position: 57% center; }
   .mo-cards { grid-template-columns: 1fr; gap: 12px; }
   .mo-mode { min-height: 135px; padding: 22px 43px 20px 68px; }
   .mo-mode svg { position: absolute; left: 23px; top: 25px; }
@@ -951,3 +952,11 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .sb-suite-footer .sb-suite-features-list input { width: 20px; height: 20px; flex: none; accent-color: currentColor; }
 /* The prompt reads as a link; one tap opens the list. */
 .sb-suite-features summary { flex-wrap: wrap; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
+
+.mo-mode { width: 100%; text-align: left; color: var(--mo-paper); font: inherit; -webkit-tap-highlight-color: transparent; }
+.mo-mode:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 4px; }
+.mo-hero, .mo-modes, .mo-workflow { position: relative; z-index: 2; }
+.mo-scenery { z-index: 0; }
+.mo-scenery::after { background: linear-gradient(90deg, #090b0cd9, #090b0c20 75%), linear-gradient(0deg, #090b0c, transparent 65%); }
+.mo-audio-consent { display:flex; align-items:flex-start; gap:10px; }
+.mo-audio-consent input { width:auto; flex:none; margin-top:4px; }
