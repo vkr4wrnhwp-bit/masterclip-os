@@ -849,10 +849,41 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-support { font-size: 14px; max-width: 310px; }
   .mo-scenery { top: 36px; height: min(70vh, 690px); width: 100%; opacity: 0.65; background-position: 57% center; }
   .mo-cards { grid-template-columns: 1fr; gap: 12px; }
-  .mo-mode { min-height: 135px; padding: 22px 43px 20px 68px; }
-  .mo-mode svg { position: absolute; left: 23px; top: 25px; }
-  .mo-mode strong { font-size: 18px; }
-  .mo-mode small { font-size: 14px; max-width: 280px; }
+  /* Reserve a dedicated first column for the icon: no absolute position
+     that can collide with a wrapping title at iPhone text sizes. */
+  .mo-mode {
+    min-height: 140px;
+    padding: 21px 44px 21px 20px;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 18px;
+    align-content: center;
+    align-items: start;
+  }
+  .mo-mode svg {
+    position: static;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 28px;
+    height: 28px;
+    margin: 3px 0 0;
+  }
+  .mo-mode strong {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 18px;
+    line-height: 1.25;
+    min-width: 0;
+    margin: 0 0 10px;
+  }
+  .mo-mode small {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 14px;
+    line-height: 1.5;
+    min-width: 0;
+    max-width: none;
+  }
   .mo-chevron { top: 49%; right: 20px; }
   .mo-selection { right: 15px; top: 12px; }
   .mo-workflow { padding: 28px 0; gap: 24px; }
