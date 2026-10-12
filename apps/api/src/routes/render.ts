@@ -410,12 +410,31 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     const list = await runtime.renders.listMasters(projectId)
     return {
       masters: await Promise.all(
-        list.map(async (master) => ({
-          ...master,
-          deliverables: await runtime.renders.listDeliverables(master.id),
-        })),
+        list.map(async (master) => {
+          const versionId = master.metadata?.shot_version_id
+          const version = typeof versionId === 'string'
+            ? await runtime.projects.getVersion(versionId).catch(() => null)
+            : null
+          const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
+          return {
+            ...master,
+            songMoment: cue?.promotional_use_attested
+              ? { startSeconds: cue.start_seconds, endSeconds: cue.end_seconds }
+              : null,
+            deliverables: await runtime.renders.listDeliverables(master.id),
+          }
+        }),
       ),
     }
+  })
+
+  // A nonbillable, local FFmpeg operation: embed only the selected audio
+  // from the exact shot version behind this human-approved master.
+  app.post('/api/masters/:masterId/song-moment', async (request) => {
+    const { masterId } = request.params as { masterId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    return masters.finishWithSongMoment(masterId, auth.userId, auth.orgId)
   })
 
   app.post('/api/masters/:masterId/finish', async (request) => {
