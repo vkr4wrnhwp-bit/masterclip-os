@@ -1,5 +1,6 @@
 import React from 'react'
 import { api } from '../api.js'
+import { MusicStructureEditor } from './MusicStructureEditor.jsx'
 import { AsyncBlock, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 
 type Clip = { master_id:string;source_start_seconds:number;source_end_seconds:number }
@@ -221,6 +222,9 @@ export function MusicTimeline({projectId}:{projectId:string}){
           </select></Field>
           <Field label="Song start (seconds)"><input type="number" min="0" step=".1" value={draft.song_start_seconds} onChange={e=>setDraft(old=>({...old,song_start_seconds:Number(e.target.value)}))}/></Field>
         </div>
+        {selectedAudio&&<MusicStructureEditor key={selectedAudio.id}
+          projectId={projectId} assetId={selectedAudio.id} duration={selectedAudio.durationSeconds}
+          onUseStart={seconds=>setDraft(old=>({...old,song_start_seconds:seconds}))}/>}
         {beatInfo&&<p className="faint">Beat estimate: {beatInfo.bpm??'unavailable'} BPM · {Math.round(beatInfo.confidence*100)}% confidence. Snap unavailable if confidence is low.</p>}
         <section className="mc-timeline-auto" aria-label="Auto-Assembly Director">
           <h4>Auto-Assembly Director</h4>
