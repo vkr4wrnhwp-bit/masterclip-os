@@ -929,3 +929,21 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .sb-suite-footer .sb-suite-features-list input { width: 20px; height: 20px; flex: none; accent-color: currentColor; }
 /* The prompt reads as a link; one tap opens the list. */
 .sb-suite-features summary { flex-wrap: wrap; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Native Quick Create: scoped to MOTION project, never replaces professional editor. */
+.mcq { display: grid; gap: 16px; }
+.mcq .field-row { margin: 10px 0; }
+.mcq audio { display: block; width: 100%; margin: 12px 0; }
+.mcq-trim { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+.mcq-trim input[type="range"] { display: block; width: 100%; min-height: 44px; touch-action: pan-y; }
+.mcq-trim input[type="number"] { min-width: 0; }
+.mcq-consent { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; }
+.mcq-consent input { width: auto; margin-top: 4px; }
+.mcq-saved { display: grid; gap: 8px; }
+.mcq-saved-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.mcq-saved-row span { flex: 1; min-width: 140px; }
+@media (max-width: 600px) {
+ .mcq .field-row { display: grid; grid-template-columns: minmax(0,1fr); }
+ .mcq-trim { padding: 10px; }
+ .mcq button { min-height: 44px; }
+}
