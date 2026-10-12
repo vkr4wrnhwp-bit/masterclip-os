@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyShot, validateShot, shotJsonSchema } from '@masterclip/shot-schema'
 
 describe('MOTION native Quick Create cue contract', () => {
-  const cue = { asset_id: 'ast-authorized-test', start_seconds: 12, end_seconds: 27, creative_look: 'cinematic' }
+  const cue = { asset_id: 'ast-authorized-test', start_seconds: 12, end_seconds: 27, creative_look: 'cinematic', promotional_use_attested: true }
   const valid = () => emptyShot({
     generation_mode: 'text_to_video',
     action: 'Camera moves through an actual recording room.',
