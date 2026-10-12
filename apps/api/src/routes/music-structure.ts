@@ -43,16 +43,18 @@ export async function registerMusicStructureRoutes(app: FastifyInstance, rt: Run
       throw new AppError({kind:'validation',code:'structure.invalid_sections',message:(error as Error).message})
     }
     const now=rt.clock.isoNow()
-    const result=await rt.db.run(
-      `INSERT INTO motion_music_sections
-       (project_id,audio_asset_id,version,sections,updated_at)
-       VALUES (?,?,1,?,?)
-       ON CONFLICT(project_id,audio_asset_id) DO UPDATE
-       SET version = motion_music_sections.version + 1,
-           sections = excluded.sections, updated_at = excluded.updated_at
-       WHERE motion_music_sections.version = ?`,
-      [projectId,assetId,JSON.stringify(sections),now,body.expectedVersion],
-    )
+    const result=body.expectedVersion===0
+      ? await rt.db.run(
+          `INSERT INTO motion_music_sections
+           (project_id,audio_asset_id,version,sections,updated_at)
+           VALUES (?,?,1,?,?) ON CONFLICT(project_id,audio_asset_id) DO NOTHING`,
+          [projectId,assetId,JSON.stringify(sections),now],
+        )
+      : await rt.db.run(
+          `UPDATE motion_music_sections SET version = version + 1, sections = ?, updated_at = ?
+           WHERE project_id = ? AND audio_asset_id = ? AND version = ?`,
+          [JSON.stringify(sections),now,projectId,assetId,body.expectedVersion],
+        )
     if(result.changes!==1)throw new AppError({
       kind:'conflict',code:'structure.version_conflict',message:'Song structure changed. Reload before overwriting annotations.',
     })
