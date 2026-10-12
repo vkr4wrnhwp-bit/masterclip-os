@@ -291,6 +291,16 @@ export const api = {
     version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
   }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`,
     {expectedVersion:version,sections}),
+  proposeScenePlan: (projectId:string, body:{
+    audio_asset_id:string;song_start_seconds:number;target_seconds:number;
+    direction:string;shot_count:number
+  }) => post<{
+    audioAssetId:string;source:string;requiresApproval:true;warning:string;
+    shots:Array<{ordinal:number;sectionLabel:string;sectionKind:string;
+      songStartSeconds:number;songEndSeconds:number;title:string;
+      narrativePurpose:string;cameraDirection:string;
+      performanceDirection:string;visualTreatment:string;artistReviewRequired:true}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/scene-plan`,body),
   proposeMusicFirstCut: (projectId:string, body:{
     name:string;audio_asset_id:string;song_start_seconds:number;target_seconds:number;
     pacing:'measured'|'balanced'|'energetic'
