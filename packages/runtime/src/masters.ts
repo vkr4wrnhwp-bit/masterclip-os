@@ -9,6 +9,7 @@ import { AUDIT_ACTIONS } from '@masterclip/domain'
 import { buildEdl, buildFcpXml, probe, reframe, replaceAudioMoment, transcode, type DeliveryFormat } from '@masterclip/media-tools'
 import { frameSize, type AspectRatio, type TargetResolution } from '@masterclip/shot-schema'
 import type { Runtime } from './index.js'
+import { withMediaFinishLease, type MediaFinishLease } from './media-finish-lease.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -181,8 +182,12 @@ export class MasterService {
    * moment locked to the rendered shot version. This is NOT generation, a
    * provider call, mastering, publishing or a permission grant.
    */
-  async finishWithSongMoment(masterId: string, actor: string, orgId: string):
+  async finishWithSongMoment(masterId: string, actor: string, orgId: string, lease?: MediaFinishLease):
     Promise<{ assetId: string; url: string; durationSeconds: number; reused: boolean; sandbox: boolean }> {
+    if (!lease) {
+      return withMediaFinishLease(this.rt, masterId, held =>
+        this.finishWithSongMoment(masterId, actor, orgId, held))
+    }
     const master = await this.rt.renders.getMaster(masterId)
     if (master.status === 'archived') {
       throw new AppError({ kind: 'validation', code: 'song_moment.archived', message: 'archived masters cannot be finished' })
@@ -248,31 +253,36 @@ export class MasterService {
       const sha = await sha256File(outPath)
       const stored = await this.rt.storage.putFile(key, outPath, { contentType: 'video/mp4', sha256: sha })
       storedKey = stored.key
-      const asset = await this.rt.assets.create({
-        projectId: master.projectId, kind: 'delivery', storageKey: stored.key,
-        filename: name, mime: 'video/mp4', bytes: stored.bytes, sha256: stored.sha256,
-        durationSeconds: verified.durationSeconds, hasAudio: true,
-        metadata: {
-          format: 'social_h264', finishing: 'song_moment', audioEmbedded: true,
-          shotVersionId: shotVersion.id, sourceMasterId: masterId,
-          sourceAudioAssetId: song.id, startSeconds: cue.start_seconds,
-          endSeconds: cue.end_seconds, videoCodec: verified.codec,
-          note: 'Actual MP4 with trimmed audio, source video unchanged; publishing rights and platform clearance not inferred.',
-        },
-        // Derivatives retain source rights rather than making up new ownership.
-        rights: { ...song.rights, source: `song moment from ${song.id}; video from approved master ${masterId}` },
-        createdBy: actor,
-        parents: [
-          { assetId: sourceVideo.id, relation: 'delivery_of' },
-          { assetId: song.id, relation: 'generated_from' },
-        ],
+      // Register the asset, lineage and delivery together. The lock row is
+      // checked under the same database transaction; an expired worker cannot
+      // commit another completed delivery, even after its FFmpeg run finishes.
+      const asset = await lease.commit(async tx => {
+        const created = await this.rt.assets.create({
+          projectId: master.projectId, kind: 'delivery', storageKey: stored.key,
+          filename: name, mime: 'video/mp4', bytes: stored.bytes, sha256: stored.sha256,
+          durationSeconds: verified.durationSeconds, hasAudio: true,
+          metadata: {
+            format: 'social_h264', finishing: 'song_moment', audioEmbedded: true,
+            shotVersionId: shotVersion.id, sourceMasterId: masterId,
+            sourceAudioAssetId: song.id, startSeconds: cue.start_seconds,
+            endSeconds: cue.end_seconds, videoCodec: verified.codec,
+            note: 'Actual MP4 with trimmed audio, source video unchanged; publishing rights and platform clearance not inferred.',
+          },
+          rights: { ...song.rights, source: `song moment from ${song.id}; video from approved master ${masterId}` },
+          createdBy: actor,
+          parents: [
+            { assetId: sourceVideo.id, relation: 'delivery_of' },
+            { assetId: song.id, relation: 'generated_from' },
+          ],
+        }, tx)
+        await this.rt.renders.addDeliverable({
+          masterId, format: 'social_h264', assetId: created.id,
+          spec: { kind: 'song_moment', shotVersionId: shotVersion.id, audioAssetId: song.id,
+            startSeconds: cue.start_seconds, endSeconds: cue.end_seconds, audioEmbedded: true },
+        }, tx)
+        return created
       })
       registered = true
-      await this.rt.renders.addDeliverable({
-        masterId, format: 'social_h264', assetId: asset.id,
-        spec: { kind: 'song_moment', shotVersionId: shotVersion.id, audioAssetId: song.id,
-          startSeconds: cue.start_seconds, endSeconds: cue.end_seconds, audioEmbedded: true },
-      })
       await this.rt.audit.record({
         orgId, projectId: master.projectId, actor,
         action: 'master.song_moment_finished', targetType: 'asset', targetId: asset.id,
