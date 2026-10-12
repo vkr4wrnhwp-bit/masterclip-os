@@ -60,8 +60,8 @@ a:hover { text-decoration: underline; }
 
 .brand { padding: 0 18px 18px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
 .brand h1 { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; margin: 0; color: var(--accent); font-weight: 600; }
-/* Shared .motion bracket wordmark also appears on the professional sidebar. */
-.brand h1 .motion-logo { font-size: 23px; font-weight: 750; letter-spacing: -0.05em; text-transform: none; }
+/* Use the actual uploaded MOTION image in the professional sidebar too. */
+.brand h1 .motion-logo { width: 128px; max-width: 100%; text-transform: none; }
 .brand .sub { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
 
 .nav a {
@@ -337,19 +337,26 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   z-index: 10;
   overflow-y: auto;
 }
-/* Official suite wordmark — cyan brackets with .motion, never the monogram. */
-.motion-logo { display: inline-flex; align-items: center; justify-content: flex-start;
-  width: max-content; max-width: 100%; min-height: 44px; gap: 2px;
-  color: var(--mo-paper); font-family: Arial, Helvetica, sans-serif;
-  font-size: 23px; font-weight: 750; letter-spacing: -0.045em; line-height: 1;
-  text-decoration: none; white-space: nowrap; }
-.motion-logo-bracket { color: var(--mo-cyan); font-size: 1.2em; font-weight: 500; }
-.motion-logo-dot { color: var(--mo-cyan); }
-.motion-logo-type { color: var(--mo-paper); }
-.motion-logo:hover { color: var(--mo-paper); text-decoration: none; }
+/* Authentic MOTION image supplied by the owner. No hand-composed
+   brackets, font substitutes, pseudo-elements or reconstructed lettering. */
+.motion-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 128px;
+  max-width: 100%;
+  text-decoration: none;
+}
+.motion-logo-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.motion-logo:hover { text-decoration: none; }
 .motion-logo:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 3px; }
 .mo-brand { padding-left: 0; }
-.mo-brand .motion-logo { font-size: 23px; }
+.mo-brand .motion-logo { width: 128px; }
 
 .mo-search {
   display: flex;
@@ -815,7 +822,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
     overflow: visible;
   }
   .mo-brand { padding: 0; min-width: 0; align-self: center; }
-  .mo-brand .motion-logo { font-size: clamp(17px, 5.1vw, 23px); }
+  .mo-brand .motion-logo { width: min(118px, 100%); }
   .mo-search { margin: 0; align-self: center; }
   .mo-results { grid-column: 1 / -1; margin-bottom: 0; }
   .mo-nav { display: flex; grid-column: 1 / -1; overflow-x: auto; gap: 6px; padding: 0 0 10px; }
