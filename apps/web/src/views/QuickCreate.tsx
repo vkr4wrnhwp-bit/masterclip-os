@@ -31,6 +31,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   const [duration, setDuration] = React.useState(0)
   const [loop, setLoop] = React.useState(true)
   const [attested, setAttested] = React.useState(false)
+  const [variantLabel, setVariantLabel] = React.useState('Alternate treatment')
   const [captions, setCaptions] = React.useState<Array<{start_seconds:number;end_seconds:number;text:string}>>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -153,6 +154,23 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         <div className="button-row"><button type="button" className="primary" disabled={!valid || busy} onClick={() => void submit()}>{busy ? 'Saving…' : editing ? 'Save new draft version' : 'Save Quick Create draft'}</button></div>
         {saved && <Callout tone="ok">Draft saved. No render or audio mix has occurred. <button type="button" onClick={() => navigate(`/shot/${saved}`)}>Open professional Shot Builder</button></Callout>}
       </>}</AsyncBlock>
+    </Card>
+    <Card title="Creative variations">
+      <p className="muted">Create a separate source-linked shot to compare ideas. No external provider is called and no render charge occurs.</p>
+      <Field label="Variation name"><input maxLength={80} value={variantLabel} onChange={e=>setVariantLabel(e.target.value)} /></Field>
+      <Field label="Source draft"><select value={editing ?? ''} onChange={e=>{
+        const shot=shots.data?.shots.find(x=>x.id===e.target.value)
+        if (shot?.spec?.music_cue) restore(shot.id,shot.spec)
+      }}><option value="">Choose an existing music draft</option>{(shots.data?.shots ?? []).filter(x=>Boolean(x.spec?.music_cue)).map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select></Field>
+      <button type="button" disabled={!editing || direction.trim().length<8 || !variantLabel.trim() || busy} onClick={async()=>{
+        if(!editing)return
+        setBusy(true);setError(null)
+        try {
+          const result=await api.createVariant(projectId,{sourceShotId:editing,label:variantLabel.trim(),direction:direction.trim(),look})
+          shots.reload();onSaved();setSaved(result.shotId)
+        } catch(cause) {setError((cause as Error).message)} finally{setBusy(false)}
+      }}>Save alternative as new shot</button>
+      {saved && <p className="muted">Saved shot {saved}. Compare and render variants using the existing Shot Builder and Review Grid.</p>}
     </Card>
     <Card title="Saved music-first drafts">
       <AsyncBlock state={shots}>{data => {
