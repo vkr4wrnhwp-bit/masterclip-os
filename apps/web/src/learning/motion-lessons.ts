@@ -1,0 +1,124 @@
+/**
+ * MOTION — source-grounded contextual lessons.
+ * Navigation and education ONLY; absolutely no calls to api.*, product
+ * click(), mutation, spend, generation or external providers.
+ */
+export type LessonKey = 'dashboard' | 'projects' | 'project' | 'shot' | 'queue' | 'review' | 'masters' | 'costs' | 'providers';
+export interface LessonStep {
+  target: string;
+  title: string;
+  happening: string;
+  use: string;
+  watch: string;
+}
+export interface Lesson {
+  title: string;
+  chapter: string;
+  intro: string;
+  steps: LessonStep[];
+}
+const s=(target:string,title:string,happening:string,useIt:string,watch:string):LessonStep =>
+  ({target,title,happening,use:useIt,watch});
+export const PREVIEW_FILM='preview-film-01';
+export const PREVIEW_SHOT='preview-shot-01';
+export const ENTRY_LINKS=[
+  {title:'01 · Start a Film',label:'Brief, treatment and storyboard',path:'/?walkthrough=start'},
+  {title:'02 · Direct a Shot',label:'Continuity, camera, light and render economics',path:'/shot/'+PREVIEW_SHOT+'?walkthrough=shots'},
+  {title:'03 · Review & Deliver',label:'Human review, quality, masters and costs',path:'/shot/'+PREVIEW_SHOT+'/review?walkthrough=finish'},
+] as const;
+export const DEEP_LINKS=[
+  {title:'Film & shot list',path:'/project/'+PREVIEW_FILM+'?walkthrough=1'},
+  {title:'Render queue',path:'/queue/'+PREVIEW_FILM+'?walkthrough=1'},
+  {title:'Masters and delivery',path:'/masters/'+PREVIEW_FILM+'?walkthrough=1'},
+  {title:'Cost lab',path:'/costs/'+PREVIEW_FILM+'?walkthrough=1'},
+  {title:'Provider readiness',path:'/providers?walkthrough=1'},
+] as const;
+
+export const LESSONS:Record<LessonKey,Lesson>={
+ dashboard:{
+  title:'Start a Film',chapter:'01 / CREATIVE DIRECTION',intro:'Learn the real MOTION starting workflow. Your brief becomes the basis of a controlled shot list, not an automatic finished video.',
+  steps:[
+   s('.mo-brand','Your director’s workspace','MOTION is the cinematic render factory within Street Banker.','Work from the film or a specific shot; the main Street Banker account remains the source of identity.','The learning preview uses fictional data and no customer account.'),
+   s('.mo-hero','The film begins with a brief','A creative premise is the anchor for the visual treatment and every subsequent shot.','Describe who or what appears, the environment and the intended performance.','A brief is not a rendered video or a locked identity.'),
+   s('.mo-cards','Three honest starting points','Upload audio, describe an idea and use a template are selectable starts.','Select the mode that fits what you have; the project is created first and the next step differs.','Audio is attached later on References; the template starts on the Import tab. Neither is silently generated here.'),
+   s('.mo-stages','Understand the six stages','Brief → Treatment → Storyboard → Render → Review → Export is a progress summary drawn from actual records.','Read the highlighted stage and open the underlying project before moving forward.','A stage does not claim completion if the API lacks evidence.'),
+   s('.mo-start','Create deliberately','This button opens the film creation dialog.','Review the film name and visual direction before choosing Create in the actual product.','Nothing is created by this walkthrough; all writes are blocked in the preview.'),
+   s('.mo-opening','Your storyboard is the film’s shot ledger','The newest film and its first shots appear when records exist.','Open the film for its entire shot list, identities and reference material.','Six preview cards do not claim to show every shot on a large production.'),
+   s('.mo-budget','Confirm spend posture','SANDBOX is nonbillable and uses the local ffmpeg mock. Live requires separate explicit controls.','Read the posture before considering any render matrix.','Mock renders are not proof that an external provider is live, and a fallback cap is not approved spend.')
+  ]
+ },
+ projects:{
+  title:'All Films',chapter:'01 / CREATIVE DIRECTION',intro:'Every film in this account. Open work that already exists rather than creating duplicate projects.',
+  steps:[
+   s('.mo-list-head','Every film stays accessible','The list groups this account’s films without discarding older projects.','Open the relevant film or start a new one when there is a new concept.','A film summary that has not been read says so; it is not reported as zero.'),
+   s('.mo-list','Read the film before committing resources','Each row shows its actual name, brief and as much progress data as was retrieved.','Open the row to see scenes, shots, references and import tools.','Only a bounded number of films receive deep reads on this screen.'),
+   s('.mo-nav','Return to the right workspace','Navigation opens Overview, films, shots, queue, masters and costs where a project exists.','Use the actual navigation, not copied tutorial controls.','The guide cannot create, rename or delete projects.')
+  ]
+ },
+ project:{
+  title:'Treatment & Storyboard',chapter:'01 / CREATIVE DIRECTION',intro:'A film holds its actual shot list, brief, references and character/world identity.',
+  steps:[
+   s('.topbar','The film’s source of truth','This is the project whose shot list and shared rules the render factory uses.','Verify the film before writing or importing new shots.','Never assume a reference is cleared for likeness or commercial rights.'),
+   s('.tabs','Four distinct editing workspaces','Shots, Import, References and Brief & style are separate tools.','Open the tab that corresponds to the work you need.','Uploading a file is not the same as rights clearance.'),
+   s('.card','Build a controlled shot list','A shot specifies its narrative reason, action, visual direction and timing.','Create a shot or import a structured shot list, then open a shot for deeper camera and light settings.','The preview demonstrates existing tools but never saves or imports.'),
+   s('.tabs button','Brief and references feed the shot','Music, imagery and visual identity can guide the direction when explicitly supplied.','Maintain consistency between the creative brief, bibles and individual shots.','A source file has to be authorized before the artist identity can be locked.')
+  ]
+ },
+ shot:{
+  title:'Direct a Shot',chapter:'02 / SHOT INTELLIGENCE',intro:'Get a shot production-ready: subject, performance, camera, physically motivated light, constraints, routing and cost.',
+  steps:[
+   s('.topbar','Control this shot, not the whole film','Each shot has its own canonical specification and immutable version history.','Confirm the shot identity before updating the current version.','A new version does not erase an older render’s source version.'),
+   s('.grid.cols-2 .card','Narrative and blocking first','What physically happens, where the subject stands and why the frame matters are explicit.','Write natural, specific direction; preserve identity and props from shot to shot.','Generic movement directions are not guaranteed continuity.'),
+   s('input[value="50"], input[value="35"], .grid.cols-2','Camera and focus','Lens, aperture, movement and camera position are shot-level decisions.','Specify realistic lens behavior and depth of field rather than relying on aesthetic adjectives.','A prompt is a creative instruction, not proof of optics or camera geometry.'),
+   s('input[value*="neon"], .grid.cols-2','One motivated lighting system','MOTION stores a dominant source, its position, falloff and shadow behavior.','Keep materials, reflections and shadows physically coherent across takes.','Changing illumination or wardrobe may break a character or environment lock.'),
+   s('details','Advanced settings remain available','Format, references, negative constraints and continuity are progressive disclosures, not removed tools.','Expand the relevant section to refine timing, references and output requirements.','A reference marked unverified cannot become cleared through a tutorial.'),
+   s('.card','Routing is evidence-based','The model router considers compatibility, estimated price, acceptance rates and confidence.','Compare several candidates and read uncertainty before planning a batch.','Provider adapters can be installed without live credentials or successful real submissions.'),
+   s('.grid.cols-2 button','Preview the candidate matrix first','The matrix estimates candidate count and potential cost before any queue submission.','Prune expensive variations, set limits and confirm the estimated total.','The tutorial cannot run a quote or submit a render; all preview POSTs fail closed.')
+  ]
+ },
+ queue:{
+  title:'Render Operations',chapter:'02 / SHOT INTELLIGENCE',intro:'The queue distinguishes planned work, completed mock runs, blocked renders and actual media receipts.',
+  steps:[
+   s('.topbar','Queue status is operational evidence','Jobs are attached to a project and provider/model.','Check whether the job is queued, active, completed, failed or blocked.','An accepted queue job is not proof a clip was rendered.'),
+   s('.grid.cols-4','Counts are scoped to the project','The summary reads recorded queue statuses.','Use it to identify stalls and investigate failures rather than retrying blindly.','Sandbox work is not external provider validation.'),
+   s('table','Every run has a trace','The queue records model, attempt count, spend estimate, actual cost and errors.','Open the review for a completed job or inspect the failure before attempting a retry.','This guide never cancels or retries a job.')
+  ]
+ },
+ review:{
+  title:'Review & Deliver',chapter:'03 / HUMAN APPROVAL',intro:'Compare candidate clips at matched playback positions, preserve QC evidence and retain final human authority.',
+  steps:[
+   s('.topbar','One shot, several takes','The review grid belongs to a single shot.','Verify the shot name, then compare its candidate outputs under the same direction.','A mock example does not establish provider quality or public availability.'),
+   s('.review-grid','Review against actual candidates','Each candidate carries its source provider, duration, dimensions and review state.','Judge continuity, materials, physics, movement and story rather than a generic quality score.','A technical pass is not a creative approval.'),
+   s('.candidate .scores, .candidate .body','Technical QC versus creative judgment','QC flags black frames, freezes, duration errors and other measurable defects.','Inspect the evidence and record why a take passes or fails.','Only a person approves. Automatic QC may reject but must not auto-approve.'),
+   s('.candidate video, .candidate .prompt-box','Synchronize comparison','Playback and prompt evidence help compare candidates on the same beat and frame.','Select two eligible takes for side-by-side review and evaluate locked details.','The preview has no provider video; do not mistake fixture metadata for real renders.'),
+   s('.candidate .button-row','Reject, approve, then promote','Human approval and promotion are distinct actions before a master exists.','Make the creative decision first, then promote only the chosen take.','The guide never calls review or promote; this static preview blocks them.'),
+   s('.sidebar .nav','Finishing is another stage','Masters and Cost lab are distinct project views that remain available in navigation.','Continue to Masters to package deliverables, and Cost lab to evaluate efficiency.','A promoted take is not a delivered master and an estimated cost is not billed spend.')
+  ]
+ },
+ masters:{
+  title:'Masters & Delivery',chapter:'03 / HUMAN APPROVAL',intro:'Export approved media with documented conversion choices and complete provenance.',
+  steps:[
+   s('.topbar','Masters require a human decision','An approved take may be promoted to a master.','Confirm you have selected the right creative version and output.','Auto-QC cannot promote a master.'),
+   s('.grid.cols-2','Choose the actual delivery format','H.264, H.265, ProRes and social variants serve different deliverable needs.','Specify aspect changes and whether to crop or pad deliberately.','Upsizing a 720p source does not create 1080p detail.'),
+   s('.field-row','Reframe with consequences','Crop discards composition; pad introduces different framing.','Keep alternative aspect ratios as explicit derivative versions.','Never claim the source remains visually unchanged after reframing.'),
+   s('.button-row','Finish and package deliberately','A provenance sidecar connects the delivery back to the shot, provider and review decision.','Review export settings before finishing and packaging in the real app.','No conversions, packages or downloads are generated in the learning preview.')
+  ]
+ },
+ costs:{
+  title:'Cost & Approval Economics',chapter:'03 / HUMAN APPROVAL',intro:'Spend is evaluated against approved usable seconds, not just price per submitted clip.',
+  steps:[
+   s('.topbar','Measure what is usable','MOTION prioritizes cost per approved second because cheap unusable renders are expensive.','Compare approved duration and total submissions rather than model sticker price alone.','An estimated value is not a provider invoice.'),
+   s('.grid.cols-4','The four cost ratios','Project totals separate submitted, technically valid, creatively approved and spend.','Read provenance, missing values and whether numbers came from mock activity.','Missing live-cap configuration must not be presented as authorized spending.'),
+   s('.grid.cols-2','Cost by model and rejection reason','Tables show where money or sandbox compute went and why candidates failed.','Use failure modes to refine the shot and the routing approach.','Tiny samples cannot prove an acceptance rate.'),
+   s('.card','Model performance requires observed approvals','The model table learns from real reviewed outcomes over time.','Treat cold-start estimates as priors until enough candidates have been reviewed.','A confidence estimate is not a creative guarantee.')
+  ]
+ },
+ providers:{
+  title:'Providers & Safety',chapter:'03 / HUMAN APPROVAL',intro:'Know exactly which video providers can actually execute before considering any spend.',
+  steps:[
+   s('.topbar','Provider coverage is a capability matrix','Available adapters and pricing snapshots do not prove live credentials or wire validation.','Read the per-provider configured and health signals before selecting a model.','The mock provider exists so learning can happen without billable submissions.'),
+   s('.card','Hard spending posture comes first','MOTION defaults to sandbox, preventing all billable provider requests regardless of project budget.','Keep external spend off until a separate approved live configuration and cap exist.','This tutorial cannot enable paid providers, keys or any spending mode.'),
+   s('table','Model features matter','Different models support different image references, duration, motion and native audio.','Choose by shot requirements and approved cost, not by provider name alone.','Capability listings can be spec-correct but unverified live.')
+  ]
+ }
+};
