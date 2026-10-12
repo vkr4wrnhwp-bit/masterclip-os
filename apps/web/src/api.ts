@@ -282,6 +282,15 @@ export const api = {
 
   createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
     post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
+  musicStructure: (projectId:string,assetId:string) => get<{
+    version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`),
+  saveMusicStructure: (projectId:string,assetId:string,version:number,sections:Array<{
+    id:string;label:string;kind:string;start_seconds:number;end_seconds:number
+  }>) => put<{
+    version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`,
+    {expectedVersion:version,sections}),
   proposeMusicFirstCut: (projectId:string, body:{
     name:string;audio_asset_id:string;song_start_seconds:number;target_seconds:number;
     pacing:'measured'|'balanced'|'energetic'
