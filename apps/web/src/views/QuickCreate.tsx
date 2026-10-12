@@ -17,6 +17,7 @@ const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: string; onSaved: () => void; onReferences: () => void }) {
   const assets = useAsync(() => api.assets(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
+  const savedLooks = useAsync(() => api.creativeTreatments(projectId), [projectId])
   const audio = React.useRef<HTMLAudioElement>(null)
   const [audioId, setAudioId] = React.useState('')
   const [visualId, setVisualId] = React.useState('')
@@ -31,6 +32,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   const [duration, setDuration] = React.useState(0)
   const [loop, setLoop] = React.useState(true)
   const [attested, setAttested] = React.useState(false)
+  const [presetName, setPresetName] = React.useState('Release visual direction')
   const [variantLabel, setVariantLabel] = React.useState('Alternate treatment')
   const [captions, setCaptions] = React.useState<Array<{start_seconds:number;end_seconds:number;text:string}>>([])
   const [busy, setBusy] = React.useState(false)
@@ -153,6 +155,40 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         {error && <Callout tone="danger">{error}</Callout>}
         <div className="button-row"><button type="button" className="primary" disabled={!valid || busy} onClick={() => void submit()}>{busy ? 'Saving…' : editing ? 'Save new draft version' : 'Save Quick Create draft'}</button></div>
         {saved && <Callout tone="ok">Draft saved. No render or audio mix has occurred. <button type="button" onClick={() => navigate(`/shot/${saved}`)}>Open professional Shot Builder</button></Callout>}
+      </>}</AsyncBlock>
+    </Card>
+    <Card title="Saved creative treatments">
+      <p className="muted">Save reusable directions, format and looks for this film. Existing footage, recordings and source versions are never altered.</p>
+      <AsyncBlock state={savedLooks}>{data => <>
+        <Field label="Reuse a saved treatment">
+          <select defaultValue="" onChange={event => {
+            const found = data.treatments.find(t => t.id === event.target.value)
+            if (!found) return
+            const chosenLook = looks.find(item => item === found.look)
+            const chosenAspect = aspects.find(item => item === found.aspect_ratio)
+            if (chosenLook) setLook(chosenLook)
+            if (chosenAspect) setAspect(chosenAspect)
+            setDirection(found.direction)
+          }}>
+            <option value="">Choose a treatment</option>
+            {data.treatments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </Field>
+        <p className="faint">{data.treatments.length} of 24 available project treatments saved.</p>
+        <Field label="Name the current treatment">
+          <input maxLength={80} value={presetName} onChange={e => setPresetName(e.target.value)} />
+        </Field>
+        <button type="button" className="small" disabled={busy || !presetName.trim() || direction.trim().length < 8 || data.treatments.length >= 24}
+          onClick={async () => {
+            setBusy(true)
+            setError(null)
+            try {
+              await api.saveCreativeTreatment(projectId, { name: presetName.trim(), look, aspect_ratio: aspect, direction: direction.trim() })
+              savedLooks.reload()
+            } catch (cause) { setError((cause as Error).message) }
+            finally { setBusy(false) }
+          }}>Save this creative treatment</button>
+        <p className="faint">Project editors can save a look; saving does not generate or approve video.</p>
       </>}</AsyncBlock>
     </Card>
     <Card title="Creative variations">
