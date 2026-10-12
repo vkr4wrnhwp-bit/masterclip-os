@@ -415,6 +415,10 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     const { projectId } = request.params as { projectId: string }
     await requireProject(runtime, request, projectId)
     const list = await runtime.renders.listMasters(projectId)
+    // A reload must recover the worker's status, not rely on the browser tab
+    // retaining a useState job id. Only return jobs whose payload identifies
+    // one of the authenticated project's masters.
+    const recentMediaJobs = await runtime.queue.list(QUEUES.media, undefined, 500)
     return {
       masters: await Promise.all(
         list.map(async (master) => {
@@ -425,6 +429,16 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
           return {
             ...master,
+            finishingJobs: recentMediaJobs.filter(job => {
+              const payload = job.payload as { masterId?: string } | null
+              return (job.type === JOB_TYPES.finishSongMoment ||
+                job.type === JOB_TYPES.finishCaptionedSong) &&
+                payload?.masterId === master.id
+            }).slice(0, 4).map(job => ({
+              id: job.id, status: job.status, type: job.type,
+              lastError: job.status === 'dead' ? job.lastError : null,
+              createdAt: job.createdAt,
+            })),
             captionCount: cue?.promotional_use_attested ? (version?.spec.timed_captions.length ?? 0) : 0,
             songMoment: cue?.promotional_use_attested
               ? { startSeconds: cue.start_seconds, endSeconds: cue.end_seconds }
