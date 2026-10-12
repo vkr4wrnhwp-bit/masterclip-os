@@ -112,6 +112,17 @@ export const MaterialRequirement = looseObject(
 )
 export type MaterialRequirement = z.infer<typeof MaterialRequirement>
 
+/** A non-destructive song-moment cue for MOTION's native Quick Create.
+ * This is editing metadata, NOT a promise that the video renderer has mixed audio.
+ * Playback/render mixing requires a separately verified media operation.
+ */
+export const MusicCue = z.object({
+  asset_id: z.string().min(1),
+  start_seconds: z.number().finite().min(0),
+  end_seconds: z.number().finite().positive(),
+})
+export type MusicCue = z.infer<typeof MusicCue>
+
 export const CanonicalShot = z.object({
   // --- identity ------------------------------------------------------------
   project_id: z.string().default(''),
@@ -170,6 +181,7 @@ export const CanonicalShot = z.object({
   screen_direction: ScreenDirection.default('unspecified'),
 
   // --- audio ---------------------------------------------------------------
+  music_cue: MusicCue.nullable().default(null),
   audio_mode: AudioMode.default('none'),
   dialogue: z.string().default(''),
   ambient_audio: z.string().default(''),
@@ -191,7 +203,7 @@ export const CanonicalShot = z.object({
 export type CanonicalShot = z.infer<typeof CanonicalShot>
 export type CanonicalShotInput = z.input<typeof CanonicalShot>
 
-export const SHOT_SCHEMA_VERSION = '1.0.0'
+export const SHOT_SCHEMA_VERSION = '1.1.0'
 
 export function parseShot(input: unknown): CanonicalShot {
   return CanonicalShot.parse(input)
