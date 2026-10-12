@@ -1,4 +1,5 @@
 import React from 'react'
+import { MotionLogo } from '../motion-logo.jsx'
 import { api, type Project, type Shot, type User } from '../api.js'
 import { navigate, streetBankerUrl } from '../App.jsx'
 import { railItems, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
@@ -56,11 +57,7 @@ export function MotionRail({
   return (
     <aside className="mo-rail" aria-label="Motion workspace">
       <div className="mo-brand">
-        {/* The suite mark itself, a bracket frame around the monogram in
-            Motion's own cyan. It is the same mark the strip in Street Banker
-            shows, so a person recognises where they have arrived. */}
-        <img className="mo-mark" src="/motion-mark.png" alt="" width={128} height={128} />
-        <div className="mo-wordmark">MOTION</div>
+        <MotionLogo />
       </div>
 
       <form className="mo-search" role="search" onSubmit={(event) => event.preventDefault()}>
@@ -189,7 +186,13 @@ export function MotionRail({
 export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = React.useState('')
   const [brief, setBrief] = React.useState('')
+  const [audioFile, setAudioFile] = React.useState<File | null>(null)
+  const [createdFilmId, setCreatedFilmId] = React.useState<string | null>(null)
+  const [rightsOwner, setRightsOwner] = React.useState('')
+  const [authorized, setAuthorized] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
+  const [progress, setProgress] = React.useState('')
+  const submittingRef = React.useRef(false)
   const [error, setError] = React.useState<string | null>(null)
   const dialogRef = React.useRef<HTMLDialogElement | null>(null)
   const nameRef = React.useRef<HTMLInputElement | null>(null)
@@ -218,15 +221,39 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
     setBusy(true)
+    setProgress(createdFilmId ? 'Uploading recording…' : 'Creating film…')
     setError(null)
     try {
-      const result = await api.createProject(name.trim(), brief)
+      const filmId = createdFilmId ?? (await api.createProject(name.trim(), brief)).project.id
+      setCreatedFilmId(filmId)
+      if (mode.id === 'audio' && audioFile) {
+        setProgress('Uploading recording…')
+        const form = new FormData()
+        form.append('file', audioFile)
+        form.append('rights_owner', rightsOwner.trim())
+        form.append('rights_consent', authorized ? 'authorized' : 'unverified')
+        form.append('rights_authorized', authorized ? 'true' : 'false')
+        try {
+          await api.uploadAsset(filmId, form)
+        } catch (uploadError) {
+          setError('Film created, but audio upload failed: ' + (uploadError as Error).message + '. Retry to upload to the same film.')
+          setBusy(false)
+          submittingRef.current = false
+          setProgress('')
+          return
+        }
+      }
+      setProgress('Opening film…')
       onCreated()
-      navigate(`/project/${result.project.id}`)
+      navigate(`/project/${filmId}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
+      setProgress('')
+      submittingRef.current = false
     }
   }
 
@@ -264,8 +291,28 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
           <textarea value={brief} onChange={(event) => setBrief(event.target.value)} />
         </label>
 
+        {mode.id === 'audio' && (
+          <div className="mo-start-audio">
+            <label>
+              Choose an audio recording
+              <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp3"
+                onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
+            </label>
+            <label>
+              Rights owner
+              <input value={rightsOwner} onChange={event => setRightsOwner(event.target.value)}
+                placeholder="Artist or rights holder" required />
+            </label>
+            <label className="mo-audio-consent">
+              <input type="checkbox" checked={authorized}
+                onChange={event => setAuthorized(event.target.checked)} />
+              I am authorized to use this recording for this film.
+            </label>
+          </div>
+        )}
         <p className="mo-account-note">{mode.next}</p>
 
+        {busy && <p className="mo-create-progress" role="status" aria-live="polite"><span className="mo-create-spinner" aria-hidden="true" />{progress}</p>}
         {error !== null && (
           <p className="mo-dialog-error" role="alert">
             {error}
@@ -276,8 +323,8 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0}>
-            {busy ? 'Creating' : 'Create the film'} <span aria-hidden="true">&rarr;</span>
+          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!audioFile || !rightsOwner.trim() || !authorized))}>
+            {busy ? (progress || 'Processing…') : 'Create the film'} <span aria-hidden="true">&rarr;</span>
           </button>
         </div>
       </form>
