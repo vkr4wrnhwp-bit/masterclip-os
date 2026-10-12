@@ -208,6 +208,48 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
     }
   }, [])
 
+  // iOS Safari's software keyboard shrinks the visual viewport while the
+  // layout viewport often retains its old height. Keep the modal inside the
+  // actually visible rectangle without locking vertical form scrolling.
+  React.useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const viewport = window.visualViewport
+    if (!viewport) return
+    const sync = () => {
+      dialog.style.setProperty('--mo-vv-top', `${viewport.offsetTop}px`)
+      dialog.style.setProperty('--mo-vv-left', `${viewport.offsetLeft}px`)
+      dialog.style.setProperty('--mo-vv-width', `${viewport.width}px`)
+      dialog.style.setProperty('--mo-vv-height', `${viewport.height}px`)
+    }
+    sync()
+    viewport.addEventListener('resize', sync)
+    viewport.addEventListener('scroll', sync)
+    window.addEventListener('orientationchange', sync)
+    return () => {
+      viewport.removeEventListener('resize', sync)
+      viewport.removeEventListener('scroll', sync)
+      window.removeEventListener('orientationchange', sync)
+    }
+  }, [])
+
+  const onFormFocus = (event: React.FocusEvent<HTMLDialogElement>) => {
+    const dialog = dialogRef.current
+    const target = event.target
+    if (!dialog || !(target instanceof HTMLElement)) return
+    // Scroll only the dialog's vertical scroller; do not ask Safari to
+    // scroll/zoom the entire document with scrollIntoView().
+    window.requestAnimationFrame(() => {
+      if (!dialog.isConnected || !target.isConnected) return
+      const field = target.getBoundingClientRect()
+      const panel = dialog.getBoundingClientRect()
+      const topLimit = panel.top + 16
+      const bottomLimit = panel.bottom - 24
+      if (field.bottom > bottomLimit) dialog.scrollTop += field.bottom - bottomLimit
+      else if (field.top < topLimit) dialog.scrollTop -= topLimit - field.top
+    })
+  }
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
     if (event.key !== 'Tab') return
     const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
@@ -266,6 +308,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
       aria-labelledby="mo-setup-heading"
       aria-describedby="mo-setup-description"
       onKeyDown={onKeyDown}
+      onFocusCapture={onFormFocus}
       onCancel={(event) => {
         event.preventDefault()
         onClose()
