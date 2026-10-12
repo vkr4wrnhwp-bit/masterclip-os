@@ -478,6 +478,39 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     return { jobId, status: job.status, error: job.status === 'dead' || job.status === 'failed' ? job.lastError : null }
   })
 
+  // Explicit recovery of a failed *nonbillable* media job. The prior job is
+  // retained for audit and a per-failed-job key prevents double-click retries.
+  // Active, pending or successful jobs cannot be replayed.
+  app.post('/api/masters/:masterId/finishing/:jobId/retry', async (request) => {
+    const { masterId, jobId } = request.params as { masterId: string; jobId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    const previous = await runtime.queue.get(jobId)
+    const payload = previous?.payload as { masterId?: string } | null
+    if (!previous || previous.queueName !== QUEUES.media ||
+        (previous.type !== JOB_TYPES.finishSongMoment && previous.type !== JOB_TYPES.finishCaptionedSong) ||
+        payload?.masterId !== masterId) throw notFound('finishing job', jobId)
+    if (previous.status !== 'dead' && previous.status !== 'failed') {
+      throw new AppError({
+        kind: 'conflict', code: 'finishing.not_failed',
+        message: 'only failed finishing jobs can be explicitly retried',
+      })
+    }
+    const retry = await runtime.queue.enqueue({
+      queue: QUEUES.media,
+      type: previous.type,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:retry:' + jobId,
+      maxAttempts: 2,
+    })
+    await runtime.audit.record({
+      orgId: auth.orgId, projectId: master.projectId, actor: auth.userId,
+      action: 'master.finishing_retry_requested', targetType: 'master', targetId: masterId,
+      data: { previousJobId: jobId, retryJobId: retry.id, deduped: retry.deduped },
+    })
+    return { jobId: retry.id, status: 'queued' as const, deduped: retry.deduped }
+  })
+
   app.post('/api/masters/:masterId/finish', async (request) => {
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
