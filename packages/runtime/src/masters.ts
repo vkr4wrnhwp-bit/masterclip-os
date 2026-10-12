@@ -257,6 +257,7 @@ export class MasterService {
       // checked under the same database transaction; an expired worker cannot
       // commit another completed delivery, even after its FFmpeg run finishes.
       const asset = await lease.commit(async tx => {
+        await lease.assertAudioStillAuthorized(tx, song.id, master.projectId)
         const created = await this.rt.assets.create({
           projectId: master.projectId, kind: 'delivery', storageKey: stored.key,
           filename: name, mime: 'video/mp4', bytes: stored.bytes, sha256: stored.sha256,
