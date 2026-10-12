@@ -52,6 +52,34 @@ async function validateTimeline(rt: Runtime, projectId: string, spec: Spec): Pro
 }
 
 export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runtime): Promise<void> {
+  // Build the editor from genuine human-approved masters and currently
+  // authorized recordings. Do not expose unrelated project media.
+  app.get('/api/projects/:projectId/music-timelines/sources', async request => {
+    const { projectId } = request.params as {projectId:string}
+    await requireProject(rt, request, projectId)
+    const masters = await rt.renders.listMasters(projectId)
+    const videos = []
+    for (const master of masters) {
+      if (master.status === 'archived') continue
+      const review = await rt.renders.latestReview(master.outputId)
+      if (!review || !['approve','promote'].includes(review.decision)) continue
+      const asset = await rt.assets.get(master.sourceAssetId)
+      if (asset.projectId !== projectId || asset.kind !== 'generated_video' ||
+          !(asset.durationSeconds && asset.durationSeconds > 0)) continue
+      const videoUrl = await signedReadableUrl(rt, asset.id).catch(() => null)
+      if (videoUrl) videos.push({ masterId:master.id, name:master.name, durationSeconds:asset.durationSeconds, videoUrl })
+    }
+    const assets = await rt.assets.list(projectId, 'audio')
+    const audio = []
+    for (const asset of assets) {
+      if (!asset.rights.authorized || asset.rights.consent !== 'authorized' ||
+          !asset.rights.owner.trim() || !(asset.durationSeconds && asset.durationSeconds > 0)) continue
+      const audioUrl = await signedReadableUrl(rt, asset.id).catch(() => null)
+      if (audioUrl) audio.push({ id:asset.id, filename:asset.filename, durationSeconds:asset.durationSeconds, audioUrl })
+    }
+    return { videos, audio }
+  })
+
   app.get('/api/projects/:projectId/music-timelines', async request => {
     const { projectId } = request.params as {projectId:string}
     await requireProject(rt, request, projectId)
