@@ -7,6 +7,7 @@ export * from './shot.js'
 export * from './requirements.js'
 export * from './validate.js'
 export * from './bible.js'
+export * from './timeline.js'
 export * from './io.js'
 
 /**
