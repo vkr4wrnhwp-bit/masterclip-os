@@ -31,6 +31,21 @@ export function MastersView({ projectId }: { projectId: string }) {
     }
   }
 
+  const finishSong = async (masterId: string) => {
+    setBusy(masterId)
+    setError(null)
+    setMessage(null)
+    try {
+      const result = await api.finishSongMoment(masterId)
+      setMessage(`${result.reused ? 'Reopened' : 'Created'} a real MP4 with the selected recording embedded${result.sandbox ? ' (sandbox source video)' : ''}. Original master and audio remain unchanged.`)
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const buildPackage = async (masterId: string) => {
     setBusy(masterId)
     setError(null)
@@ -71,6 +86,7 @@ export function MastersView({ projectId }: { projectId: string }) {
                   busy={busy === String(master.id)}
                   onFinish={(specs) => finish(String(master.id), specs)}
                   onPackage={() => buildPackage(String(master.id))}
+                  onSong={() => finishSong(String(master.id))}
                 />
               ))}
             </div>
@@ -86,17 +102,21 @@ function MasterCard({
   busy,
   onFinish,
   onPackage,
+  onSong,
 }: {
   master: Record<string, unknown>
   busy: boolean
   onFinish: (specs: unknown[]) => Promise<void>
   onPackage: () => Promise<void>
+  onSong: () => Promise<void>
 }) {
   const [format, setFormat] = React.useState('delivery_h264')
   const [aspect, setAspect] = React.useState('')
   const [reframeMode, setReframeMode] = React.useState<'crop' | 'pad'>('crop')
   const deliverables = (master.deliverables ?? []) as Array<Record<string, unknown>>
   const metadata = (master.metadata ?? {}) as Record<string, unknown>
+  const song = master.songMoment as { startSeconds: number; endSeconds: number } | null
+  const musicDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'song_moment' && typeof item.url === 'string')
 
   return (
     <Card
@@ -151,6 +171,22 @@ function MasterCard({
           Build delivery package
         </button>
       </div>
+
+      {song && (
+        <section className="mcq-master-audio" aria-label="Music video finishing">
+          <h4>Song-moment finishing</h4>
+          <p className="muted">Use the approved shot's selection, {song.startSeconds.toFixed(1)}–{song.endSeconds.toFixed(1)} seconds. This replaces generated sound with the authorized recording in a real MP4. It does not publish or incur provider charges.</p>
+          <button className="primary small" type="button" disabled={busy || master.status === 'archived'} onClick={() => void onSong()}>
+            {busy ? 'Finishing…' : 'Finish with selected song'}
+          </button>
+          {musicDeliveries.map(item => (
+            <div key={String(item.id)} className="mcq-video-delivery">
+              <video controls playsInline preload="metadata" src={String(item.url)} aria-label="Finished music video with recorded audio" />
+              <a href={String(item.url)} target="_blank" rel="noopener noreferrer">Open verified MP4</a>
+            </div>
+          ))}
+        </section>
+      )}
 
       {deliverables.length > 0 && (
         <table style={{ marginTop: 12 }}>
