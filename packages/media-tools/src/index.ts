@@ -5,3 +5,5 @@ export * from './transform.js'
 export * from './edl.js'
 
 export * from './waveform.js'
+
+export * from './captions.js'
