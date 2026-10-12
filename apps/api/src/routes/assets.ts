@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, DEV_ASSET_SIGNING_SECRET, newId, sha256File } from '@masterclip/shared'
 import { LocalStorage, objectKey, sanitizeFilename, verifySignedUrl } from '@masterclip/asset-storage'
-import { probe } from '@masterclip/media-tools'
+import { probe, waveformPeaks } from '@masterclip/media-tools'
 import type { Runtime } from '@masterclip/runtime'
 import { requireAuth, requireProject } from '../server.js'
 
@@ -65,6 +65,31 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     void reply.type(String(asset?.mime ?? 'application/octet-stream'))
     void reply.header('cache-control', 'private, max-age=3600')
     return reply.send(createReadStream(path))
+  })
+
+  // Actual decoded signal, never a decorative waveform. This route is
+  // project-scoped even when storage uses otherwise reusable signed URLs.
+  const waveCache = new Map<string, Awaited<ReturnType<typeof waveformPeaks>>>()
+  app.get('/api/assets/:assetId/waveform', async (request) => {
+    const { assetId } = request.params as { assetId: string }
+    const asset = await runtime.assets.get(assetId)
+    await requireProject(runtime, request, asset.projectId)
+    if (asset.kind !== 'audio') {
+      throw new AppError({ kind: 'validation', code: 'waveform.asset_kind', message: 'waveform requires an audio asset' })
+    }
+
+    const cached = waveCache.get(asset.sha256)
+    if (cached) return { ...cached, assetId }
+    const dir = await mkdtemp(join(tmpdir(), 'masterclip-waveform-'))
+    try {
+      const path = runtime.storage.localPath(asset.storageKey) ?? await runtime.storage.materialize(asset.storageKey, join(dir, 'source-audio'))
+      const waveform = await waveformPeaks(path)
+      if (waveCache.size >= 48) waveCache.delete(waveCache.keys().next().value ?? '')
+      waveCache.set(asset.sha256, waveform)
+      return { ...waveform, assetId }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   app.get('/api/assets/:assetId/url', async (request) => {
