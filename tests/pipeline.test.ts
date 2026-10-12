@@ -4,11 +4,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, toNum, type Db } from '@masterclip/database'
 import { LocalStorage } from '@masterclip/asset-storage'
-import { formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@masterclip/shared'
+import { AppError, formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@masterclip/shared'
 import { ffmpeg, probe } from '@masterclip/media-tools'
 import { JOB_TYPES, QueueWorker } from '@masterclip/queue'
 import { emptyShot, CharacterRecord, EnvironmentRecord } from '@masterclip/shot-schema'
 import { createRuntime, MasterService, MediaFinishLease, signedReadableUrl, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
+import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
+import { CSRF_COOKIE, CSRF_HEADER } from '../apps/api/src/security/csrf.js'
 
 /**
  * End-to-end pipeline test.
@@ -288,6 +290,66 @@ describe('render pipeline', () => {
       await recoveredLease.assertAudioStillAuthorized(tx, song.id, projectId)
     })
     await recoveredLease.release()
+
+
+    // A newly opened browser can recover job state from the server rather
+    // than the previous tab's volatile React state. Only an owner/director
+    // may request a replay of a genuinely failed, nonbillable media job.
+    await runtime.auth.createUser({
+      orgId, email: 'finish-director@example.test',
+      password: 'strong-test-password-123', displayName: 'Finish Director', orgRole: 'owner',
+    })
+    const server = await buildServer({ runtime, logger: silentLogger })
+    await server.ready()
+    try {
+      const login = await server.inject({
+        method: 'POST', url: '/api/auth/login',
+        payload: { email: 'finish-director@example.test', password: 'strong-test-password-123' },
+      })
+      expect(login.statusCode).toBe(200)
+      const token = login.cookies.find(cookie => cookie.name === SESSION_COOKIE)?.value ?? ''
+      const csrf = login.cookies.find(cookie => cookie.name === CSRF_COOKIE)?.value ?? ''
+      const cookies = { [SESSION_COOKIE]: token, [CSRF_COOKIE]: csrf }
+      const queued = await runtime.queue.enqueue({
+        queue: QUEUES.media, type: JOB_TYPES.finishSongMoment,
+        payload: { masterId, actor: 'tester', orgId }, maxAttempts: 1,
+        dedupeKey: 'integration:finishing-status:' + masterId,
+      })
+      const listUrl = `/api/projects/${projectId}/masters`
+      const before = await server.inject({ method: 'GET', url: listUrl, cookies })
+      expect(before.statusCode).toBe(200)
+      const masterBefore = before.json().masters.find((m: { id: string }) => m.id === masterId)
+      expect(masterBefore?.finishingJobs[0]).toMatchObject({ id: queued.id, status: 'pending' })
+
+      // A pending job is not recoverable by a second request.
+      const path = `/api/masters/${masterId}/finishing/${queued.id}/retry`
+      const forbiddenRetry = await server.inject({
+        method: 'POST', url: path, cookies, headers: { [CSRF_HEADER]: csrf },
+      })
+      expect(forbiddenRetry.statusCode).toBe(409)
+
+      // Simulate terminal worker failure without exposing its internal detail.
+      await runtime.db.run(
+        "UPDATE queue_jobs SET status = 'dead', last_error = ? WHERE id = ?",
+        ['internal-path-and-sensitive-debug-value', queued.id],
+      )
+      const after = await server.inject({ method: 'GET', url: listUrl, cookies })
+      const masterAfter = after.json().masters.find((m: { id: string }) => m.id === masterId)
+      expect(masterAfter?.finishingJobs[0].status).toBe('dead')
+      expect(JSON.stringify(masterAfter)).not.toContain('internal-path-and-sensitive-debug-value')
+      const retry = await server.inject({
+        method: 'POST', url: path, cookies, headers: { [CSRF_HEADER]: csrf },
+      })
+      expect(retry.statusCode).toBe(200)
+      expect(retry.json()).toMatchObject({ status: 'queued', deduped: false })
+      const again = await server.inject({
+        method: 'POST', url: path, cookies, headers: { [CSRF_HEADER]: csrf },
+      })
+      expect(again.statusCode).toBe(200)
+      expect(again.json()).toMatchObject({ jobId: retry.json().jobId, deduped: true })
+    } finally {
+      await server.close()
+    }
 
     const concurrent = await Promise.allSettled([
       masters.finishWithSongMoment(masterId, 'tester', orgId),
