@@ -282,6 +282,15 @@ export const api = {
 
   createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
     post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
+  proposeMusicFirstCut: (projectId:string, body:{
+    name:string;audio_asset_id:string;song_start_seconds:number;target_seconds:number;
+    pacing:'measured'|'balanced'|'energetic'
+  }) => post<{
+    spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>};
+    durationSeconds:number;targetSeconds:number;beatAligned:boolean;
+    confidence:number;warnings:string[]
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/propose`,body),
   musicTimelineSources: (projectId: string) => get<{
     videos: Array<{masterId:string;name:string;durationSeconds:number;videoUrl:string}>
     audio: Array<{id:string;filename:string;durationSeconds:number;audioUrl:string}>
