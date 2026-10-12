@@ -264,6 +264,12 @@ export const api = {
       body,
     ),
 
+  quickCreate: (projectId: string, body: {
+    title: string; creativeDirection: string; audioAssetId: string;
+    visualAssetId: string | null; startSeconds: number; endSeconds: number;
+    aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string
+  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false }>(`/api/projects/${projectId}/quick-create`, body),
+
   uploadAsset: (projectId: string, form: FormData) =>
     request<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/assets`, {
       method: 'POST',
