@@ -475,7 +475,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   z-index: 0;
   isolation: isolate;
   opacity: 0.92;
-  background-image: url('/motion-start-film-bg.webp');
+  background-image: url('/motion-start-film-bg.avif');
   background-size: cover;
   background-position: center 56%;
   background-repeat: no-repeat;
