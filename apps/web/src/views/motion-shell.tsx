@@ -186,6 +186,9 @@ export function MotionRail({
 export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = React.useState('')
   const [brief, setBrief] = React.useState('')
+  const [audioFile, setAudioFile] = React.useState<File | null>(null)
+  const [rightsOwner, setRightsOwner] = React.useState('')
+  const [authorized, setAuthorized] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const dialogRef = React.useRef<HTMLDialogElement | null>(null)
@@ -219,8 +222,23 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
     setError(null)
     try {
       const result = await api.createProject(name.trim(), brief)
+      if (mode.id === 'audio' && audioFile) {
+        const form = new FormData()
+        form.append('file', audioFile)
+        form.append('rights_owner', rightsOwner.trim())
+        form.append('rights_consent', authorized ? 'authorized' : 'unverified')
+        form.append('rights_authorized', authorized ? 'true' : 'false')
+        try {
+          await api.uploadAsset(result.project.id, form)
+        } catch (uploadError) {
+          // The film was created; do not create another on retry.
+          onCreated()
+          navigate(`/project/${result.project.id}?tab=assets`)
+          return
+        }
+      }
       onCreated()
-      navigate(`/project/${result.project.id}`)
+      navigate(`/project/${result.project.id}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
@@ -261,6 +279,25 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
           <textarea value={brief} onChange={(event) => setBrief(event.target.value)} />
         </label>
 
+        {mode.id === 'audio' && (
+          <div className="mo-start-audio">
+            <label>
+              Choose an audio recording
+              <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp3"
+                onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
+            </label>
+            <label>
+              Rights owner
+              <input value={rightsOwner} onChange={event => setRightsOwner(event.target.value)}
+                placeholder="Artist or rights holder" required />
+            </label>
+            <label className="mo-audio-consent">
+              <input type="checkbox" checked={authorized}
+                onChange={event => setAuthorized(event.target.checked)} />
+              I am authorized to use this recording for this film.
+            </label>
+          </div>
+        )}
         <p className="mo-account-note">{mode.next}</p>
 
         {error !== null && (
@@ -273,7 +310,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0}>
+          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!audioFile || !rightsOwner.trim() || !authorized))}>
             {busy ? 'Creating' : 'Create the film'} <span aria-hidden="true">&rarr;</span>
           </button>
         </div>
