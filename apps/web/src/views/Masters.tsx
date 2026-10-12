@@ -192,6 +192,7 @@ function MasterCard({
     id: string; type: string; status: string; lastError: string | null
   }>
   const newestFinishing = finishingHistory[0] ?? null
+  const finishingActive = finishingHistory.some(job => job.status === 'pending' || job.status === 'active')
   const song = master.songMoment as { startSeconds: number; endSeconds: number } | null
   const musicDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'song_moment' && typeof item.url === 'string')
   const captionCount = Number(master.captionCount ?? 0)
@@ -267,13 +268,13 @@ function MasterCard({
         <section className="mcq-master-audio" aria-label="Music video finishing">
           <h4>Song-moment finishing</h4>
           <p className="muted">Use the approved shot's selection, {song.startSeconds.toFixed(1)}–{song.endSeconds.toFixed(1)} seconds. This replaces generated sound with the authorized recording in a real MP4. It does not publish or incur provider charges.</p>
-          <button className="primary small" type="button" disabled={busy || master.status === 'archived'} onClick={() => void onSong()}>
+          <button className="primary small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onSong()}>
             {busy ? 'Finishing…' : 'Finish with selected song'}
           </button>
           {captionCount > 0 && (
             <div className="mcq-caption-delivery">
               <p className="muted">This master has {captionCount} approved, timed caption lines.</p>
-              <button className="small" type="button" disabled={busy || master.status === 'archived'} onClick={() => void onCaptions()}>
+              <button className="small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onCaptions()}>
                 {busy ? 'Rendering captions…' : 'Burn captions into a separate MP4'}
               </button>
               <p className="faint">Burning captions creates a second derivative. The clean music master is preserved.</p>
