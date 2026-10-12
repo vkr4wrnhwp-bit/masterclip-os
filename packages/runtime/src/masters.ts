@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { AppError, formatUsd, newId, sha256File } from '@masterclip/shared'
 import { objectKey } from '@masterclip/asset-storage'
 import { AUDIT_ACTIONS } from '@masterclip/domain'
-import { buildEdl, buildFcpXml, probe, reframe, transcode, type DeliveryFormat } from '@masterclip/media-tools'
+import { buildEdl, buildFcpXml, probe, reframe, replaceAudioMoment, transcode, type DeliveryFormat } from '@masterclip/media-tools'
 import { frameSize, type AspectRatio, type TargetResolution } from '@masterclip/shot-schema'
 import type { Runtime } from './index.js'
 
@@ -174,6 +174,120 @@ export class MasterService {
       await cleanup()
     }
     return created
+  }
+
+  /**
+   * Locally finishes an approved Quick Create video with the authorized song
+   * moment locked to the rendered shot version. This is NOT generation, a
+   * provider call, mastering, publishing or a permission grant.
+   */
+  async finishWithSongMoment(masterId: string, actor: string, orgId: string):
+    Promise<{ assetId: string; url: string; durationSeconds: number; reused: boolean; sandbox: boolean }> {
+    const master = await this.rt.renders.getMaster(masterId)
+    if (master.status === 'archived') {
+      throw new AppError({ kind: 'validation', code: 'song_moment.archived', message: 'archived masters cannot be finished' })
+    }
+    const output = await this.rt.renders.getOutput(master.outputId)
+    const job = await this.rt.renders.getJob(output.jobId)
+    if (master.projectId !== job.projectId || master.shotId !== job.shotId || master.sourceAssetId !== output.assetId) {
+      throw new AppError({ kind: 'forbidden', code: 'song_moment.mismatched_master', message: 'master source and render job do not match' })
+    }
+    const review = await this.rt.renders.latestReview(master.outputId)
+    if (!review || !['approve', 'promote'].includes(review.decision)) {
+      throw new AppError({ kind: 'forbidden', code: 'song_moment.review_required', message: 'human approval is required before embedding a recording' })
+    }
+    const shotVersion = await this.rt.projects.getVersion(job.shotVersionId)
+    const cue = shotVersion.spec.music_cue
+    if (shotVersion.shotId !== master.shotId || !cue) {
+      throw new AppError({ kind: 'validation', code: 'song_moment.no_cue', message: 'approved shot version has no saved song moment' })
+    }
+    if (!cue.promotional_use_attested) {
+      throw new AppError({ kind: 'forbidden', code: 'song_moment.consent_required', message: 'promotional use was not confirmed for this shot version' })
+    }
+
+    const song = await this.rt.assets.get(cue.asset_id)
+    if (song.projectId !== master.projectId || song.kind !== 'audio' ||
+        song.rights.consent !== 'authorized' || !song.rights.authorized || !song.rights.owner.trim() ||
+        (song.rights.expiresAt && (!Number.isFinite(Date.parse(song.rights.expiresAt)) ||
+          Date.parse(song.rights.expiresAt) <= this.rt.clock.now()))) {
+      throw new AppError({ kind: 'forbidden', code: 'song_moment.rights', message: 'recording is not rights-cleared for this MOTION project' })
+    }
+
+    // Version-bound idempotency: re-clicking after success returns the existing
+    // verified derivative rather than writing duplicate media.
+    const prior = (await this.rt.renders.listDeliverables(masterId)).find(d =>
+      d.spec.kind === 'song_moment' && d.spec.shotVersionId === shotVersion.id &&
+      d.spec.audioAssetId === song.id &&
+      d.spec.startSeconds === cue.start_seconds && d.spec.endSeconds === cue.end_seconds)
+    if (prior) {
+      const derivative = await this.rt.assets.get(prior.assetId)
+      if (derivative.projectId === master.projectId && await this.rt.storage.exists(derivative.storageKey)) {
+        return { assetId: derivative.id, url: await this.rt.storage.signedUrl(derivative.storageKey, 3600),
+          durationSeconds: derivative.durationSeconds ?? cue.end_seconds - cue.start_seconds,
+          reused: true, sandbox: job.sandbox }
+      }
+    }
+
+    const sourceVideo = await this.rt.assets.get(master.sourceAssetId)
+    if (sourceVideo.projectId !== master.projectId || !['generated_video', 'master', 'delivery'].includes(sourceVideo.kind)) {
+      throw new AppError({ kind: 'forbidden', code: 'song_moment.video_source', message: 'master video is not an authorized output in this project' })
+    }
+    const dir = await mkdtemp(join(tmpdir(), 'masterclip-song-finish-'))
+    let storedKey: string | null = null
+    let registered = false
+    try {
+      const videoPath = this.rt.storage.localPath(sourceVideo.storageKey) ??
+        await this.rt.storage.materialize(sourceVideo.storageKey, join(dir, 'video-input'))
+      const songPath = this.rt.storage.localPath(song.storageKey) ??
+        await this.rt.storage.materialize(song.storageKey, join(dir, 'audio-input'))
+      const outPath = join(dir, 'song-moment.mp4')
+      const verified = await replaceAudioMoment(videoPath, songPath, outPath, cue.start_seconds, cue.end_seconds)
+      const assetId = newId('ast', this.rt.clock.now())
+      const name = `song-moment-${assetId}.mp4`
+      const key = objectKey({ projectId: master.projectId, kind: 'delivery', id: assetId, filename: name })
+      const sha = await sha256File(outPath)
+      const stored = await this.rt.storage.putFile(key, outPath, { contentType: 'video/mp4', sha256: sha })
+      storedKey = stored.key
+      const asset = await this.rt.assets.create({
+        projectId: master.projectId, kind: 'delivery', storageKey: stored.key,
+        filename: name, mime: 'video/mp4', bytes: stored.bytes, sha256: stored.sha256,
+        durationSeconds: verified.durationSeconds, hasAudio: true,
+        metadata: {
+          format: 'social_h264', finishing: 'song_moment', audioEmbedded: true,
+          shotVersionId: shotVersion.id, sourceMasterId: masterId,
+          sourceAudioAssetId: song.id, startSeconds: cue.start_seconds,
+          endSeconds: cue.end_seconds, videoCodec: verified.codec,
+          note: 'Actual MP4 with trimmed audio, source video unchanged; publishing rights and platform clearance not inferred.',
+        },
+        // Derivatives retain source rights rather than making up new ownership.
+        rights: { ...song.rights, source: `song moment from ${song.id}; video from approved master ${masterId}` },
+        createdBy: actor,
+        parents: [
+          { assetId: sourceVideo.id, relation: 'delivery_of' },
+          { assetId: song.id, relation: 'generated_from' },
+        ],
+      })
+      registered = true
+      await this.rt.renders.addDeliverable({
+        masterId, format: 'social_h264', assetId: asset.id,
+        spec: { kind: 'song_moment', shotVersionId: shotVersion.id, audioAssetId: song.id,
+          startSeconds: cue.start_seconds, endSeconds: cue.end_seconds, audioEmbedded: true },
+      })
+      await this.rt.audit.record({
+        orgId, projectId: master.projectId, actor,
+        action: 'master.song_moment_finished', targetType: 'asset', targetId: asset.id,
+        data: { masterId, shotVersionId: shotVersion.id, audioAssetId: song.id,
+          startSeconds: cue.start_seconds, endSeconds: cue.end_seconds, sandbox: job.sandbox },
+      })
+      return { assetId: asset.id, url: await this.rt.storage.signedUrl(asset.storageKey, 3600),
+        durationSeconds: verified.durationSeconds, reused: false, sandbox: job.sandbox }
+    } catch (error) {
+      // Delete only unregistered output bytes; never orphan a registered asset.
+      if (!registered && storedKey) await this.rt.storage.delete(storedKey).catch(() => undefined)
+      throw error
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
 
   /**
