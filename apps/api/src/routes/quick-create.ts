@@ -71,6 +71,7 @@ export async function registerQuickCreateRoutes(app: FastifyInstance, runtime: R
       asset_id: input.audioAssetId,
       start_seconds: input.startSeconds,
       end_seconds: input.endSeconds,
+      creative_look: input.look,
     }
     await assertMusicCueAsset(runtime, projectId, cue)
 
