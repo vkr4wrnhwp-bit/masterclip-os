@@ -69,10 +69,17 @@ function CutPreview({draft,videos,audio}:{draft:TimelineDraft;videos:SourceVideo
 export function MusicTimeline({projectId}:{projectId:string}){
   const sources=useAsync(()=>api.musicTimelineSources(projectId),[projectId])
   const saved=useAsync(()=>api.musicTimelines(projectId),[projectId])
-  const [draft,setDraft]=React.useState<TimelineDraft>(blank)
   const [timelineId,setTimelineId]=React.useState<string|null>(null)
+  const exportsData=useAsync(()=>timelineId
+    ?api.musicTimelineExports(projectId,timelineId)
+    :Promise.resolve({exports:[] as Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>}),
+    [projectId,timelineId])
+  const [draft,setDraft]=React.useState<TimelineDraft>(blank)
   const [version,setVersion]=React.useState(0)
   const [adding,setAdding]=React.useState('')
+  const [snapshot,setSnapshot]=React.useState<string|null>(null)
+  const [renderJob,setRenderJob]=React.useState<string|null>(null)
+  const [renderStatus,setRenderStatus]=React.useState<string|null>(null)
   const [busy,setBusy]=React.useState(false)
   const [error,setError]=React.useState<string|null>(null)
   const [message,setMessage]=React.useState<string|null>(null)
@@ -80,6 +87,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
   const videos=sources.data?.videos??[]
   const audio=sources.data?.audio??[]
   const selectedAudio=audio.find(item=>item.id===draft.audio_asset_id)
+  const cleanSaved=Boolean(timelineId&&snapshot===JSON.stringify(draft))
   const cutLength=total(draft.clips)
   const valid=Boolean(draft.name.trim()&&selectedAudio&&draft.clips.length>=1&&cutLength<=60&&
     cutLength>=.5&&draft.song_start_seconds>=0&&
@@ -124,6 +132,41 @@ export function MusicTimeline({projectId}:{projectId:string}){
       total(draft.clips)-duration(clip)+newDuration>60)return
     edit(index,{source_end_seconds:Number((clip.source_start_seconds+newDuration).toFixed(2))})
   }
+  React.useEffect(()=>{
+    if(!timelineId||!renderJob)return
+    let active=true
+    const poll=async()=>{
+      try{
+        const state=await api.musicTimelineJob(projectId,timelineId,renderJob)
+        if(!active)return
+        setRenderStatus(state.status)
+        if(state.status==='completed'){
+          exportsData.reload()
+          setRenderJob(null)
+          setMessage('A real finished MP4 is now available below.')
+        }else if(['dead','failed','cancelled'].includes(state.status)){
+          setRenderJob(null)
+          setError(state.error||'Timeline assembly did not complete.')
+        }
+      }catch(error){if(active){setError((error as Error).message);setRenderJob(null)}}
+    }
+    void poll()
+    const timer=window.setInterval(()=>void poll(),3000)
+    return()=>{active=false;window.clearInterval(timer)}
+  },[projectId,timelineId,renderJob])
+
+  const assemble=async()=>{
+    if(!timelineId||!cleanSaved||busy)return
+    setBusy(true);setError(null);setMessage(null)
+    try{
+      const job=await api.assembleMusicTimeline(projectId,timelineId)
+      setRenderJob(job.jobId)
+      setRenderStatus('queued')
+      setMessage(job.deduped?'An existing assembly job will be checked.':'Real MP4 assembly queued; no result has been claimed yet.')
+    }catch(error){setError((error as Error).message)}
+    finally{setBusy(false)}
+  }
+
   const save=async()=>{
     if(!valid||busy)return
     setBusy(true);setError(null);setMessage(null)
@@ -132,6 +175,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
         ?await api.updateMusicTimeline(projectId,timelineId,version,draft)
         :await api.createMusicTimeline(projectId,draft)
       setTimelineId(result.timelineId);setVersion(result.version)
+      setSnapshot(JSON.stringify(draft))
       saved.reload()
       setMessage('Cut decisions saved as timeline version '+result.version+'. No video rendered or credits spent.')
     }catch(err){setError((err as Error).message)}
@@ -192,8 +236,27 @@ export function MusicTimeline({projectId}:{projectId:string}){
         {!valid&&draft.clips.length>0&&<p className="faint">Each clip must fit inside its approved master; the combined cut must fit inside the selected song and remain at most 60 seconds.</p>}
         <div className="button-row">
           <button className="primary" disabled={!valid||busy} onClick={()=>void save()}>{busy?'Saving…':timelineId?'Save new timeline version':'Save timeline'}</button>
-          <button type="button" onClick={()=>{setDraft(blank);setTimelineId(null);setVersion(0);setMessage(null);setError(null)}}>Start new cut</button>
+          <button type="button" onClick={()=>{setDraft(blank);setTimelineId(null);setVersion(0);setSnapshot(null);setRenderJob(null);setMessage(null);setError(null)}}>Start new cut</button>
         </div>
+        <section className="mc-timeline-render" aria-label="Real MP4 finishing">
+          <h4>Finish a real video</h4>
+          <p className="muted">Build a straight-cut MP4 from approved video masters and the original track. Source aspect ratios are preserved with padding; nothing is cropped or published automatically. No AI render credits are used.</p>
+          <button type="button" className="primary" disabled={!valid||!cleanSaved||busy||!!renderJob}
+            onClick={()=>void assemble()}>
+            {renderJob?'Assembly in progress…':'Assemble MP4 from saved cut'}
+          </button>
+          {!cleanSaved&&timelineId&&<p className="faint">Save the current edit before assembling this version.</p>}
+          {renderStatus&&<p role="status" className="faint">Assembly status: {renderStatus}</p>}
+          <AsyncBlock state={exportsData}>{data=>data.exports.length===0
+            ?<p className="faint">No completed MP4 assemblies for this timeline yet.</p>
+            :<div className="mc-timeline-exports">{data.exports.map(item=><div key={item.id}>
+              <strong>MP4 · version {item.version}</strong>
+              <span className="faint"> · {seconds(item.durationSeconds??0)}s</span>
+              {item.url?<><video controls playsInline preload="metadata" src={item.url} aria-label="Real assembled timeline MP4" />
+                <a href={item.url} target="_blank" rel="noopener noreferrer">Open finished MP4</a></>
+                :<p className="faint">This export is no longer cleared for playback.</p>}
+            </div>)}</div>}</AsyncBlock>
+        </section>
         {error&&<Callout tone="danger">{error}</Callout>}
         {message&&<Callout tone="ok">{message}</Callout>}
         <CutPreview key={draft.audio_asset_id+draft.clips.map(c=>c.master_id).join(':')}
@@ -205,7 +268,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
         <div className="mc-timeline-saved">{data.timelines.map(item=>
           <div key={item.id} className="mc-timeline-saved-row">
             <span><strong>{item.name}</strong> · version {item.version} · {item.spec.clips.length} clips</span>
-            <button type="button" onClick={()=>{setDraft({...item.spec,clips:item.spec.clips.map(c=>({...c}))});setTimelineId(item.id);setVersion(item.version);setMessage(null)}}>Edit cut</button>
+            <button type="button" onClick={()=>{setDraft({...item.spec,clips:item.spec.clips.map(c=>({...c}))});setTimelineId(item.id);setVersion(item.version);setSnapshot(JSON.stringify(item.spec));setRenderJob(null);setRenderStatus(null);setMessage(null)}}>Edit cut</button>
           </div>)}</div>}</AsyncBlock>
     </Card>
   </div>
