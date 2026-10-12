@@ -13,6 +13,8 @@ export function ffmpegPaths(): FfmpegPaths {
 
 export interface RunOptions {
   timeoutMs?: number
+  /** Optional isolated media work directory; never a user supplied path. */
+  cwd?: string
   logger?: Logger
   /** ffmpeg writes progress to stderr; large filters can exceed the default cap. */
   maxBufferBytes?: number
@@ -37,6 +39,7 @@ export function run(binary: string, args: string[], opts: RunOptions = {}): Prom
         timeout: opts.timeoutMs ?? 10 * 60_000,
         maxBuffer: opts.maxBufferBytes ?? 32 * 1024 * 1024,
         windowsHide: true,
+        ...(opts.cwd ? { cwd: opts.cwd } : {}),
         shell: false,
       },
       (error, stdout, stderr) => {
