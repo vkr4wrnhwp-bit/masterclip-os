@@ -1,7 +1,11 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { beatAnalysis } from '@masterclip/media-tools'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, newId, notFound } from '@masterclip/shared'
-import { MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
+import { AutoAssemblyInput, proposeFirstCut, MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
 import { listTimelineExports, signedReadableUrl, type Runtime } from '@masterclip/runtime'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { requireProject } from '../server.js'
@@ -53,6 +57,54 @@ async function validateTimeline(rt: Runtime, projectId: string, spec: Spec): Pro
 }
 
 export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runtime): Promise<void> {
+  // A server-authored first-cut suggestion. Never trust client-supplied BPM,
+  // beat markers, duration or master approval. Decode the real local recording
+  // and evaluate only sources that remain human-approved in this project.
+  app.post('/api/projects/:projectId/music-timelines/propose', async request => {
+    const {projectId}=request.params as {projectId:string}
+    await requireProject(rt,request,projectId,'editor')
+    const requested=AutoAssemblyInput.pick({
+      name:true,audio_asset_id:true,song_start_seconds:true,
+      target_seconds:true,pacing:true,
+    }).parse(request.body)
+    const song=await rt.assets.get(requested.audio_asset_id)
+    const end=requested.song_start_seconds+requested.target_seconds
+    await assertMusicCueAsset(rt,projectId,{
+      asset_id:song.id,start_seconds:requested.song_start_seconds,end_seconds:end,
+      creative_look:'cinematic',promotional_use_attested:true,
+    })
+    const masters=await rt.renders.listMasters(projectId)
+    const sources=[]
+    for(const master of masters) {
+      if(master.status==='archived')continue
+      const review=await rt.renders.latestReview(master.outputId)
+      if(!review||!['approve','promote'].includes(review.decision))continue
+      const asset=await rt.assets.get(master.sourceAssetId)
+      if(asset.projectId!==projectId||asset.kind!=='generated_video'||
+        !(asset.durationSeconds&&asset.durationSeconds>=.5))continue
+      sources.push({master_id:master.id,duration_seconds:asset.durationSeconds})
+      if(sources.length>=16)break
+    }
+    if(!sources.length){
+      throw new AppError({kind:'validation',code:'auto_assembly.no_masters',
+        message:'approve and promote a MOTION video master before proposing a cut'})
+    }
+    const dir=await mkdtemp(join(tmpdir(),'motion-auto-cut-'))
+    let analysis:{beats:number[];confidence:number;bpm:number|null}|null=null
+    try {
+      const path=rt.storage.localPath(song.storageKey)??
+        await rt.storage.materialize(song.storageKey,join(dir,'authorized-audio'))
+      analysis=await beatAnalysis(path)
+    }catch(error){
+      rt.logger.warn('auto_assembly.beat_unavailable',{code:'beat_analysis_unavailable'})
+    }finally {await rm(dir,{recursive:true,force:true})}
+    return proposeFirstCut({
+      ...requested,sources,
+      beats:analysis?.beats??[],
+      beat_confidence:analysis?.confidence??0,
+    })
+  })
+
   // Build the editor from genuine human-approved masters and currently
   // authorized recordings. Do not expose unrelated project media.
   app.get('/api/projects/:projectId/music-timelines/sources', async request => {
