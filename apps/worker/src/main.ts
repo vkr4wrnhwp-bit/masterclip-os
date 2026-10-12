@@ -1,4 +1,4 @@
-import { createRuntime, RenderService, MasterService, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
+import { createRuntime, RenderService, MasterService, assembleApprovedTimeline, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
 import { AppError, applyEnvFile, loadConfig } from '@masterclip/shared'
 
@@ -76,6 +76,14 @@ async function main(): Promise<void> {
     worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishCaptionedSong, async (payload, ctx) => {
       await deferLocked(() => withMediaLease(ctx, () =>
         finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId).then(() => undefined)), ctx)
+    })
+
+    worker.register<{
+      projectId:string;timelineId:string;version:number;actor:string;orgId:string;
+      spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+        clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}
+    }>(JOB_TYPES.assembleMusicTimeline, async (payload, ctx) => {
+      await withMediaLease(ctx, () => assembleApprovedTimeline(runtime, payload).then(() => undefined))
     })
 
     worker.register<{ outputId: string }>(JOB_TYPES.buildProxies, async ({ outputId }, ctx) => {
