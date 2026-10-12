@@ -160,6 +160,31 @@ describe('MOTION native audio permissions', () => {
     expect(revoked.statusCode).toBe(403)
   })
 
+  it('accepts only one canonical handoff when independent HTTP requests race', async () => {
+    const url = `/api/projects/${projectId}/scene-plan/handoff`
+    const body = {
+      requestId:'67fa8735-8fe7-4848-9c48-575e66a09f6c',
+      reviewed:true,promotionalUseAttested:true,
+      audioAssetId:audioId,songStartSeconds:0,songEndSeconds:2,
+      title:'Parallel approved cut',sectionLabel:'Opening',
+      narrativePurpose:'Artist sings in a real performance space',
+      cameraDirection:'Motivated tracking',performanceDirection:'Performer walks in',
+      visualTreatment:'Neutral tungsten practicals',aspectRatio:'9:16',
+    }
+    const request = () => app.inject({method:'POST',url,
+      cookies:{[SESSION_COOKIE]:session,[CSRF_COOKIE]:csrf},
+      headers:{[CSRF_HEADER]:csrf},payload:body})
+    const [one,two] = await Promise.all([request(),request()])
+    expect(one.statusCode).toBe(200)
+    expect(two.statusCode).toBe(200)
+    expect(one.json().shotId).toBe(two.json().shotId)
+    expect([one.json().deduped,two.json().deduped].sort()).toEqual([false,true])
+    const shots=await rt.projects.listShots(projectId)
+    expect(shots.filter(shot=>shot.id===one.json().shotId)).toHaveLength(1)
+    const versions=await rt.projects.listVersions(one.json().shotId)
+    expect(versions).toHaveLength(1)
+  })
+
   it('persists project-owned creative treatments and refuses duplicate names', async () => {
     const path = `/api/projects/${projectId}/creative-treatments`
     const withoutSession = await app.inject({ method: 'POST', url: path, payload: {
