@@ -1044,3 +1044,23 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mc-timeline-structure .field-row .field { flex:1;min-width:120px; }
 .mc-timeline-structure .button-row button { min-height:44px; }
 @media(max-width:600px){.mc-timeline-structure{padding:10px}.mc-timeline-structure .field-row .field{min-width:calc(50% - 10px)}}
+
+/* Section-aware human handoff into professional Shot Builder. */
+.mc-scene-handoff { margin:16px 0; padding-top:12px; border-top:1px solid var(--border); }
+.mc-scene-handoff>h4 { font-size:15px; margin:0 0 8px; }
+.mc-scene-handoff-card { border:1px solid var(--border); border-radius:var(--radius); padding:14px;
+  margin:12px 0; background:var(--bg-raised); min-width:0; }
+.mc-scene-handoff-card>h4 { margin:0 0 10px; font-size:14px; }
+.mc-scene-handoff-card fieldset { margin:0; padding:0; border:0; min-width:0; display:grid; gap:9px; }
+.mc-scene-handoff-card .field-row { display:flex;flex-wrap:wrap;gap:10px; }
+.mc-scene-handoff-card .field-row .field { min-width:125px;flex:1; }
+.mc-scene-handoff-card textarea { width:100%;max-width:100%; box-sizing:border-box; }
+.mc-scene-handoff-confirm { display:flex; align-items:flex-start; gap:10px; font-size:13px; line-height:1.5;
+  cursor:pointer; margin:5px 0; }
+.mc-scene-handoff-confirm input { flex:0 0 auto; min-height:20px; min-width:20px; margin:1px 0; }
+.mc-scene-handoff-card .button-row { margin-top:12px; }
+.mc-scene-handoff-card button { min-height:44px; }
+@media(max-width:600px) {
+  .mc-scene-handoff-card { padding:10px; }
+  .mc-scene-handoff-card .field-row .field { min-width:100%; }
+}
