@@ -7,3 +7,5 @@ export * from './edl.js'
 export * from './waveform.js'
 
 export * from './captions.js'
+
+export * from './beat-analysis.js'
