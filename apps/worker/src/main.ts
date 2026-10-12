@@ -50,13 +50,17 @@ async function main(): Promise<void> {
       ctx.logger.info('worker.qc', { output_id: outputId, action: result.action, technical_pass: result.technicalPass })
     })
 
-    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishSongMoment, async (payload, ctx) => {
+    // Finishing can outlive the standard lease; keep it owned by this worker.
+    const withMediaLease = async (ctx: { heartbeat(): Promise<void> }, work: () => Promise<void>) => {
       await ctx.heartbeat()
-      await new MasterService(runtime).finishWithSongMoment(payload.masterId, payload.actor, payload.orgId)
+      const timer = setInterval(() => { void ctx.heartbeat().catch(() => undefined) }, 30_000)
+      try { await work() } finally { clearInterval(timer) }
+    }
+    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishSongMoment, async (payload, ctx) => {
+      await withMediaLease(ctx, () => new MasterService(runtime).finishWithSongMoment(payload.masterId, payload.actor, payload.orgId).then(() => undefined))
     })
     worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishCaptionedSong, async (payload, ctx) => {
-      await ctx.heartbeat()
-      await finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId)
+      await withMediaLease(ctx, () => finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId).then(() => undefined))
     })
 
     worker.register<{ outputId: string }>(JOB_TYPES.buildProxies, async ({ outputId }, ctx) => {
