@@ -641,5 +641,20 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent, created_at)
 ALTER TABLE orgs ADD COLUMN street_banker_identity TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_street_banker ON orgs(street_banker_identity);
 `,
+  },  {
+    id: '0004_media_finish_leases',
+    sql: `
+-- One independent lease per approved master. Competing workers (or a
+-- concurrent retry) cannot both register post-production derivatives. A
+-- crashed worker's lock expires and can be atomically recovered.
+CREATE TABLE IF NOT EXISTS media_finish_leases (
+  master_id    TEXT PRIMARY KEY REFERENCES masters(id),
+  owner_token  TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_finish_lease_expiry ON media_finish_leases(expires_at);
+`,
   },
+
 ]
