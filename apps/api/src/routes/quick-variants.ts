@@ -36,7 +36,7 @@ export async function registerQuickVariants(app: FastifyInstance, runtime: Runti
       }
     }
     const candidate = validateShot({
-      ...version.spec, shot_id: newId('variant', runtime.clock.now()),
+      ...version.spec, shot_id: newId('shot', runtime.clock.now()),
       title: input.label, action: input.direction, narrative_purpose: input.direction,
       music_cue: { ...cue, creative_look: input.look },
       creative_variant: { source_shot_id: source.id, label: input.label },
