@@ -191,6 +191,8 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
   const [rightsOwner, setRightsOwner] = React.useState('')
   const [authorized, setAuthorized] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
+  const [progress, setProgress] = React.useState('')
+  const submittingRef = React.useRef(false)
   const [error, setError] = React.useState<string | null>(null)
   const dialogRef = React.useRef<HTMLDialogElement | null>(null)
   const nameRef = React.useRef<HTMLInputElement | null>(null)
@@ -219,12 +221,16 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (submittingRef.current) return
+    submittingRef.current = true
     setBusy(true)
+    setProgress(createdFilmId ? 'Uploading recording…' : 'Creating film…')
     setError(null)
     try {
       const filmId = createdFilmId ?? (await api.createProject(name.trim(), brief)).project.id
       setCreatedFilmId(filmId)
       if (mode.id === 'audio' && audioFile) {
+        setProgress('Uploading recording…')
         const form = new FormData()
         form.append('file', audioFile)
         form.append('rights_owner', rightsOwner.trim())
@@ -235,14 +241,19 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
         } catch (uploadError) {
           setError('Film created, but audio upload failed: ' + (uploadError as Error).message + '. Retry to upload to the same film.')
           setBusy(false)
+          submittingRef.current = false
+          setProgress('')
           return
         }
       }
+      setProgress('Opening film…')
       onCreated()
       navigate(`/project/${filmId}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
+      setProgress('')
+      submittingRef.current = false
     }
   }
 
@@ -301,6 +312,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
         )}
         <p className="mo-account-note">{mode.next}</p>
 
+        {busy && <p className="mo-create-progress" role="status" aria-live="polite"><span className="mo-create-spinner" aria-hidden="true" />{progress}</p>}
         {error !== null && (
           <p className="mo-dialog-error" role="alert">
             {error}
@@ -312,7 +324,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
             Cancel
           </button>
           <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!audioFile || !rightsOwner.trim() || !authorized))}>
-            {busy ? 'Creating' : 'Create the film'} <span aria-hidden="true">&rarr;</span>
+            {busy ? (progress || 'Processing…') : 'Create the film'} <span aria-hidden="true">&rarr;</span>
           </button>
         </div>
       </form>
