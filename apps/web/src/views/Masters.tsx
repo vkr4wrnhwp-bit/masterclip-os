@@ -16,6 +16,7 @@ export function MastersView({ projectId }: { projectId: string }) {
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [retryable, setRetryable] = React.useState<{masterId:string;jobId:string}|null>(null)
   const [pending, setPending] = React.useState<{masterId:string;jobId:string}|null>(null)
 
   React.useEffect(() => {
@@ -31,6 +32,7 @@ export function MastersView({ projectId }: { projectId: string }) {
           masters.reload()
         } else if (['dead', 'failed', 'cancelled'].includes(job.status)) {
           setError(job.error || 'Finishing failed; no completed output was reported.')
+          setRetryable({masterId:pending.masterId,jobId:pending.jobId})
           setPending(null)
         }
       } catch (err) {
@@ -114,6 +116,16 @@ export function MastersView({ projectId }: { projectId: string }) {
 
       {message && <Callout tone="info">{message}</Callout>}
       {error && <Callout tone="danger">{error}</Callout>}
+      {retryable && !pending && <button type="button" disabled={busy !== null} onClick={async()=>{
+        setBusy(retryable.masterId)
+        try {
+          const next=await api.retryFinishing(retryable.masterId,retryable.jobId)
+          setPending({masterId:retryable.masterId,jobId:next.jobId})
+          setRetryable(null);setError(null)
+          setMessage('Failed finishing job resubmitted to the media worker.')
+        } catch(err){setError((err as Error).message)}
+        finally{setBusy(null)}
+      }}>Retry failed finishing job</button>
 
       <AsyncBlock state={masters}>
         {(data) =>
