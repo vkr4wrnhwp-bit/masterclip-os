@@ -10,6 +10,7 @@ export * from './bible.js'
 export * from './timeline.js'
 export * from './auto-assembly.js'
 export * from './music-sections.js'
+export * from './scene-planner.js'
 export * from './io.js'
 
 /**
