@@ -9,7 +9,7 @@ import { RejectionReason, deriveRequirements } from '@masterclip/shot-schema'
 import { buildMatrix, defaultStopLoss, summarize } from '@masterclip/domain'
 import { compareStrategies, routeShot } from '@masterclip/model-router'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
-import { MasterService, RenderService, finishCaptionedSongMoment, signedReadableUrl, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
+import { requireNativeFinishing, MasterService, RenderService, finishCaptionedSongMoment, signedReadableUrl, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
 import { requireProject } from '../server.js'
 
 const CandidateSchema = z.object({
@@ -473,6 +473,7 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
   // A nonbillable, local FFmpeg operation: embed only the selected audio
   // from the exact shot version behind this human-approved master.
   app.post('/api/masters/:masterId/captioned-song', async (request) => {
+    requireNativeFinishing(runtime.config)
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
     const { auth } = await requireProject(runtime, request, master.projectId, 'director')
@@ -486,6 +487,7 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
   })
 
   app.post('/api/masters/:masterId/song-moment', async (request) => {
+    requireNativeFinishing(runtime.config)
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
     const { auth } = await requireProject(runtime, request, master.projectId, 'director')
