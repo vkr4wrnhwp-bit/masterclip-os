@@ -16,8 +16,16 @@ export function MastersView({ projectId }: { projectId: string }) {
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
-  const [retryable, setRetryable] = React.useState<{masterId:string;jobId:string}|null>(null)
   const [pending, setPending] = React.useState<{masterId:string;jobId:string}|null>(null)
+  const finishingInProgress = (masters.data?.masters ?? []).some(master =>
+    ((master.finishingJobs ?? []) as Array<{status: string}>).some(job =>
+      job.status === 'pending' || job.status === 'active'))
+  React.useEffect(() => {
+    if (!finishingInProgress) return
+    const interval = window.setInterval(() => masters.reload(), 5000)
+    return () => window.clearInterval(interval)
+  }, [finishingInProgress])
+
 
   React.useEffect(() => {
     if (!pending) return
@@ -32,7 +40,7 @@ export function MastersView({ projectId }: { projectId: string }) {
           masters.reload()
         } else if (['dead', 'failed', 'cancelled'].includes(job.status)) {
           setError(job.error || 'Finishing failed; no completed output was reported.')
-          setRetryable({masterId:pending.masterId,jobId:pending.jobId})
+          masters.reload()
           setPending(null)
         }
       } catch (err) {
@@ -90,6 +98,22 @@ export function MastersView({ projectId }: { projectId: string }) {
     }
   }
 
+  const retryFinishing = async (masterId: string, jobId: string) => {
+    setBusy(masterId)
+    setError(null)
+    setMessage(null)
+    try {
+      const next = await api.retryFinishing(masterId, jobId)
+      setPending({ masterId, jobId: next.jobId })
+      setMessage('Failed finishing job resubmitted for worker processing.')
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const buildPackage = async (masterId: string) => {
     setBusy(masterId)
     setError(null)
@@ -116,17 +140,6 @@ export function MastersView({ projectId }: { projectId: string }) {
 
       {message && <Callout tone="info">{message}</Callout>}
       {error && <Callout tone="danger">{error}</Callout>}
-      {retryable && !pending && <button type="button" disabled={busy !== null} onClick={async()=>{
-        setBusy(retryable.masterId)
-        try {
-          const next=await api.retryFinishing(retryable.masterId,retryable.jobId)
-          setPending({masterId:retryable.masterId,jobId:next.jobId})
-          setRetryable(null);setError(null)
-          setMessage('Failed finishing job resubmitted to the media worker.')
-        } catch(err){setError((err as Error).message)}
-        finally{setBusy(null)}
-      }}>Retry failed finishing job</button>}
-
       <AsyncBlock state={masters}>
         {(data) =>
           data.masters.length === 0 ? (
@@ -142,6 +155,7 @@ export function MastersView({ projectId }: { projectId: string }) {
                   onPackage={() => buildPackage(String(master.id))}
                   onSong={() => finishSong(String(master.id))}
                   onCaptions={() => finishCaptions(String(master.id))}
+                  onRetry={jobId => retryFinishing(String(master.id), jobId)}
                 />
               ))}
             </div>
@@ -159,6 +173,7 @@ function MasterCard({
   onPackage,
   onSong,
   onCaptions,
+  onRetry,
 }: {
   master: Record<string, unknown>
   busy: boolean
@@ -166,12 +181,17 @@ function MasterCard({
   onPackage: () => Promise<void>
   onSong: () => Promise<void>
   onCaptions: () => Promise<void>
+  onRetry: (jobId: string) => Promise<void>
 }) {
   const [format, setFormat] = React.useState('delivery_h264')
   const [aspect, setAspect] = React.useState('')
   const [reframeMode, setReframeMode] = React.useState<'crop' | 'pad'>('crop')
   const deliverables = (master.deliverables ?? []) as Array<Record<string, unknown>>
   const metadata = (master.metadata ?? {}) as Record<string, unknown>
+  const finishingHistory = (master.finishingJobs ?? []) as Array<{
+    id: string; type: string; status: string; lastError: string | null
+  }>
+  const newestFinishing = finishingHistory[0] ?? null
   const song = master.songMoment as { startSeconds: number; endSeconds: number } | null
   const musicDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'song_moment' && typeof item.url === 'string')
   const captionCount = Number(master.captionCount ?? 0)
@@ -186,6 +206,18 @@ function MasterCard({
         {String(metadata.provider ?? '')}/{String(metadata.model ?? '')} · approved {String(master.approvedAt ?? '').slice(0, 16).replace('T', ' ')}
       </div>
 
+      {newestFinishing && (
+        <div className="mcq-finishing-status" role="status">
+          <strong>{newestFinishing.type === 'media.captioned_song' ? 'Caption finishing' : 'Music finishing'}</strong>
+          <span> — {newestFinishing.status}</span>
+          {newestFinishing.lastError && <p className="faint">{newestFinishing.lastError}</p>}
+          {['dead', 'failed'].includes(newestFinishing.status) && (
+            <button type="button" className="small" disabled={busy} onClick={() => void onRetry(newestFinishing.id)}>
+              Retry failed finishing job
+            </button>
+          )}
+        </div>
+      )}
       <div className="field-row">
         <Field label="Format">
           <select value={format} onChange={(e) => setFormat(e.target.value)}>
