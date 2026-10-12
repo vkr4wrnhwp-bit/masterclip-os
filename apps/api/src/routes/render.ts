@@ -421,7 +421,14 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
             songMoment: cue?.promotional_use_attested
               ? { startSeconds: cue.start_seconds, endSeconds: cue.end_seconds }
               : null,
-            deliverables: await runtime.renders.listDeliverables(master.id),
+            deliverables: await Promise.all((await runtime.renders.listDeliverables(master.id)).map(async delivery => {
+              const asset = await runtime.assets.find(delivery.assetId)
+              const permitted = asset?.projectId === master.projectId && asset.kind === 'delivery'
+              return {
+                ...delivery,
+                url: permitted ? await runtime.storage.signedUrl(asset.storageKey, 3600) : null,
+              }
+            })),
           }
         }),
       ),
