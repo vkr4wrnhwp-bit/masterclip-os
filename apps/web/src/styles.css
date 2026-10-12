@@ -1033,3 +1033,139 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-dialog .mo-actions button { min-width:0;width:100%;font-size:14px;padding:12px 8px; }
 }
 @media (prefers-reduced-motion:reduce) { .mo-create-spinner { animation:none;border-top-color:var(--mo-cyan); } }
+
+/* Creative engine component styles from Phase 1–14, retained alongside the live mobile shell. */
+/* Native Quick Create: scoped to MOTION project, never replaces professional editor. */
+.mcq { display: grid; gap: 16px; }
+.mcq .field-row { margin: 10px 0; }
+.mcq audio { display: block; width: 100%; margin: 12px 0; }
+.mcq-trim { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+.mcq-trim input[type="range"] { display: block; width: 100%; min-height: 44px; touch-action: pan-y; }
+.mcq-trim input[type="number"] { min-width: 0; }
+.mcq-consent { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; }
+.mcq-consent input { width: auto; margin-top: 4px; }
+.mcq-saved { display: grid; gap: 8px; }
+.mcq-saved-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.mcq-saved-row span { flex: 1; min-width: 140px; }
+@media (max-width: 600px) {
+ .mcq .field-row { display: grid; grid-template-columns: minmax(0,1fr); }
+ .mcq-trim { padding: 10px; }
+ .mcq button { min-height: 44px; }
+}
+
+/* Waveform bars are based on measured PCM; highlighted in/out never replace the source. */
+.mcq-waveform { min-width: 0; margin: 12px 0 18px; }
+.mcq-waveform-track { height: 104px; position: relative; border: 1px solid var(--border); background: var(--bg-input); overflow: hidden; border-radius: 4px; }
+.mcq-waveform-bars { display: flex; height: 100%; align-items: center; gap: 1px; padding: 4px; }
+.mcq-waveform-bars span { display: block; background: #69b7d4; flex: 1; min-width: 1px; border-radius: 1px; }
+.mcq-waveform-selection { position: absolute; top: 0; bottom: 0; border-left: 2px solid #6acbe8; border-right: 2px solid #6acbe8; background: rgba(83, 194, 223, .16); pointer-events: none; }
+.mcq-waveform-playhead { position: absolute; top: 0; bottom: 0; border-left: 2px solid white; pointer-events: none; }
+.mcq-waveform input[type="range"] { width: 100%; min-height: 44px; touch-action: pan-y; }
+.mcq-waveform p { margin: 6px 0; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .mcq-waveform * { animation: none !important; transition: none !important; } }
+
+/* An actual mastered audio/video derivative appears only after a real file has been verified. */
+.mcq-master-audio { padding: 14px 0; margin-top: 16px; border-top: 1px solid var(--border); }
+.mcq-master-audio h4 { font-weight: 650; color: var(--text); margin: 0 0 6px; font-size: 14px; }
+.mcq-master-audio p { font-size: 12px; line-height: 1.5; }
+.mcq-video-delivery { display: grid; gap: 8px; margin: 12px 0; }
+.mcq-video-delivery video { width: 100%; max-height: 300px; background: #050608; border-radius: var(--radius); }
+.mcq-video-delivery a { font-size: 12px; overflow-wrap: anywhere; }
+
+/* Native comparison sits alongside the existing same-shot Review Grid. */
+.mcq-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+.mcq-comparison-side { min-width: 0; padding: 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); }
+.mcq-comparison-side h4 { margin: 0; font-size: 15px; color: var(--text); }
+.mcq-comparison-side video { width: 100%; display: block; background: black; max-height: 360px; margin: 12px 0; }
+.mcq-comparison-facts { display: grid; gap: 8px; }
+.mcq-comparison-facts > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--border); }
+.mcq-comparison-facts dt { color: var(--text-dim); }
+.mcq-comparison-facts dd { margin: 0; max-width: 70%; overflow-wrap: anywhere; }
+.mcq-comparison-transport { margin-top: 12px; }
+@media (max-width: 740px) {
+  .mcq-comparison-grid { grid-template-columns: minmax(0,1fr); }
+  .mcq-comparison-side video { max-height: 55vh; }
+  .mcq-comparison-transport button { min-height: 44px; }
+}
+
+/* Caption timing preview is a factual text cue, not a simulated final render. */
+.mcq-caption-preview {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 68px; margin: 12px 0; padding: 14px;
+  border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--bg-input); text-align: center;
+  font-weight: 650; line-height: 1.3;
+}
+.mcq-caption-preview span { overflow-wrap: anywhere; }
+
+/* Measured tempo cues, independently optional from the waveform controls. */
+.mcq-beats { min-width: 0; margin: 14px 0; }
+.mcq-beats-summary { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.mcq-beats-summary span { color: var(--muted); }
+.mcq-beats-grid { height: 38px; position: relative; overflow: hidden; margin: 10px 0;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); }
+.mcq-beats-grid > span { position: absolute; top: 0; bottom: 0; width: 1px;
+  background: #79c7db; pointer-events: none; }
+.mcq-beats-range { position: absolute; top: 0; bottom: 0; border-inline: 2px solid #ffffff;
+  background: rgba(93, 185, 225, 0.2); pointer-events: none; }
+.mcq-beats button { min-height: 44px; }
+.mcq-beats .faint { overflow-wrap: anywhere; }
+
+/* Native MOTION edit-decision timeline; no hidden generated output. */
+.mc-timeline { display:grid;gap:16px;min-width:0; }
+.mc-timeline-clips { display:grid;gap:10px;margin:16px 0; }
+.mc-timeline-clip { padding:12px;border:1px solid var(--border);border-radius:var(--radius);min-width:0;background:var(--bg-raised); }
+.mc-timeline-clip-head { display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px; }
+.mc-timeline-clip-head strong { font-size:13px; }
+.mc-timeline-assemble { display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:12px 0; }
+.mc-timeline-assemble .field { flex:1;min-width:180px; }
+.mc-timeline-duration { font-size:14px;margin:8px 0 14px; }
+.mc-timeline-preview { border-top:1px solid var(--border);margin-top:16px;padding-top:12px; }
+.mc-timeline-preview video { width:100%;max-height:360px;display:block;background:#050608;border-radius:var(--radius);object-fit:contain; }
+.mc-timeline-placeholder { display:grid;place-items:center;min-height:165px;padding:12px;text-align:center;background:#050608; }
+.mc-timeline-saved { display:grid;gap:8px; }
+.mc-timeline-saved-row { display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--border); }
+.mc-timeline .field-row { gap:10px;flex-wrap:wrap; }
+.mc-timeline .field-row .field { min-width:125px;flex:1; }
+.mc-timeline .button-row button { min-height:44px; }
+@media(max-width:680px) {
+  .mc-timeline-clips { gap:12px; }
+  .mc-timeline-clip-head { align-items:start; }
+  .mc-timeline-preview video { max-height:44vh; }
+  .mc-timeline-saved-row button { width:100%; }
+}
+
+.mc-timeline-render { margin:18px 0 8px;padding:14px;border:1px solid var(--border);border-radius:var(--radius); }
+.mc-timeline-render h4 { margin:0 0 8px;font-size:15px; }
+.mc-timeline-exports { display:grid;gap:12px; }
+.mc-timeline-exports>div { display:grid;gap:8px;margin:10px 0;border-top:1px solid var(--border);padding-top:12px; }
+.mc-timeline-exports video { width:100%;height:auto;max-height:340px;background:#050608;border-radius:4px; }
+.mc-timeline-exports a { overflow-wrap:anywhere;font-size:13px; }
+
+.mc-timeline-structure { margin:16px 0;padding:14px;border:1px solid var(--border);border-radius:var(--radius);min-width:0; }
+.mc-timeline-structure h4 { margin:0 0 8px;font-size:15px; }
+.mc-timeline-structure-row { padding:10px 0;border-top:1px solid var(--border); }
+.mc-timeline-structure .field-row { display:flex;flex-wrap:wrap;gap:10px; }
+.mc-timeline-structure .field-row .field { flex:1;min-width:120px; }
+.mc-timeline-structure .button-row button { min-height:44px; }
+@media(max-width:600px){.mc-timeline-structure{padding:10px}.mc-timeline-structure .field-row .field{min-width:calc(50% - 10px)}}
+
+/* Section-aware human handoff into professional Shot Builder. */
+.mc-scene-handoff { margin:16px 0; padding-top:12px; border-top:1px solid var(--border); }
+.mc-scene-handoff>h4 { font-size:15px; margin:0 0 8px; }
+.mc-scene-handoff-card { border:1px solid var(--border); border-radius:var(--radius); padding:14px;
+  margin:12px 0; background:var(--bg-raised); min-width:0; }
+.mc-scene-handoff-card>h4 { margin:0 0 10px; font-size:14px; }
+.mc-scene-handoff-card fieldset { margin:0; padding:0; border:0; min-width:0; display:grid; gap:9px; }
+.mc-scene-handoff-card .field-row { display:flex;flex-wrap:wrap;gap:10px; }
+.mc-scene-handoff-card .field-row .field { min-width:125px;flex:1; }
+.mc-scene-handoff-card textarea { width:100%;max-width:100%; box-sizing:border-box; }
+.mc-scene-handoff-confirm { display:flex; align-items:flex-start; gap:10px; font-size:13px; line-height:1.5;
+  cursor:pointer; margin:5px 0; }
+.mc-scene-handoff-confirm input { flex:0 0 auto; min-height:20px; min-width:20px; margin:1px 0; }
+.mc-scene-handoff-card .button-row { margin-top:12px; }
+.mc-scene-handoff-card button { min-height:44px; }
+@media(max-width:600px) {
+  .mc-scene-handoff-card { padding:10px; }
+  .mc-scene-handoff-card .field-row .field { min-width:100%; }
+}
