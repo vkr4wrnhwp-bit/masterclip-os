@@ -99,7 +99,7 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
       {tab === 'timeline' && <MusicTimeline projectId={projectId} onCreated={() => shots.reload()} />}
       {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
-      {tab === 'assets' && <AssetsPanel projectId={projectId} />}
+      {tab === 'assets' && <AssetsPanel projectId={projectId} onQuickCreate={() => setTab('quick')} />}
       {tab === 'bible' && (
         <AsyncBlock state={project}>
           {(data) => (
@@ -203,7 +203,7 @@ function ImportPanel({ projectId, onImported }: { projectId: string; onImported:
   )
 }
 
-function AssetsPanel({ projectId }: { projectId: string }) {
+function AssetsPanel({ projectId, onQuickCreate }: { projectId: string; onQuickCreate: () => void }) {
   const assets = useAsync(() => api.assets(projectId), [projectId])
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -252,6 +252,18 @@ function AssetsPanel({ projectId }: { projectId: string }) {
         <input type="file" onChange={(e) => void upload(e)} disabled={busy} accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/wav,audio/mpeg" />
         {error && <Callout tone="danger">{error}</Callout>}
       </Card>
+
+      {assets.data?.assets.some((asset) =>
+        asset.kind === 'audio' && (asset.rights as { authorized?: boolean })?.authorized
+      ) && (
+        <Callout tone="info">
+          Your authorized recording is ready. Continue to Quick Create to choose a song moment,
+          prepare the first shot, and preserve the original audio.
+          <div className="button-row" style={{ marginTop: 12 }}>
+            <button type="button" className="primary" onClick={onQuickCreate}>Continue to Quick Create</button>
+          </div>
+        </Callout>
+      )}
 
       <Card title="References">
         <AsyncBlock state={assets}>
