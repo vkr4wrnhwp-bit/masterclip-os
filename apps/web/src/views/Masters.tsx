@@ -16,6 +16,31 @@ export function MastersView({ projectId }: { projectId: string }) {
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [pending, setPending] = React.useState<{masterId:string;jobId:string}|null>(null)
+
+  React.useEffect(() => {
+    if (!pending) return
+    let active = true
+    const poll = async () => {
+      try {
+        const job = await api.finishStatus(pending.masterId, pending.jobId)
+        if (!active) return
+        if (job.status === 'completed') {
+          setMessage('Media finishing completed. Verified outputs are listed below.')
+          setPending(null)
+          masters.reload()
+        } else if (['dead', 'failed', 'cancelled'].includes(job.status)) {
+          setError(job.error || 'Finishing failed; no completed output was reported.')
+          setPending(null)
+        }
+      } catch (err) {
+        if (active) { setError((err as Error).message); setPending(null) }
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [pending])
 
   const finish = async (masterId: string, specs: unknown[]) => {
     setBusy(masterId)
@@ -37,7 +62,8 @@ export function MastersView({ projectId }: { projectId: string }) {
     setMessage(null)
     try {
       const result = await api.finishSongMoment(masterId)
-      setMessage(`${result.reused ? 'Reopened' : 'Created'} a real MP4 with the selected recording embedded${result.sandbox ? ' (sandbox source video)' : ''}. Original master and audio remain unchanged.`)
+      setPending({ masterId, jobId: result.jobId })
+      setMessage(result.deduped ? 'Existing media finishing job found; checking its status.' : 'Song finishing queued. No output is claimed until the worker finishes.')
       masters.reload()
     } catch (err) {
       setError((err as Error).message)
@@ -52,7 +78,8 @@ export function MastersView({ projectId }: { projectId: string }) {
     setError(null)
     try {
       const result = await api.finishCaptionedSong(masterId)
-      setMessage(`${result.reused ? 'Reopened' : 'Created'} verified MP4 with ${result.captionCount} burned timed captions.${result.sandbox ? ' Source video came from sandbox.' : ''} Original media unchanged.`)
+      setPending({ masterId, jobId: result.jobId })
+      setMessage(result.deduped ? 'Existing caption job found; checking its status.' : 'Caption rendering queued. No output is claimed until the worker finishes.')
       masters.reload()
     } catch (err) {
       setError((err as Error).message)
@@ -85,7 +112,7 @@ export function MastersView({ projectId }: { projectId: string }) {
         1080p ProRes is still a 720p image, and the provenance sidecar says so.
       </Callout>
 
-      {message && <Callout tone="ok">{message}</Callout>}
+      {message && <Callout tone="info">{message}</Callout>}
       {error && <Callout tone="danger">{error}</Callout>}
 
       <AsyncBlock state={masters}>
