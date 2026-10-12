@@ -63,7 +63,7 @@ export async function assembleApprovedTimeline(rt:Runtime,request:{
     song.durationSeconds===null||song.durationSeconds+.05<spec.song_start_seconds+fullDuration){
     throw new AppError({kind:'forbidden',code:'timeline.song_rights',message:'recording is not currently cleared for the selected timeline'})
   }
-  const sources=[]
+  const sources:Array<{asset:Awaited<ReturnType<typeof rt.assets.get>>;clip:Spec['clips'][number]}>=[]
   for(const clip of spec.clips){
     const master=await rt.renders.getMaster(clip.master_id)
     if(master.projectId!==projectId||master.status==='archived'){
