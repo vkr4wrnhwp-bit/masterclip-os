@@ -51,7 +51,7 @@ export class AssetRepo {
     private readonly clock: Clock = systemClock,
   ) {}
 
-  async create(input: CreateAssetInput): Promise<Asset> {
+  async create(input: CreateAssetInput, transaction?: Db): Promise<Asset> {
     const rights: AssetRights = { ...DEFAULT_RIGHTS, ...(input.rights ?? {}) }
     const asset: Asset = {
       id: newId('ast', this.clock.now()),
@@ -73,7 +73,7 @@ export class AssetRepo {
       createdAt: this.clock.isoNow(),
     }
 
-    await this.db.transaction(async (tx) => {
+    await (transaction ?? this.db).transaction(async (tx) => {
       await insertRow(tx, 'assets', {
         id: asset.id,
         project_id: asset.projectId,
