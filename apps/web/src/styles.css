@@ -1029,3 +1029,10 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mc-timeline-preview video { max-height:44vh; }
   .mc-timeline-saved-row button { width:100%; }
 }
+
+.mc-timeline-render { margin:18px 0 8px;padding:14px;border:1px solid var(--border);border-radius:var(--radius); }
+.mc-timeline-render h4 { margin:0 0 8px;font-size:15px; }
+.mc-timeline-exports { display:grid;gap:12px; }
+.mc-timeline-exports>div { display:grid;gap:8px;margin:10px 0;border-top:1px solid var(--border);padding-top:12px; }
+.mc-timeline-exports video { width:100%;height:auto;max-height:340px;background:#050608;border-radius:4px; }
+.mc-timeline-exports a { overflow-wrap:anywhere;font-size:13px; }
