@@ -4,11 +4,12 @@ import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.
 import { navigate } from '../App.jsx'
 import { QuickCreate } from './QuickCreate.jsx'
 import { VariationCompare } from './VariationCompare.jsx'
+import { MusicTimeline } from './MusicTimeline.jsx'
 
 export function ProjectView({ projectId }: { projectId: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'quick' | 'compare' | 'import' | 'assets' | 'bible'>('shots')
+  const [tab, setTab] = React.useState<'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'>('shots')
 
   return (
     <>
@@ -19,6 +20,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
 
       <div className="tabs">
         <button className={tab === 'quick' ? 'active' : ''} onClick={() => setTab('quick')}>Quick Create</button>
+        <button className={tab === 'timeline' ? 'active' : ''} onClick={() => setTab('timeline')}>Music Video Timeline</button>
         <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')}>Compare variants</button>
         <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>
           Shots
@@ -90,6 +92,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
       )}
 
       {tab === 'quick' && <QuickCreate projectId={projectId} onSaved={() => shots.reload()} onReferences={() => setTab('assets')} />}
+      {tab === 'timeline' && <MusicTimeline projectId={projectId} />}
       {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
       {tab === 'assets' && <AssetsPanel projectId={projectId} />}
