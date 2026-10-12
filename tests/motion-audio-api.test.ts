@@ -73,6 +73,23 @@ describe('MOTION native audio permissions', () => {
     expect(response.json().peaks).toHaveLength(160)
   }, 80_000)
 
+  it('authorizes beat analysis for the project and rejects revoked audio', async () => {
+    const url = `/api/assets/${audioId}/beats`
+    const anonymous = await app.inject({ method: 'GET', url })
+    expect(anonymous.statusCode).toBe(401)
+    const authorized = await app.inject({
+      method: 'GET', url, cookies: { [SESSION_COOKIE]: session },
+    })
+    expect(authorized.statusCode).toBe(200)
+    expect(authorized.json()).toMatchObject({ assetId: audioId, source: 'decoded_pcm_onset', analysisVersion: 1 })
+    expect(typeof authorized.json().confidence).toBe('number')
+    await rt.assets.setRights(audioId, { consent: 'revoked', authorized: false }, userId)
+    const refused = await app.inject({
+      method: 'GET', url, cookies: { [SESSION_COOKIE]: session },
+    })
+    expect(refused.statusCode).toBe(403)
+  }, 90_000)
+
   it('does not reveal waveform across organization boundaries', async () => {
     const other = await rt.projects.createOrg('Other Org')
     await rt.auth.createUser({ orgId: other.id, email: 'other@example.test',
