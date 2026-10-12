@@ -196,7 +196,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             <button
               type="button"
               className="mo-start"
-              aria-label={mode.actionLabel}
+              aria-label={`Continue: ${mode.title}`}
               onClick={() => {
                 begin(mode)
               }}
