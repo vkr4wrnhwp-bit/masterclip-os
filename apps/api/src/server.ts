@@ -8,6 +8,7 @@ import { AppError, asAppError, httpStatusFor, type Logger } from '@masterclip/sh
 import type { Runtime } from '@masterclip/runtime'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerQuickCreateRoutes } from './routes/quick-create.js'
+import { registerQuickVariants } from './routes/quick-variants.js'
 import { registerRenderRoutes } from './routes/render.js'
 import { registerOpsRoutes } from './routes/ops.js'
 import { registerAssetRoutes } from './routes/assets.js'
@@ -114,6 +115,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
   await registerQuickCreateRoutes(app, runtime)
+  await registerQuickVariants(app, runtime)
   await registerAssetRoutes(app, runtime)
   await registerRenderRoutes(app, runtime)
 
