@@ -268,6 +268,8 @@ export const api = {
       body,
     ),
 
+  createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
+    post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
   waveform: (assetId: string) => get<{ assetId: string; peaks: number[]; durationSeconds: number; source: 'decoded_pcm' }>(`/api/assets/${encodeURIComponent(assetId)}/waveform`),
 
   quickCreate: (projectId: string, body: {
