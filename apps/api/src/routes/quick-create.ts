@@ -23,6 +23,7 @@ const QuickCreateInput = z.object({
   /** Affirmative per-draft confirmation, NOT permission to publish or spend. */
   promotionalUseAttested: z.literal(true),
   shotId: z.string().min(1).optional(),
+  captions: z.array(z.object({start_seconds:z.number().min(0),end_seconds:z.number().positive(),text:z.string().trim().min(1).max(160)})).max(32).default([]),
 })
 
 const LOOK_DIRECTION = {
@@ -106,6 +107,7 @@ export async function registerQuickCreateRoutes(app: FastifyInstance, runtime: R
       source_assets: visual?.kind === 'reference_image' ? [visual.id] : [],
       reference_video_assets: visual?.kind === 'reference_video' ? [visual.id] : [],
       music_cue: cue,
+      timed_captions: input.captions,
       // The song reference remains an editing cue. No audio is represented as
       // embedded until a real, verified media composition operation exists.
       audio_mode: 'none',
