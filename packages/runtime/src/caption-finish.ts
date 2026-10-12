@@ -6,6 +6,7 @@ import { AppError, hashObject, newId, sha256File } from '@masterclip/shared'
 import { burnTimedCaptions, probe } from '@masterclip/media-tools'
 import type { Runtime } from './index.js'
 import { MasterService } from './masters.js'
+import { withMediaFinishLease, type MediaFinishLease } from './media-finish-lease.js'
 
 /** A second, optional and explicitly requested post-production derivative.
  * Does not mutate the original master or the clean music-video deliverable.
@@ -15,7 +16,12 @@ export async function finishCaptionedSongMoment(
   masterId: string,
   actor: string,
   orgId: string,
+  lease?: MediaFinishLease,
 ): Promise<{ assetId: string; url: string; reused: boolean; captionCount: number; durationSeconds: number; sandbox: boolean }> {
+  if (!lease) {
+    return withMediaFinishLease(rt, masterId, held =>
+      finishCaptionedSongMoment(rt, masterId, actor, orgId, held))
+  }
   const master = await rt.renders.getMaster(masterId)
   const output = await rt.renders.getOutput(master.outputId)
   const job = await rt.renders.getJob(output.jobId)
@@ -34,7 +40,7 @@ export async function finishCaptionedSongMoment(
   // Always re-check the human approval and current audio rights before serving
   // even an already-created captioned derivative. This also verifies that the
   // clean music-video deliverable really exists in authorized project storage.
-  const clean = await new MasterService(rt).finishWithSongMoment(masterId, actor, orgId)
+  const clean = await new MasterService(rt).finishWithSongMoment(masterId, actor, orgId, lease)
   const cleanAsset = await rt.assets.get(clean.assetId)
   if (cleanAsset.projectId !== master.projectId || cleanAsset.kind !== 'delivery') {
     throw new AppError({ kind: 'forbidden', code: 'captions.invalid_source', message: 'clean music-video delivery is not available in this project' })
@@ -75,47 +81,50 @@ export async function finishCaptionedSongMoment(
     const sha = await sha256File(outputPath)
     const stored = await rt.storage.putFile(key, outputPath, { contentType: 'video/mp4', sha256: sha })
     storedKey = stored.key
-    const asset = await rt.assets.create({
-      projectId: master.projectId,
-      kind: 'delivery',
-      storageKey: stored.key,
-      filename,
-      mime: 'video/mp4',
-      bytes: stored.bytes,
-      sha256: stored.sha256,
-      width: technical.video?.width ?? null,
-      height: technical.video?.height ?? null,
-      fps: technical.video?.fps ?? null,
-      durationSeconds: verified.durationSeconds,
-      hasAudio: verified.hasAudio,
-      createdBy: actor,
-      rights: { ...cleanAsset.rights },
-      metadata: {
-        finishing: 'burned_captions',
+    const asset = await lease.commit(async tx => {
+      const created = await rt.assets.create({
+        projectId: master.projectId,
+        kind: 'delivery',
+        storageKey: stored.key,
+        filename,
+        mime: 'video/mp4',
+        bytes: stored.bytes,
+        sha256: stored.sha256,
+        width: technical.video?.width ?? null,
+        height: technical.video?.height ?? null,
+        fps: technical.video?.fps ?? null,
+        durationSeconds: verified.durationSeconds,
+        hasAudio: verified.hasAudio,
+        createdBy: actor,
+        rights: { ...cleanAsset.rights },
+        metadata: {
+          finishing: 'burned_captions',
+          format: 'social_h264',
+          renderedCaptionCount: captions.length,
+          shotVersionId: version.id,
+          cleanMusicDeliveryAssetId: clean.assetId,
+          captionsHash,
+          textSource: 'user-approved-timed-captions',
+          note: 'Real FFmpeg burned captions on derived MP4; no automatic lyric detection or publishing',
+        },
+        parents: [{ assetId: clean.assetId, relation: 'delivery_of' }],
+      }, tx)
+      await rt.renders.addDeliverable({
+        masterId,
         format: 'social_h264',
-        renderedCaptionCount: captions.length,
-        shotVersionId: version.id,
-        cleanMusicDeliveryAssetId: clean.assetId,
-        captionsHash,
-        textSource: 'user-approved-timed-captions',
-        note: 'Real FFmpeg burned captions on derived MP4; no automatic lyric detection or publishing',
-      },
-      parents: [{ assetId: clean.assetId, relation: 'delivery_of' }],
+        assetId: created.id,
+        spec: {
+          kind: 'captioned_song_moment',
+          shotVersionId: version.id,
+          cleanAssetId: clean.assetId,
+          captionsHash,
+          captionCount: captions.length,
+          captionsBurned: true,
+        },
+      }, tx)
+      return created
     })
     registered = true
-    await rt.renders.addDeliverable({
-      masterId,
-      format: 'social_h264',
-      assetId: asset.id,
-      spec: {
-        kind: 'captioned_song_moment',
-        shotVersionId: version.id,
-        cleanAssetId: clean.assetId,
-        captionsHash,
-        captionCount: captions.length,
-        captionsBurned: true,
-      },
-    })
     await rt.audit.record({
       orgId, projectId: master.projectId, actor,
       action: 'master.captioned_song_finished',
