@@ -1,5 +1,6 @@
 import { z } from 'zod/v4'
 import { MotionTimelineInput, timelineDuration } from './timeline.js'
+import { MusicSection, sectionAt, validateMusicSections } from './music-sections.js'
 
 export const AutoAssemblyInput = z.object({
   name: z.string().trim().min(1).max(120).default('Suggested first cut'),
@@ -13,6 +14,7 @@ export const AutoAssemblyInput = z.object({
   })).min(1).max(16),
   beats: z.array(z.number().finite().min(0)).max(1500).default([]),
   beat_confidence: z.number().finite().min(0).max(1).default(0),
+  sections: z.array(MusicSection).max(32).default([]),
 })
 export type AutoAssemblyInput = z.infer<typeof AutoAssemblyInput>
 
@@ -24,6 +26,7 @@ export type AutoAssemblyInput = z.infer<typeof AutoAssemblyInput>
 export function proposeFirstCut(raw: AutoAssemblyInput) {
   const input = AutoAssemblyInput.parse(raw)
   const target = input.target_seconds
+  const sections = validateMusicSections(input.sections, input.song_start_seconds + target + 3600)
   const usefulBeats = input.beat_confidence >= .3
     ? [...new Set(input.beats)].filter(t => t >= input.song_start_seconds && t <= input.song_start_seconds + target).sort((a,b)=>a-b)
     : []
@@ -35,9 +38,13 @@ export function proposeFirstCut(raw: AutoAssemblyInput) {
     const position=clips.length
     const source=sources[position % sources.length]!
     const remaining=target-elapsed
+    const absoluteStart=input.song_start_seconds+elapsed
+    const section=sectionAt(sections,absoluteStart)
+    const sectionalPace=section?.kind==='chorus' ? 1.2 : section?.kind==='bridge' ? 3.5 : section?.kind==='verse' ? 2.8 : section?.kind==='intro' ? 4 : null
     const maxLength=Math.min(remaining,source.duration_seconds,60)
     if(maxLength < .5) break
-    let planned=Math.min(intended,maxLength)
+    let planned=Math.min(sectionalPace??intended,maxLength)
+    if(section) planned=Math.min(planned, section.end_seconds-absoluteStart)
     if(usefulBeats) {
       const absolute=input.song_start_seconds+elapsed+planned
       const candidates=usefulBeats.filter(b => {
@@ -68,6 +75,8 @@ export function proposeFirstCut(raw: AutoAssemblyInput) {
     targetSeconds:target,
     beatAligned:usefulBeats.length>0,
     confidence:input.beat_confidence,
+    structureUsed:sections.length>0,
+    structureNotes:sections.length>0 ? 'User-authored song sections influenced cut pacing; no automatic structural detection.' : null,
     warnings:[
       'Suggested cuts are editable choices, not an automatically approved or rendered video.',
       ...(usefulBeats.length ? [] : ['No reliable beat grid; used even pacing instead.']),
