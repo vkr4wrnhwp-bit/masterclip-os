@@ -252,6 +252,9 @@ export const api = {
   promote: (outputId: string, name: string) => post<{ masterId: string }>(`/api/outputs/${outputId}/promote`, { name }),
 
   masters: (projectId: string) => get<{ masters: Array<Record<string, unknown>> }>(`/api/projects/${projectId}/masters`),
+  retryFinishing: (masterId: string, jobId: string) =>
+    post<{jobId:string;status:'queued';deduped:boolean}>(
+      `/api/masters/${encodeURIComponent(masterId)}/finishing/${encodeURIComponent(jobId)}/retry`),
   finishStatus: (masterId: string, jobId: string) => get<{ jobId:string;status:string;error:string|null }>(
     `/api/masters/${encodeURIComponent(masterId)}/finishing/${encodeURIComponent(jobId)}`),
   finishCaptionedSong: (masterId: string) => post<{jobId:string;status:'queued';deduped:boolean}>(`/api/masters/${encodeURIComponent(masterId)}/captioned-song`),
