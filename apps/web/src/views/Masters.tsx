@@ -13,6 +13,7 @@ const FORMATS = [
 
 export function MastersView({ projectId }: { projectId: string }) {
   const masters = useAsync(() => api.masters(projectId), [projectId])
+  const health = useAsync(() => api.health(), [])
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -153,6 +154,7 @@ export function MastersView({ projectId }: { projectId: string }) {
                   busy={busy === String(master.id)}
                   onFinish={(specs) => finish(String(master.id), specs)}
                   onPackage={() => buildPackage(String(master.id))}
+                  nativeFinishingEnabled={health.data?.nativeFinishingEnabled ?? false}
                   onSong={() => finishSong(String(master.id))}
                   onCaptions={() => finishCaptions(String(master.id))}
                   onRetry={jobId => retryFinishing(String(master.id), jobId)}
@@ -174,6 +176,7 @@ function MasterCard({
   onSong,
   onCaptions,
   onRetry,
+  nativeFinishingEnabled,
 }: {
   master: Record<string, unknown>
   busy: boolean
@@ -182,6 +185,7 @@ function MasterCard({
   onSong: () => Promise<void>
   onCaptions: () => Promise<void>
   onRetry: (jobId: string) => Promise<void>
+  nativeFinishingEnabled: boolean
 }) {
   const [format, setFormat] = React.useState('delivery_h264')
   const [aspect, setAspect] = React.useState('')
@@ -267,14 +271,15 @@ function MasterCard({
       {song && (
         <section className="mcq-master-audio" aria-label="Music video finishing">
           <h4>Song-moment finishing</h4>
+          {!nativeFinishingEnabled && <p className="faint">Native song and caption finishing is paused during release verification. Existing masters remain available.</p>}
           <p className="muted">Use the approved shot's selection, {song.startSeconds.toFixed(1)}–{song.endSeconds.toFixed(1)} seconds. This replaces generated sound with the authorized recording in a real MP4. It does not publish or incur provider charges.</p>
-          <button className="primary small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onSong()}>
+          <button className="primary small" type="button" disabled={!nativeFinishingEnabled || busy || finishingActive || master.status === 'archived'} onClick={() => void onSong()}>
             {busy ? 'Finishing…' : 'Finish with selected song'}
           </button>
           {captionCount > 0 && (
             <div className="mcq-caption-delivery">
               <p className="muted">This master has {captionCount} approved, timed caption lines.</p>
-              <button className="small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onCaptions()}>
+              <button className="small" type="button" disabled={!nativeFinishingEnabled || busy || finishingActive || master.status === 'archived'} onClick={() => void onCaptions()}>
                 {busy ? 'Rendering captions…' : 'Burn captions into a separate MP4'}
               </button>
               <p className="faint">Burning captions creates a second derivative. The clean music master is preserved.</p>
