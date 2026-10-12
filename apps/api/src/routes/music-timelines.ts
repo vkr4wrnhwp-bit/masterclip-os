@@ -98,10 +98,18 @@ export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runt
     }catch(error){
       rt.logger.warn('auto_assembly.beat_unavailable',{code:'beat_analysis_unavailable'})
     }finally {await rm(dir,{recursive:true,force:true})}
+    // Read only annotations saved for this exact authorized recording.
+    // A client cannot invent section labels or a beat map in this endpoint.
+    const annotation=await rt.db.get<{sections:string}>(
+      'SELECT sections FROM motion_music_sections WHERE project_id = ? AND audio_asset_id = ?',
+      [projectId,song.id],
+    )
+    const sections=annotation ? JSON.parse(annotation.sections) as unknown : []
     return proposeFirstCut({
       ...requested,sources,
       beats:analysis?.beats??[],
       beat_confidence:analysis?.confidence??0,
+      sections: Array.isArray(sections) ? sections : [],
     })
   })
 
