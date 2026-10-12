@@ -126,6 +126,14 @@ export const MusicCue = z.object({
 })
 export type MusicCue = z.infer<typeof MusicCue>
 
+/** Timed user-approved captions. Seconds are relative to the selected clip, not the complete recording. */
+export const TimedCaption = z.object({
+  start_seconds: z.number().finite().min(0),
+  end_seconds: z.number().finite().positive(),
+  text: z.string().trim().min(1).max(160),
+})
+export type TimedCaption = z.infer<typeof TimedCaption>
+
 export const CanonicalShot = z.object({
   // --- identity ------------------------------------------------------------
   project_id: z.string().default(''),
@@ -185,6 +193,11 @@ export const CanonicalShot = z.object({
 
   // --- audio ---------------------------------------------------------------
   music_cue: MusicCue.nullable().default(null),
+  timed_captions: z.array(TimedCaption).max(32).default([]),
+  creative_variant: z.object({
+    source_shot_id: z.string().min(1),
+    label: z.string().trim().min(1).max(80),
+  }).nullable().default(null),
   audio_mode: AudioMode.default('none'),
   dialogue: z.string().default(''),
   ambient_audio: z.string().default(''),
