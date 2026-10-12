@@ -43,7 +43,15 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   const visuals = media.filter(a => a.kind === 'reference_image' || a.kind === 'reference_video')
   const selected = audios.find(a => a.id === audioId)
   const max = duration > 0 ? duration : selected?.durationSeconds ?? 0
-  const valid = Boolean(selected && cleared(selected) && title.trim() && direction.trim().length >= 8 && end > start && end - start >= 0.5 && end - start <= 60 && max > 0 && end <= max + 0.1 && attested && (!visualId || visuals.some(v => v.id === visualId && cleared(v))))
+  const captionsValid = captions.every((caption, index) =>
+    caption.text.trim().length > 0 &&
+    caption.end_seconds > caption.start_seconds &&
+    caption.start_seconds >= 0 &&
+    caption.end_seconds <= end - start + 0.05 &&
+    (index === 0 || caption.start_seconds >= captions[index - 1]!.end_seconds))
+  const captionPreview = captions.find(caption =>
+    position - start >= caption.start_seconds && position - start < caption.end_seconds)?.text ?? null
+  const valid = Boolean(captionsValid && selected && cleared(selected) && title.trim() && direction.trim().length >= 8 && end > start && end - start >= 0.5 && end - start <= 60 && max > 0 && end <= max + 0.1 && attested && (!visualId || visuals.some(v => v.id === visualId && cleared(v))))
 
   const chooseAudio = (id: string) => {
     audio.current?.pause()
@@ -145,6 +153,10 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
             <Field label="Caption text"><input maxLength={160} value={caption.text} onChange={e => setCaptions(old => old.map((row,i) => i===index ? {...row,text:e.target.value} : row))} /></Field>
             <button type="button" onClick={() => setCaptions(old => old.filter((_,i) => i!==index))}>Remove line</button>
           </div>)}
+          <div className="mcq-caption-preview" aria-label="Caption line at current audio playhead">
+            <span>{captionPreview || 'No caption at the current playback position'}</span>
+          </div>
+          {!captionsValid && <p className="faint">Finish each line and place its timing inside the selected clip without overlaps before saving.</p>}
           <button type="button" disabled={captions.length >= 32} onClick={() => {
             const from = captions.length ? captions[captions.length-1]!.end_seconds : 0
             const to = Math.min(Math.max(.5,end-start),from+2)
