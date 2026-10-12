@@ -125,7 +125,7 @@ export function MastersView({ projectId }: { projectId: string }) {
           setMessage('Failed finishing job resubmitted to the media worker.')
         } catch(err){setError((err as Error).message)}
         finally{setBusy(null)}
-      }}>Retry failed finishing job</button>
+      }}>Retry failed finishing job</button>}
 
       <AsyncBlock state={masters}>
         {(data) =>
