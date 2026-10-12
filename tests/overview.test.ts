@@ -457,20 +457,21 @@ describe('the first-run screen', () => {
 describe('the mode group', () => {
   const markup = renderToStaticMarkup(h(Overview, { user: USER, onSignOut: () => undefined }))
 
-  it('is a real radio group, so the arrow keys and Space are the platform’s', () => {
+  it('makes every starting point a real immediately actionable button', () => {
     expect(markup).toContain('<fieldset class="mo-modes">')
     expect(markup).toContain('<legend class="mo-sr">Choose a starting point</legend>')
-    expect(markup.match(/type="radio"/g)).toHaveLength(START_MODES.length)
-    // One name binds them into one group, which is what moves focus with the
-    // arrow keys and makes the group a single tab stop.
-    expect(markup.match(/name="mo-mode"/g)).toHaveLength(START_MODES.length)
-    // Each control sits inside its own label, so the whole card is its target.
-    expect(markup.match(/<label class="mo-mode">/g)).toHaveLength(START_MODES.length)
+    expect(markup.match(/<button type="button" class="mo-mode"/g)).toHaveLength(START_MODES.length)
+    expect(markup).not.toContain('type="radio"')
+    for (const choice of START_MODES) {
+      expect(markup).toContain(`aria-label="${choice.actionLabel}"`)
+    }
   })
 
-  it('has exactly one chosen at a time, marked by something other than a colour', () => {
-    expect(markup.match(/checked=""/g)).toHaveLength(1)
-    expect(markup).toContain('mo-selection')
+  it('does not require selecting a radio and then finding a second button', () => {
+    expect(markup).not.toContain('name="mo-mode"')
+    expect(markup).toContain('Upload audio')
+    expect(markup).toContain('Describe an idea')
+    expect(markup).toContain('Use a template')
   })
 
   it('names the primary action after the chosen mode', () => {

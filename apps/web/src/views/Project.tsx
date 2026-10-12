@@ -3,10 +3,10 @@ import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 
-export function ProjectView({ projectId }: { projectId: string }) {
+export function ProjectView({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'import' | 'assets' | 'bible'>('shots')
+  const [tab, setTab] = React.useState<'shots' | 'import' | 'assets' | 'bible'>(initialTab === 'assets' || initialTab === 'import' || initialTab === 'bible' ? initialTab : 'shots')
 
   return (
     <>
