@@ -1036,3 +1036,11 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mc-timeline-exports>div { display:grid;gap:8px;margin:10px 0;border-top:1px solid var(--border);padding-top:12px; }
 .mc-timeline-exports video { width:100%;height:auto;max-height:340px;background:#050608;border-radius:4px; }
 .mc-timeline-exports a { overflow-wrap:anywhere;font-size:13px; }
+
+.mc-timeline-structure { margin:16px 0;padding:14px;border:1px solid var(--border);border-radius:var(--radius);min-width:0; }
+.mc-timeline-structure h4 { margin:0 0 8px;font-size:15px; }
+.mc-timeline-structure-row { padding:10px 0;border-top:1px solid var(--border); }
+.mc-timeline-structure .field-row { display:flex;flex-wrap:wrap;gap:10px; }
+.mc-timeline-structure .field-row .field { flex:1;min-width:120px; }
+.mc-timeline-structure .button-row button { min-height:44px; }
+@media(max-width:600px){.mc-timeline-structure{padding:10px}.mc-timeline-structure .field-row .field{min-width:calc(50% - 10px)}}
