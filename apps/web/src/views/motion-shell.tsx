@@ -187,6 +187,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
   const [name, setName] = React.useState('')
   const [brief, setBrief] = React.useState('')
   const [audioFile, setAudioFile] = React.useState<File | null>(null)
+  const [createdFilmId, setCreatedFilmId] = React.useState<string | null>(null)
   const [rightsOwner, setRightsOwner] = React.useState('')
   const [authorized, setAuthorized] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
@@ -221,7 +222,8 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
     setBusy(true)
     setError(null)
     try {
-      const result = await api.createProject(name.trim(), brief)
+      const filmId = createdFilmId ?? (await api.createProject(name.trim(), brief)).project.id
+      setCreatedFilmId(filmId)
       if (mode.id === 'audio' && audioFile) {
         const form = new FormData()
         form.append('file', audioFile)
@@ -229,16 +231,15 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
         form.append('rights_consent', authorized ? 'authorized' : 'unverified')
         form.append('rights_authorized', authorized ? 'true' : 'false')
         try {
-          await api.uploadAsset(result.project.id, form)
+          await api.uploadAsset(filmId, form)
         } catch (uploadError) {
-          // The film was created; do not create another on retry.
-          onCreated()
-          navigate(`/project/${result.project.id}?tab=assets`)
+          setError('Film created, but audio upload failed: ' + (uploadError as Error).message + '. Retry to upload to the same film.')
+          setBusy(false)
           return
         }
       }
       onCreated()
-      navigate(`/project/${result.project.id}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
+      navigate(`/project/${filmId}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
