@@ -9,7 +9,7 @@ import { RejectionReason, deriveRequirements } from '@masterclip/shot-schema'
 import { buildMatrix, defaultStopLoss, summarize } from '@masterclip/domain'
 import { compareStrategies, routeShot } from '@masterclip/model-router'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
-import { MasterService, RenderService, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
+import { MasterService, RenderService, finishCaptionedSongMoment, signedReadableUrl, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
 import { requireProject } from '../server.js'
 
 const CandidateSchema = z.object({
@@ -325,7 +325,14 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           output.contactSheetAssetId ? runtime.assets.find(output.contactSheetAssetId) : null,
           runtime.renders.getJob(output.jobId),
         ])
-        const url = async (key: string | undefined) => (key ? runtime.storage.signedUrl(key, 3600) : null)
+        const url = async (item: { id: string } | null) => {
+          if (!item) return null
+          try { return await signedReadableUrl(runtime, item.id) }
+          catch (err) {
+            if (err instanceof AppError && err.kind === 'forbidden') return null
+            throw err
+          }
+        }
         return {
           ...output,
           prompt: job.compiledPrompt,
@@ -337,10 +344,10 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           qcDetail: qc.find((row) => toStr(row.layer) === 'combined') ?? null,
           review,
           urls: {
-            source: await url(asset?.storageKey),
-            proxy: await url(proxy?.storageKey),
-            thumbnail: await url(thumb?.storageKey),
-            contactSheet: await url(sheet?.storageKey),
+            source: await url(asset),
+            proxy: await url(proxy),
+            thumbnail: await url(thumb),
+            contactSheet: await url(sheet),
           },
         }
       }),
@@ -408,14 +415,134 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     const { projectId } = request.params as { projectId: string }
     await requireProject(runtime, request, projectId)
     const list = await runtime.renders.listMasters(projectId)
+    // The queue is shared across projects. Looking at only its latest 500 jobs
+    // silently loses recovery state for older masters. Query each authorized
+    // master with bound SQL so user data is neither globally scanned nor
+    // incorrectly truncated by another artist's queue activity.
     return {
       masters: await Promise.all(
-        list.map(async (master) => ({
-          ...master,
-          deliverables: await runtime.renders.listDeliverables(master.id),
-        })),
+        list.map(async (master) => {
+          const versionId = master.metadata?.shot_version_id
+          const version = typeof versionId === 'string'
+            ? await runtime.projects.getVersion(versionId).catch(() => null)
+            : null
+          const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
+          // Exact project-owned JSON master ID comparison in both supported
+          // databases. LIKE treats underscores as wildcards and can leak
+          // another master's status; do not use a pattern match for identity.
+          const finishQuery = runtime.db.dialect === 'postgres'
+            ? `SELECT id, status, job_type, created_at FROM queue_jobs
+                WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
+                  AND (payload::jsonb ->> 'masterId') = ?
+                ORDER BY created_at DESC LIMIT 4`
+            : `SELECT id, status, job_type, created_at FROM queue_jobs
+                WHERE queue_name = ? AND (job_type = ? OR job_type = ?)
+                  AND json_valid(payload) = 1 AND json_extract(payload, '$.masterId') = ?
+                ORDER BY created_at DESC LIMIT 4`
+          const finishingRows = await runtime.db.query<{
+            id: string; status: string; job_type: string; created_at: string
+          }>(finishQuery, [QUEUES.media, JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong, master.id])
+          return {
+            ...master,
+            finishingJobs: finishingRows.map(job => ({
+              id: job.id, status: job.status, type: job.job_type,
+              lastError: job.status === 'dead' ? 'Media finishing failed. Review server logs for details.' : null,
+              createdAt: job.created_at,
+            })),
+            captionCount: cue?.promotional_use_attested ? (version?.spec.timed_captions.length ?? 0) : 0,
+            songMoment: cue?.promotional_use_attested
+              ? { startSeconds: cue.start_seconds, endSeconds: cue.end_seconds }
+              : null,
+            deliverables: await Promise.all((await runtime.renders.listDeliverables(master.id)).map(async delivery => {
+              const asset = await runtime.assets.find(delivery.assetId)
+              const permitted = asset?.projectId === master.projectId && asset.kind === 'delivery'
+              return {
+                ...delivery,
+                url: permitted ? await signedReadableUrl(runtime, asset.id).catch(err => {
+                  if (err instanceof AppError && err.kind === 'forbidden') return null
+                  throw err
+                }) : null,
+              }
+            })),
+          }
+        }),
       ),
     }
+  })
+
+  // A nonbillable, local FFmpeg operation: embed only the selected audio
+  // from the exact shot version behind this human-approved master.
+  app.post('/api/masters/:masterId/captioned-song', async (request) => {
+    const { masterId } = request.params as { masterId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    const queued = await runtime.queue.enqueue({
+      queue: QUEUES.media, type: JOB_TYPES.finishCaptionedSong,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:captioned:' + masterId,
+      maxAttempts: 2,
+    })
+    return { jobId: queued.id, status: 'queued' as const, deduped: queued.deduped }
+  })
+
+  app.post('/api/masters/:masterId/song-moment', async (request) => {
+    const { masterId } = request.params as { masterId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    const queued = await runtime.queue.enqueue({
+      queue: QUEUES.media, type: JOB_TYPES.finishSongMoment,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:song:' + masterId,
+      maxAttempts: 2,
+    })
+    return { jobId: queued.id, status: 'queued' as const, deduped: queued.deduped }
+  })
+
+  app.get('/api/masters/:masterId/finishing/:jobId', async (request) => {
+    const { masterId, jobId } = request.params as { masterId: string; jobId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    await requireProject(runtime, request, master.projectId)
+    const job = await runtime.queue.get(jobId)
+    const payload = job?.payload as { masterId?: string } | null
+    if (!job || job.queueName !== QUEUES.media ||
+        ![JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong].includes(job.type as typeof JOB_TYPES.finishSongMoment) ||
+        payload?.masterId !== masterId) {
+      throw notFound('finishing job', jobId)
+    }
+    return { jobId, status: job.status, error: job.status === 'dead' || job.status === 'failed' ? 'Media processing failed. Retry the job or contact support.' : null }
+  })
+
+  // Explicit recovery of a failed *nonbillable* media job. The prior job is
+  // retained for audit and a per-failed-job key prevents double-click retries.
+  // Active, pending or successful jobs cannot be replayed.
+  app.post('/api/masters/:masterId/finishing/:jobId/retry', async (request) => {
+    const { masterId, jobId } = request.params as { masterId: string; jobId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    const previous = await runtime.queue.get(jobId)
+    const payload = previous?.payload as { masterId?: string } | null
+    if (!previous || previous.queueName !== QUEUES.media ||
+        (previous.type !== JOB_TYPES.finishSongMoment && previous.type !== JOB_TYPES.finishCaptionedSong) ||
+        payload?.masterId !== masterId) throw notFound('finishing job', jobId)
+    if (previous.status !== 'dead' && previous.status !== 'failed') {
+      throw new AppError({
+        kind: 'conflict', code: 'finishing.not_failed',
+        message: 'only failed finishing jobs can be explicitly retried',
+      })
+    }
+    const retry = await runtime.queue.enqueue({
+      queue: QUEUES.media,
+      type: previous.type,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:retry:' + jobId,
+      maxAttempts: 2,
+    })
+    await runtime.audit.record({
+      orgId: auth.orgId, projectId: master.projectId, actor: auth.userId,
+      action: 'master.finishing_retry_requested', targetType: 'master', targetId: masterId,
+      data: { previousJobId: jobId, retryJobId: retry.id, deduped: retry.deduped },
+    })
+    return { jobId: retry.id, status: 'queued' as const, deduped: retry.deduped }
   })
 
   app.post('/api/masters/:masterId/finish', async (request) => {
