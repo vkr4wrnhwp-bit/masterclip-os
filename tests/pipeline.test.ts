@@ -8,7 +8,7 @@ import { formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@m
 import { ffmpeg, probe } from '@masterclip/media-tools'
 import { JOB_TYPES, QueueWorker } from '@masterclip/queue'
 import { emptyShot, CharacterRecord, EnvironmentRecord } from '@masterclip/shot-schema'
-import { createRuntime, MasterService, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
+import { createRuntime, MasterService, MediaFinishLease, signedReadableUrl, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
 
 /**
  * End-to-end pipeline test.
@@ -271,7 +271,36 @@ describe('render pipeline', () => {
     })
     const masters = new MasterService(runtime)
     const masterId = await masters.promote({ outputId: candidate.id, name: 'Music Master', approvedBy: 'tester', orgId })
-    const finished = await masters.finishWithSongMoment(masterId, 'tester', orgId)
+    // Lease owner recovery and a stale worker's failed commit are deterministic
+    // without timeouts or paid providers.
+    const staleLease = await MediaFinishLease.acquire(runtime, masterId)
+    await expect(MediaFinishLease.acquire(runtime, masterId))
+      .rejects.toMatchObject({ code: 'media_finish.busy' })
+    await runtime.db.run(
+      'UPDATE media_finish_leases SET expires_at = ? WHERE master_id = ?',
+      ['2000-01-01T00:00:00.000Z', masterId],
+    )
+    const recoveredLease = await MediaFinishLease.acquire(runtime, masterId)
+    await expect(staleLease.commit(async () => 'should never be committed'))
+      .rejects.toMatchObject({ code: 'media_finish.lease_lost' })
+    await staleLease.release()
+    await recoveredLease.commit(async tx => {
+      await recoveredLease.assertAudioStillAuthorized(tx, song.id, projectId)
+    })
+    await recoveredLease.release()
+
+    const concurrent = await Promise.allSettled([
+      masters.finishWithSongMoment(masterId, 'tester', orgId),
+      masters.finishWithSongMoment(masterId, 'tester', orgId),
+    ])
+    const winner = concurrent.find(result => result.status === 'fulfilled')
+    const blocked = concurrent.find(result => result.status === 'rejected')
+    expect(winner?.status).toBe('fulfilled')
+    expect(blocked?.status).toBe('rejected')
+    if (blocked?.status === 'rejected') expect(blocked.reason).toMatchObject({ code: 'media_finish.busy' })
+    if (winner?.status !== 'fulfilled') throw new Error('finishing did not produce an approved delivery')
+    const finished = winner.value
+    expect((await runtime.renders.listDeliverables(masterId)).filter(d => d.spec.kind === 'song_moment')).toHaveLength(1)
     expect(finished.reused).toBe(false)
     expect(finished.sandbox).toBe(true)
     const derivative = await runtime.assets.get(finished.assetId)
@@ -305,7 +334,24 @@ describe('render pipeline', () => {
     expect((await runtime.projects.getVersion(version.id)).spec.music_cue?.asset_id).toBe(song.id)
 
     // Revoking the source never silently reauthorizes a derivative operation.
+    const signedBeforeRevocation = await signedReadableUrl(runtime, captioned.assetId)
+    expect(signedBeforeRevocation).toContain('/api/assets/raw')
     await runtime.assets.setRights(song.id, { consent: 'revoked', authorized: false }, 'tester')
+    await expect(signedReadableUrl(runtime, captioned.assetId))
+      .rejects.toMatchObject({ code: 'media_rights.revoked' })
+    await expect(signedReadableUrl(runtime, finished.assetId))
+      .rejects.toMatchObject({ code: 'media_rights.revoked' })
+    // Already-issued signed URLs must be refused by the MOTION file server
+    // on their *next* request, not just when a fresh link is requested.
+    const { buildServer } = await import('../apps/api/src/server.js')
+    const server = await buildServer({ runtime, logger: silentLogger })
+    await server.ready()
+    try {
+      const refused = await server.inject({ method: 'GET', url: signedBeforeRevocation })
+      expect(refused.statusCode).toBe(403)
+    } finally {
+      await server.close()
+    }
     await expect(masters.finishWithSongMoment(masterId, 'tester', orgId)).rejects.toMatchObject({ code: 'song_moment.rights' })
     await expect(finishCaptionedSongMoment(runtime, masterId, 'tester', orgId))
       .rejects.toMatchObject({ code: 'song_moment.rights' })
