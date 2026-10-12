@@ -319,6 +319,57 @@ describe('render pipeline', () => {
       expect(sourceReply.statusCode).toBe(200)
       expect(sourceReply.json().videos.some((v: {masterId:string})=>v.masterId===masterId)).toBe(true)
       expect(sourceReply.json().audio.some((a:{id:string})=>a.id===song.id)).toBe(true)
+      // Artist review is the only entry into canonical Shot Builder. No
+      // provider job is queued, and replaying the same human action is safe.
+      const handoffPath = `/api/projects/${projectId}/scene-plan/handoff`
+      const reviewRequest={
+        requestId:'8f63fa25-cbbb-4d19-84b5-a7d1a931b71f',
+        reviewed:true,promotionalUseAttested:true,
+        audioAssetId:song.id,songStartSeconds:1,songEndSeconds:3.5,
+        title:'Human-approved hook sequence',sectionLabel:'Artist-labelled verse',
+        narrativePurpose:'Perform in a physical architectural room with a motivated camera',
+        cameraDirection:'Slow centered dolly move',performanceDirection:'Controlled vocal delivery',
+        visualTreatment:'Natural lighting and realistic material depth',
+        aspectRatio:'9:16',
+      }
+      const beforeHandoffJobs=await runtime.queue.list()
+      const pendingReview=await server.inject({
+        method:'POST',url:handoffPath,cookies,headers:{[CSRF_HEADER]:csrf},
+        payload:{...reviewRequest,reviewed:false},
+      })
+      expect(pendingReview.statusCode).toBe(400)
+      const firstHandoff=await server.inject({
+        method:'POST',url:handoffPath,cookies,headers:{[CSRF_HEADER]:csrf},
+        payload:reviewRequest,
+      })
+      expect(firstHandoff.statusCode).toBe(200)
+      expect(firstHandoff.json()).toMatchObject({deduped:false,rendered:false,queued:false})
+      const canonicalShotId=firstHandoff.json().shotId
+      const canonicalDetails=await server.inject({
+        method:'GET',url:'/api/shots/'+canonicalShotId,cookies,
+      })
+      expect(canonicalDetails.statusCode).toBe(200)
+      expect(canonicalDetails.json().version.spec).toMatchObject({
+        generation_mode:'text_to_video',audio_mode:'none',
+        music_cue:{asset_id:song.id,start_seconds:1,end_seconds:3.5},
+        approval_requirements:['human_review_required','director_approval'],
+      })
+      const againHandoff=await server.inject({
+        method:'POST',url:handoffPath,cookies,headers:{[CSRF_HEADER]:csrf},
+        payload:reviewRequest,
+      })
+      expect(againHandoff.statusCode).toBe(200)
+      expect(againHandoff.json()).toMatchObject({
+        shotId:canonicalShotId,deduped:true,queued:false,rendered:false,
+      })
+      const changedHandoff=await server.inject({
+        method:'POST',url:handoffPath,cookies,headers:{[CSRF_HEADER]:csrf},
+        payload:{...reviewRequest,cameraDirection:'Different camera for same request key'},
+      })
+      expect(changedHandoff.statusCode).toBe(409)
+      const afterHandoffJobs=await runtime.queue.list()
+      expect(afterHandoffJobs.map(job=>job.id)).toEqual(beforeHandoffJobs.map(job=>job.id))
+
       const sequence = {
         name: 'Director first cut', audio_asset_id: song.id, song_start_seconds: 1,
         clips: [
