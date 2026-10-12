@@ -79,6 +79,15 @@ export function validateShot(input: CanonicalShotInput | unknown): ShotValidatio
       break
   }
 
+  for (const [index, item] of shot.timed_captions.entries()) {
+    if (item.end_seconds <= item.start_seconds || item.end_seconds > shot.duration_seconds + 0.05) {
+      error('timed_captions.' + index, 'captions.outside_shot', 'caption must fit within the shot duration')
+    }
+    if (index > 0 && item.start_seconds < shot.timed_captions[index - 1]!.end_seconds) {
+      error('timed_captions.' + index, 'captions.overlap', 'caption times may not overlap')
+    }
+  }
+
   // --- audio ----------------------------------------------------------------
   // Song moments are metadata only; their range must remain valid even when
   // imported or edited through the professional Shot Builder.
