@@ -405,14 +405,13 @@ describe('render pipeline', () => {
       .rejects.toMatchObject({ code: 'media_rights.revoked' })
     // Already-issued signed URLs must be refused by the MOTION file server
     // on their *next* request, not just when a fresh link is requested.
-    const { buildServer } = await import('../apps/api/src/server.js')
-    const server = await buildServer({ runtime, logger: silentLogger })
-    await server.ready()
+    const rawServer = await buildServer({ runtime, logger: silentLogger })
+    await rawServer.ready()
     try {
-      const refused = await server.inject({ method: 'GET', url: signedBeforeRevocation })
+      const refused = await rawServer.inject({ method: 'GET', url: signedBeforeRevocation })
       expect(refused.statusCode).toBe(403)
     } finally {
-      await server.close()
+      await rawServer.close()
     }
     await expect(masters.finishWithSongMoment(masterId, 'tester', orgId)).rejects.toMatchObject({ code: 'song_moment.rights' })
     await expect(finishCaptionedSongMoment(runtime, masterId, 'tester', orgId))
