@@ -9,7 +9,7 @@ import { RejectionReason, deriveRequirements } from '@masterclip/shot-schema'
 import { buildMatrix, defaultStopLoss, summarize } from '@masterclip/domain'
 import { compareStrategies, routeShot } from '@masterclip/model-router'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
-import { MasterService, RenderService, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
+import { MasterService, RenderService, finishCaptionedSongMoment, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
 import { requireProject } from '../server.js'
 
 const CandidateSchema = z.object({
@@ -418,6 +418,7 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
           const cue = version?.shotId === master.shotId ? version.spec.music_cue : null
           return {
             ...master,
+            captionCount: cue?.promotional_use_attested ? (version?.spec.timed_captions.length ?? 0) : 0,
             songMoment: cue?.promotional_use_attested
               ? { startSeconds: cue.start_seconds, endSeconds: cue.end_seconds }
               : null,
@@ -437,6 +438,13 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
 
   // A nonbillable, local FFmpeg operation: embed only the selected audio
   // from the exact shot version behind this human-approved master.
+  app.post('/api/masters/:masterId/captioned-song', async (request) => {
+    const { masterId } = request.params as { masterId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    return finishCaptionedSongMoment(runtime, masterId, auth.userId, auth.orgId)
+  })
+
   app.post('/api/masters/:masterId/song-moment', async (request) => {
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
