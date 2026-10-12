@@ -1,5 +1,5 @@
 import React from 'react'
-import { api, type OutputView, type Shot } from '../api.js'
+import { api, type Shot } from '../api.js'
 import { AsyncBlock, Badge, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { areRelatedVariants, variationRoot } from './variant-model.js'
