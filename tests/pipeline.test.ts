@@ -311,6 +311,53 @@ describe('render pipeline', () => {
       const token = login.cookies.find(cookie => cookie.name === SESSION_COOKIE)?.value ?? ''
       const csrf = login.cookies.find(cookie => cookie.name === CSRF_COOKIE)?.value ?? ''
       const cookies = { [SESSION_COOKIE]: token, [CSRF_COOKIE]: csrf }
+      // The new non-destructive Music Video Timeline only accepts approved
+      // project masters and rights-cleared music, and makes real signed
+      // preview references without running a generation provider.
+      const timelineBase = `/api/projects/${projectId}/music-timelines`
+      const sourceReply = await server.inject({ method: 'GET', url: timelineBase + '/sources', cookies })
+      expect(sourceReply.statusCode).toBe(200)
+      expect(sourceReply.json().videos.some((v: {masterId:string})=>v.masterId===masterId)).toBe(true)
+      expect(sourceReply.json().audio.some((a:{id:string})=>a.id===song.id)).toBe(true)
+      const sequence = {
+        name: 'Director first cut', audio_asset_id: song.id, song_start_seconds: 1,
+        clips: [
+          { master_id: masterId, source_start_seconds: 0, source_end_seconds: 1.5 },
+          { master_id: masterId, source_start_seconds: 1.5, source_end_seconds: 3 },
+        ],
+      }
+      const savedCut = await server.inject({
+        method: 'POST', url: timelineBase, cookies,
+        headers: { [CSRF_HEADER]: csrf }, payload: sequence,
+      })
+      expect(savedCut.statusCode).toBe(200)
+      expect(savedCut.json()).toMatchObject({version:1,status:'saved',rendered:false})
+      const timelineId = savedCut.json().timelineId
+      const preview = await server.inject({
+        method: 'GET', url: timelineBase + '/' + timelineId + '/preview', cookies,
+      })
+      expect(preview.statusCode).toBe(200)
+      expect(preview.json()).toMatchObject({durationSeconds:3,rendered:false})
+      expect(preview.json().clips).toHaveLength(2)
+      expect(preview.json().clips[0].videoUrl).toContain('sig=')
+      expect(preview.json().audioUrl).toContain('sig=')
+      const updatedCut = await server.inject({
+        method:'PUT',url:timelineBase+'/'+timelineId,cookies,
+        headers:{[CSRF_HEADER]:csrf}, payload:{expectedVersion:1,spec:{...sequence,name:'Director second cut'}},
+      })
+      expect(updatedCut.statusCode).toBe(200)
+      expect(updatedCut.json().version).toBe(2)
+      const staleVersion = await server.inject({
+        method:'PUT',url:timelineBase+'/'+timelineId,cookies,
+        headers:{[CSRF_HEADER]:csrf},payload:{expectedVersion:1,spec:sequence},
+      })
+      expect(staleVersion.statusCode).toBe(409)
+      const forbiddenClip = await server.inject({
+        method:'POST',url:timelineBase,cookies,headers:{[CSRF_HEADER]:csrf},
+        payload:{...sequence,clips:[{master_id:'not-a-project-master',source_start_seconds:0,source_end_seconds:3}]},
+      })
+      expect(forbiddenClip.statusCode).not.toBe(200)
+
       const queued = await runtime.queue.enqueue({
         queue: QUEUES.media, type: JOB_TYPES.finishSongMoment,
         payload: { masterId, actor: 'tester', orgId }, maxAttempts: 1,
