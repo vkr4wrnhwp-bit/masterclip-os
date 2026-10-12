@@ -8,7 +8,7 @@ import { formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@m
 import { ffmpeg, probe } from '@masterclip/media-tools'
 import { JOB_TYPES, QueueWorker } from '@masterclip/queue'
 import { emptyShot, CharacterRecord, EnvironmentRecord } from '@masterclip/shot-schema'
-import { createRuntime, MasterService, MediaFinishLease, signedReadableUrl, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
+import { createRuntime, MasterService, MediaFinishLease, assembleApprovedTimeline, signedReadableUrl, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
 import { buildServer, SESSION_COOKIE } from '../apps/api/src/server.js'
 import { CSRF_COOKIE, CSRF_HEADER } from '../apps/api/src/security/csrf.js'
 
@@ -341,6 +341,34 @@ describe('render pipeline', () => {
       expect(preview.json().clips).toHaveLength(2)
       expect(preview.json().clips[0].videoUrl).toContain('sig=')
       expect(preview.json().audioUrl).toContain('sig=')
+      const requestAssembly=await server.inject({
+        method:'POST',url:timelineBase+'/'+timelineId+'/assemble',cookies,
+        headers:{[CSRF_HEADER]:csrf},
+      })
+      expect(requestAssembly.statusCode).toBe(200)
+      expect(requestAssembly.json()).toMatchObject({status:'queued',version:1})
+      const assemblyJob=await runtime.queue.get(requestAssembly.json().jobId)
+      expect(assemblyJob?.type).toBe(JOB_TYPES.assembleMusicTimeline)
+      const assemblyResult=await assembleApprovedTimeline(runtime,assemblyJob!.payload as Parameters<typeof assembleApprovedTimeline>[1])
+      expect(assemblyResult.reused).toBe(false)
+      const realAssembly=await runtime.assets.get(assemblyResult.assetId)
+      const measuredAssembly=await probe(runtime.storage.localPath(realAssembly.storageKey)!)
+      expect(measuredAssembly.video).not.toBeNull()
+      expect(measuredAssembly.audio).not.toBeNull()
+      expect(measuredAssembly.durationSeconds).toBeGreaterThan(2.55)
+      expect(measuredAssembly.durationSeconds).toBeLessThan(3.45)
+      const ancestry=(await runtime.assets.lineage(realAssembly.id)).parents.map(p=>p.assetId)
+      expect(ancestry).toEqual(expect.arrayContaining([candidate.assetId,song.id]))
+      const reuse=await assembleApprovedTimeline(runtime,assemblyJob!.payload as Parameters<typeof assembleApprovedTimeline>[1])
+      expect(reuse).toMatchObject({assetId:realAssembly.id,reused:true})
+      await runtime.queue.complete(requestAssembly.json().jobId)
+      const publicResult=await server.inject({
+        method:'GET',url:timelineBase+'/'+timelineId+'/exports',cookies,
+      })
+      expect(publicResult.statusCode).toBe(200)
+      expect(publicResult.json().exports).toHaveLength(1)
+      expect(publicResult.json().exports[0].url).toContain('sig=')
+
       const updatedCut = await server.inject({
         method:'PUT',url:timelineBase+'/'+timelineId,cookies,
         headers:{[CSRF_HEADER]:csrf}, payload:{expectedVersion:1,spec:{...sequence,name:'Director second cut'}},
@@ -464,7 +492,7 @@ describe('render pipeline', () => {
     await expect(masters.finishWithSongMoment(masterId, 'tester', orgId)).rejects.toMatchObject({ code: 'song_moment.rights' })
     await expect(finishCaptionedSongMoment(runtime, masterId, 'tester', orgId))
       .rejects.toMatchObject({ code: 'song_moment.rights' })
-  }, 120_000)
+  }, 180_000)
 
   it('auto-rejects a defective render without a human ever seeing it', async () => {
     // Force every candidate defective at the provider.
