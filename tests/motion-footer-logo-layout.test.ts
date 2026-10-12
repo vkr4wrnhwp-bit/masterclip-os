@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 
 const css = readFileSync('apps/web/src/styles.css','utf8')
@@ -20,9 +21,18 @@ describe('MOTION mobile identity and footer layout regression', () => {
     expect(consoleLayout).toContain('<MotionLogo />')
     expect(rail).not.toContain('<img className="mo-mark"')
     expect(consoleLayout).not.toContain('<img className="brand-mark"')
-    expect(logo).toContain('motion-logo-bracket')
-    expect(logo).toContain('motion-logo-dot')
-    expect(logo).toContain('motion-logo-type')
+    expect(logo).toContain('src="/motion-official-logo.png"')
+    expect(logo).toContain('alt=".motion"')
+    expect(logo).not.toContain('motion-logo-bracket')
+    expect(logo).not.toContain('motion-logo-type')
+    expect(css).toContain('.motion-logo-image')
+    // Preserve the exact approved web-optimized upload: do not recreate the
+    // mark from typography or silently swap another logo asset.
+    const pixels = readFileSync('apps/web/public/motion-official-logo.png')
+    expect(pixels.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    expect(createHash('sha256').update(pixels).digest('hex')).toBe(
+      '0a77932a8c2cca2e0b5f4520c32aaa141ccc837beccebc66bddb64e32af7e9af',
+    )
   })
   it('keeps enough space in the mobile header for the logo and search', () => {
     expect(css).toMatch(/grid-template-columns:\s*minmax\(128px,\s*1fr\)\s+minmax\(0,\s*1fr\)/)
