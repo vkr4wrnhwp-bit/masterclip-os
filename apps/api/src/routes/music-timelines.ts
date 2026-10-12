@@ -5,7 +5,7 @@ import { beatAnalysis } from '@masterclip/media-tools'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, newId, notFound } from '@masterclip/shared'
-import { AutoAssemblyInput, proposeFirstCut, MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
+import { ScenePlanInput, proposeScenePlan, AutoAssemblyInput, proposeFirstCut, MotionTimelineInput, timelineDuration, type MotionTimelineInput as Spec } from '@masterclip/shot-schema'
 import { listTimelineExports, signedReadableUrl, type Runtime } from '@masterclip/runtime'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { requireProject } from '../server.js'
@@ -57,6 +57,29 @@ async function validateTimeline(rt: Runtime, projectId: string, spec: Spec): Pro
 }
 
 export async function registerMusicTimelineRoutes(app: FastifyInstance, rt: Runtime): Promise<void> {
+  // Advisory shot planning, grounded only in this project's saved human
+  // annotations. An untrusted caller cannot provide arbitrary section labels.
+  app.post('/api/projects/:projectId/music-timelines/scene-plan', async request => {
+    const {projectId}=request.params as {projectId:string}
+    await requireProject(rt,request,projectId,'editor')
+    const requested=ScenePlanInput.pick({
+      audio_asset_id:true,song_start_seconds:true,target_seconds:true,
+      direction:true,shot_count:true,
+    }).parse(request.body)
+    const audio=await rt.assets.get(requested.audio_asset_id)
+    await assertMusicCueAsset(rt,projectId,{
+      asset_id:audio.id,start_seconds:requested.song_start_seconds,
+      end_seconds:requested.song_start_seconds+requested.target_seconds,
+      creative_look:'cinematic',promotional_use_attested:true,
+    })
+    const saved=await rt.db.get<{sections:string}>(
+      'SELECT sections FROM motion_music_sections WHERE project_id = ? AND audio_asset_id = ?',
+      [projectId,audio.id],
+    )
+    const sections=saved ? JSON.parse(saved.sections) as unknown : []
+    return proposeScenePlan({...requested,sections:Array.isArray(sections)?sections:[]})
+  })
+
   // A server-authored first-cut suggestion. Never trust client-supplied BPM,
   // beat markers, duration or master approval. Decode the real local recording
   // and evaluate only sources that remain human-approved in this project.
