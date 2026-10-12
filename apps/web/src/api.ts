@@ -297,7 +297,7 @@ export const api = {
   }) => post<{
     spec:{name:string;audio_asset_id:string;song_start_seconds:number;
       clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>};
-    durationSeconds:number;targetSeconds:number;beatAligned:boolean;
+    durationSeconds:number;targetSeconds:number;beatAligned:boolean;structureUsed:boolean;structureNotes:string|null;
     confidence:number;warnings:string[]
   }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/propose`,body),
   musicTimelineSources: (projectId: string) => get<{
