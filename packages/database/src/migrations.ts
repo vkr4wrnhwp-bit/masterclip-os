@@ -689,5 +689,19 @@ CREATE TABLE IF NOT EXISTS motion_timeline_exports (
 CREATE INDEX IF NOT EXISTS idx_motion_timeline_exports_id ON motion_timeline_exports(timeline_id,version);
 `,
   },
+  {
+    id: '0007_motion_music_sections',
+    sql: `
+-- User-authored, project-scoped song landmarks, not AI-generated claims.
+CREATE TABLE IF NOT EXISTS motion_music_sections (
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  audio_asset_id TEXT NOT NULL REFERENCES assets(id),
+  version INTEGER NOT NULL,
+  sections TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id,audio_asset_id)
+);
+`,
+  },
 
 ]
