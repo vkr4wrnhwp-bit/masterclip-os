@@ -303,7 +303,7 @@ export const api = {
     post<{jobId:string;version:number;status:'queued';deduped:boolean}>(
       `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/assemble`),
   musicTimelineExports: (projectId:string,timelineId:string) =>
-    get<{exports:Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>}>(
+    get<{exports:Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>;latestJob:{id:string;status:string}|null}>(
       `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/exports`),
   musicTimelineJob: (projectId:string,timelineId:string,jobId:string) =>
     get<{jobId:string;status:string;error:string|null}>(
