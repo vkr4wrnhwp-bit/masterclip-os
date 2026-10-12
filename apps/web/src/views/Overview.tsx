@@ -73,6 +73,11 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
   const openerRef = React.useRef<HTMLElement | null>(null)
 
   const mode = modeById(modeId)
+  const begin = (selected: StartMode) => {
+    setModeId(selected.id)
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setDialogMode(selected)
+  }
 
   const jobs = countJobs(film.data?.queue.jobs ?? [])
   const masterCounts = countMasters(film.data?.masters.masters ?? [])
@@ -118,8 +123,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             It paints over the drawn layers and is already sized to cover. */}
         <div
           className="mo-scenery"
-          role="img"
-          aria-label="Drawing of an empty soundstage with a lit doorway, road cases and a light stand"
+          aria-hidden="true"
         >
           <div className="mo-wall" />
           <div className="mo-rig" />
@@ -147,14 +151,9 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             <legend className="mo-sr">Choose a starting point</legend>
             <div className="mo-cards">
               {START_MODES.map((item) => (
-                <label className="mo-mode" key={item.id}>
-                  <input
-                    type="radio"
-                    name="mo-mode"
-                    value={item.id}
-                    checked={item.id === modeId}
-                    onChange={() => setModeId(item.id)}
-                  />
+                <button type="button" className="mo-mode" key={item.id}
+                  aria-label={item.actionLabel}
+                  onClick={() => begin(item)}>
                   {/* The selection is a mark as well as a border colour, so it
                       reads on a monochrome screen. */}
                   <span className="mo-selection" aria-hidden="true">
@@ -170,7 +169,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
                   <span className="mo-chevron" aria-hidden="true">
                     &rsaquo;
                   </span>
-                </label>
+                </button>
               ))}
             </div>
           </fieldset>
@@ -199,8 +198,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
               className="mo-start"
               aria-label={mode.actionLabel}
               onClick={() => {
-                openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-                setDialogMode(mode)
+                begin(mode)
               }}
             >
               LET&rsquo;S GO <span aria-hidden="true">&rarr;</span>
