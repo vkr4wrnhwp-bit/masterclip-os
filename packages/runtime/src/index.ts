@@ -22,6 +22,7 @@ export * from './caption-finish.js'
 export * from './media-finish-lease.js'
 export * from './media-rights.js'
 export * from './music-timeline.js'
+export * from './motion-feature-flags.js'
 
 /**
  * The composition root.
