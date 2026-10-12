@@ -1019,9 +1019,29 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .main .grid.cols-2,.main .grid.cols-3,.main .grid.cols-4 { grid-template-columns:minmax(0,1fr); }
   .main table { width:100%; }
   .main .card:has(table) { overflow-x:auto; }
-  .mo-dialog { position:fixed;inset:0;margin:auto;width:calc(100vw - 24px);max-width:460px;
-    min-width:0;max-height:calc(100dvh - 24px);overflow-x:hidden;overflow-y:auto;
-    padding:18px 15px;overscroll-behavior:contain; }
+  /* The iOS keyboard changes the VISUAL viewport, not necessarily 100dvh.
+     JS measures the visible viewport and supplies these variables. */
+  .mo-dialog {
+    position:fixed;
+    inset:auto;
+    top:calc(var(--mo-vv-top, 0px) + env(safe-area-inset-top, 0px) + 8px);
+    left:calc(var(--mo-vv-left, 0px) + 12px);
+    margin:0;
+    box-sizing:border-box;
+    width:calc(var(--mo-vv-width, 100vw) - 24px);
+    max-width:460px;
+    min-width:0;
+    max-height:calc(var(--mo-vv-height, 100dvh) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 16px);
+    overflow-x:hidden;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    padding:18px 15px max(18px, env(safe-area-inset-bottom, 0px));
+  }
+  .mo-dialog, .mo-dialog * { box-sizing:border-box; }
+  .mo-dialog form { width:100%; min-width:0; }
+  .mo-dialog :is(input, textarea, select) { max-inline-size:100%; }
+  .mo-dialog .mo-audio-consent { overflow-wrap:anywhere; }
   .mo-dialog form,.mo-dialog label,.mo-dialog .mo-start-audio { min-width:0;max-width:100%; }
   .mo-dialog input:not([type="checkbox"]),.mo-dialog textarea,.mo-dialog select {
     width:100%;max-width:100%;min-width:0;font-size:16px;
