@@ -90,7 +90,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
   const [renderStatus,setRenderStatus]=React.useState<string|null>(null)
   const [pacing,setPacing]=React.useState<'measured'|'balanced'|'energetic'>('balanced')
   const [targetSeconds,setTargetSeconds]=React.useState(20)
-  const [proposal,setProposal]=React.useState<{spec:TimelineDraft;confidence:number;beatAligned:boolean;warnings:string[]}|null>(null)
+  const [proposal,setProposal]=React.useState<{spec:TimelineDraft;confidence:number;beatAligned:boolean;structureUsed:boolean;structureNotes:string|null;warnings:string[]}|null>(null)
   const [busy,setBusy]=React.useState(false)
   const [error,setError]=React.useState<string|null>(null)
   const [message,setMessage]=React.useState<string|null>(null)
@@ -189,7 +189,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
         target_seconds:targetSeconds,pacing,
       })
       setProposal({spec:result.spec,confidence:result.confidence,
-        beatAligned:result.beatAligned,warnings:result.warnings})
+        beatAligned:result.beatAligned,structureUsed:result.structureUsed,structureNotes:result.structureNotes,warnings:result.warnings})
     }catch(error){setError((error as Error).message)}
     finally{setBusy(false)}
   }
@@ -245,6 +245,7 @@ export function MusicTimeline({projectId}:{projectId:string}){
           {proposal&&<div className="mc-timeline-proposal">
             <strong>Proposed {proposal.spec.clips.length} clips · {seconds(total(proposal.spec.clips))}s</strong>
             <p className="faint">Beat aligned: {proposal.beatAligned?'Estimated beats':'No reliable beat grid'} · Confidence {Math.round(proposal.confidence*100)}%</p>
+            <p className="faint">Song structure: {proposal.structureUsed?'Uses saved artist-labelled sections':'Not annotated; even pacing fallback'}{proposal.structureNotes?' · '+proposal.structureNotes:''}</p>
             <ol>{proposal.spec.clips.map((item,i)=><li key={i}>
               {videos.find(v=>v.masterId===item.master_id)?.name??'Approved master'} · {seconds(duration(item))}s
             </li>)}</ol>
