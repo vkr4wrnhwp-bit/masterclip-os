@@ -2,7 +2,7 @@ import React from 'react'
 import { MotionLogo } from '../motion-logo.jsx'
 import { api, type Project, type Shot, type User } from '../api.js'
 import { navigate, streetBankerUrl } from '../App.jsx'
-import { railItems, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
+import { railItems, searchWorkspace, tabTrap, STARTER_TEMPLATES, starterTemplate, templateShotSpec, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
 
 /**
  * The parts of Motion's front door that more than one screen needs.
@@ -186,15 +186,23 @@ export function MotionRail({
 export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = React.useState('')
   const [brief, setBrief] = React.useState('')
+  const [audio, setAudio] = React.useState<File | null>(null)
+  const [rightsOwner, setRightsOwner] = React.useState('')
+  const [rightsConfirmed, setRightsConfirmed] = React.useState(false)
+  const [templateId, setTemplateId] = React.useState(STARTER_TEMPLATES[0]!.id)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [progress, setProgress] = React.useState('')
   const dialogRef = React.useRef<HTMLDialogElement | null>(null)
   const nameRef = React.useRef<HTMLInputElement | null>(null)
 
+  // A failed audio transfer or the middle of a three-shot template must not
+  // create a second empty project on retry.
+  const projectIdRef = React.useRef<string | null>(null)
+  const templateShotsCompleted = React.useRef(0)
+
   React.useEffect(() => {
     const element = dialogRef.current
-    // Guard the call itself: `showModal` does not exist in a server render and
-    // is absent from a few older engines, and the screen behind must not break.
     if (element && typeof element.showModal === 'function' && !element.open) element.showModal()
     nameRef.current?.focus()
     return () => {
@@ -205,7 +213,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
   const onKeyDown = (event: React.KeyboardEvent<HTMLDialogElement>) => {
     if (event.key !== 'Tab') return
     const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-      (element) => !(element as HTMLInputElement).disabled && element.getClientRects().length > 0,
+      element => !(element as HTMLInputElement).disabled && element.getClientRects().length > 0,
     )
     const target = tabTrap(event.key, event.shiftKey, controls.indexOf(document.activeElement as HTMLElement), controls.length)
     if (target === null) return
@@ -213,17 +221,60 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
     controls[target]?.focus()
   }
 
+  const template = starterTemplate(templateId)
+  const ready = name.trim().length > 0 && (
+    mode.id !== 'audio' || (audio !== null && rightsOwner.trim().length > 0 && rightsConfirmed)
+  )
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    if (busy || !ready) return
     setBusy(true)
     setError(null)
     try {
-      const result = await api.createProject(name.trim(), brief)
-      onCreated()
-      navigate(`/project/${result.project.id}`)
-    } catch (err) {
-      setError((err as Error).message)
+      let projectId = projectIdRef.current
+      if (!projectId) {
+        setProgress('Creating your film…')
+        const projectBrief = mode.id === 'template'
+          ? [template.brief, brief.trim()].filter(Boolean).join('\n\n')
+          : brief.trim()
+        const created = await api.createProject(name.trim(), projectBrief)
+        projectId = created.project.id
+        projectIdRef.current = projectId
+      }
+      if (mode.id === 'audio') {
+        if (!audio || !rightsOwner.trim() || !rightsConfirmed) throw new Error('Choose an audio file and confirm its owner and permissions.')
+        setProgress('Uploading your original recording…')
+        const upload = new FormData()
+        upload.append('file', audio, audio.name)
+        upload.append('rights_owner', rightsOwner.trim())
+        upload.append('rights_consent', 'authorized')
+        upload.append('rights_authorized', 'true')
+        upload.append('rights_allowed_use', 'music video and promotional visuals')
+        upload.append('rights_source', 'user-supplied recording')
+        await api.uploadAsset(projectId, upload)
+        onCreated()
+        navigate(`/project/${projectId}?tab=assets`)
+      } else if (mode.id === 'template') {
+        const blank = await api.blankShot()
+        for (let index = templateShotsCompleted.current; index < template.shots.length; index++) {
+          setProgress(`Creating editable shot ${index + 1} of ${template.shots.length}…`)
+          // Stable within this new project across retries; no paid generation
+          // or output queue is ever submitted by createShot.
+          const shotKey = `T${projectId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}-${index + 1}`
+          await api.createShot(projectId, templateShotSpec(blank.shot, template, index, shotKey))
+          templateShotsCompleted.current = index + 1
+        }
+        onCreated()
+        navigate(`/project/${projectId}?tab=shots`)
+      } else {
+        onCreated()
+        navigate(`/project/${projectId}?tab=bible`)
+      }
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
       setBusy(false)
+      setProgress('')
     }
   }
 
@@ -236,45 +287,89 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
       aria-labelledby="mo-setup-heading"
       aria-describedby="mo-setup-description"
       onKeyDown={onKeyDown}
-      onCancel={(event) => {
+      onCancel={event => {
         event.preventDefault()
-        onClose()
+        if (!busy) onClose()
       }}
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose() }}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={event => void submit(event)}>
         <div className="mo-dialog-head">
           <span className="mo-eyebrow">{mode.title.toUpperCase()}</span>
-          <button type="button" className="mo-icon-button" onClick={onClose} aria-label="Close project setup">
-            &#10005;
-          </button>
+          <button type="button" className="mo-icon-button" disabled={busy}
+            onClick={onClose} aria-label="Close project setup">&#10005;</button>
         </div>
         <h2 id="mo-setup-heading">{mode.dialogTitle}</h2>
-        <p id="mo-setup-description">Name the film and give it a starting point.</p>
-
+        <p id="mo-setup-description">Name your film, then complete the selected starting action.</p>
         <label>
           Project name
-          <input ref={nameRef} value={name} onChange={(event) => setName(event.target.value)} required maxLength={80} autoComplete="off" />
+          <input ref={nameRef} value={name} onChange={event => setName(event.target.value)}
+            required maxLength={80} autoComplete="off" placeholder="Name your film" />
         </label>
-        <label>
-          {mode.fieldLabel}
-          <textarea value={brief} onChange={(event) => setBrief(event.target.value)} />
-        </label>
-
+        {mode.id === 'audio' && (
+          <>
+            <label>
+              Choose your audio recording
+              <input type="file" accept=".wav,.mp3,audio/wav,audio/mpeg" required
+                onChange={event => setAudio(event.target.files?.[0] ?? null)} />
+            </label>
+            <label>
+              Recording rights owner
+              <input value={rightsOwner} onChange={event => setRightsOwner(event.target.value)}
+                required maxLength={120} placeholder="Artist or rights holder" />
+            </label>
+            <label className="mo-consent">
+              <input type="checkbox" checked={rightsConfirmed}
+                onChange={event => setRightsConfirmed(event.target.checked)} required />
+              <span>I own or am authorized to use this recording for music-video and promotional work.</span>
+            </label>
+            <label>
+              Creative direction (optional)
+              <textarea rows={3} value={brief} onChange={event => setBrief(event.target.value)}
+                placeholder="What should the video feel like?" />
+            </label>
+          </>
+        )}
+        {mode.id === 'idea' && (
+          <label>
+            Visual direction (optional for a blank film)
+            <textarea rows={4} value={brief} onChange={event => setBrief(event.target.value)}
+              placeholder="Describe the artist, scene, story and atmosphere…" />
+          </label>
+        )}
+        {mode.id === 'template' && (
+          <>
+            <label>
+              Film structure
+              <select value={templateId} onChange={event => setTemplateId(event.target.value as typeof templateId)}>
+                {STARTER_TEMPLATES.map(item => (
+                  <option key={item.id} value={item.id}>{item.title}</option>
+                ))}
+              </select>
+            </label>
+            <p className="mo-account-note">{template.description}</p>
+            <p className="mo-account-note">Creates {template.shots.length} editable draft shots. Nothing is rendered or billed.</p>
+            <label>
+              Additional creative direction (optional)
+              <textarea rows={3} value={brief} onChange={event => setBrief(event.target.value)}
+                placeholder="Customize the starting concept…" />
+            </label>
+          </>
+        )}
         <p className="mo-account-note">{mode.next}</p>
-
         {error !== null && (
           <p className="mo-dialog-error" role="alert">
             {error}
+            {projectIdRef.current && <> The film has already been created. Retry the upload or template step without creating a duplicate.</>}
           </p>
         )}
-
+        {progress && <p role="status" className="mo-account-note">{progress}</p>}
         <div className="mo-actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0}>
-            {busy ? 'Creating' : 'Create the film'} <span aria-hidden="true">&rarr;</span>
+          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
+          <button className="mo-start" type="submit" disabled={busy || !ready}>
+            {busy ? 'Working…' : mode.id === 'audio' ? 'CREATE FILM & UPLOAD AUDIO' :
+              mode.id === 'template' ? 'CREATE FILM WITH SHOTS' : 'CREATE THE FILM'}
+            <span aria-hidden="true">&rarr;</span>
           </button>
         </div>
       </form>
