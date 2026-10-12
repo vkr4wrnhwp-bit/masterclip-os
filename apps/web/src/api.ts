@@ -252,6 +252,15 @@ export const api = {
   promote: (outputId: string, name: string) => post<{ masterId: string }>(`/api/outputs/${outputId}/promote`, { name }),
 
   masters: (projectId: string) => get<{ masters: Array<Record<string, unknown>> }>(`/api/projects/${projectId}/masters`),
+  retryFinishing: (masterId: string, jobId: string) =>
+    post<{jobId:string;status:'queued';deduped:boolean}>(
+      `/api/masters/${encodeURIComponent(masterId)}/finishing/${encodeURIComponent(jobId)}/retry`),
+  finishStatus: (masterId: string, jobId: string) => get<{ jobId:string;status:string;error:string|null }>(
+    `/api/masters/${encodeURIComponent(masterId)}/finishing/${encodeURIComponent(jobId)}`),
+  finishCaptionedSong: (masterId: string) => post<{jobId:string;status:'queued';deduped:boolean}>(`/api/masters/${encodeURIComponent(masterId)}/captioned-song`),
+
+  finishSongMoment: (masterId: string) => post<{jobId:string;status:'queued';deduped:boolean}>(`/api/masters/${encodeURIComponent(masterId)}/song-moment`),
+
   finishMaster: (masterId: string, specs: unknown[]) => post<{ assetIds: string[] }>(`/api/masters/${masterId}/finish`, { specs }),
   packageMaster: (masterId: string) => post<{ directory: string; files: number }>(`/api/masters/${masterId}/package`),
 
@@ -263,6 +272,98 @@ export const api = {
       '/api/cost-lab/strategy',
       body,
     ),
+
+  creativeTreatments: (projectId: string) =>
+    get<{ treatments: Array<{ id: string; name: string; look: string; aspect_ratio: string; direction: string }> }>(
+      `/api/projects/${encodeURIComponent(projectId)}/creative-treatments`),
+  saveCreativeTreatment: (projectId: string, treatment: { name: string; look: string; aspect_ratio: string; direction: string }) =>
+    post<{ treatment: { id: string; name: string; look: string; aspect_ratio: string; direction: string } }>(
+      `/api/projects/${encodeURIComponent(projectId)}/creative-treatments`, treatment),
+
+  createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
+    post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
+  musicStructure: (projectId:string,assetId:string) => get<{
+    version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`),
+  saveMusicStructure: (projectId:string,assetId:string,version:number,sections:Array<{
+    id:string;label:string;kind:string;start_seconds:number;end_seconds:number
+  }>) => put<{
+    version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`,
+    {expectedVersion:version,sections}),
+  handoffSceneShot: (projectId:string, body:{
+    requestId:string; reviewed:true;promotionalUseAttested:true;
+    audioAssetId:string;songStartSeconds:number;songEndSeconds:number;
+    title:string;sectionLabel:string;narrativePurpose:string;
+    cameraDirection:string;performanceDirection:string;
+    visualTreatment:string;aspectRatio:'9:16'|'16:9'|'1:1'|'4:5'
+  }) => post<{shotId:string;deduped:boolean;queued:false;rendered:false}>(
+    `/api/projects/${encodeURIComponent(projectId)}/scene-plan/handoff`,body),
+
+  proposeScenePlan: (projectId:string, body:{
+    audio_asset_id:string;song_start_seconds:number;target_seconds:number;
+    direction:string;shot_count:number
+  }) => post<{
+    audioAssetId:string;source:string;requiresApproval:true;warning:string;
+    shots:Array<{ordinal:number;sectionLabel:string;sectionKind:string;
+      songStartSeconds:number;songEndSeconds:number;title:string;
+      narrativePurpose:string;cameraDirection:string;
+      performanceDirection:string;visualTreatment:string;artistReviewRequired:true}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/scene-plan`,body),
+  proposeMusicFirstCut: (projectId:string, body:{
+    name:string;audio_asset_id:string;song_start_seconds:number;target_seconds:number;
+    pacing:'measured'|'balanced'|'energetic'
+  }) => post<{
+    spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>};
+    durationSeconds:number;targetSeconds:number;beatAligned:boolean;structureUsed:boolean;structureNotes:string|null;
+    confidence:number;warnings:string[]
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/propose`,body),
+  musicTimelineSources: (projectId: string) => get<{
+    videos: Array<{masterId:string;name:string;durationSeconds:number;videoUrl:string}>
+    audio: Array<{id:string;filename:string;durationSeconds:number;audioUrl:string}>
+  }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines/sources`),
+  musicTimelines: (projectId: string) => get<{timelines: Array<{
+    id:string;projectId:string;name:string;version:number;spec:{
+      name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>
+    }
+  }> }>(`/api/projects/${encodeURIComponent(projectId)}/music-timelines`),
+  createMusicTimeline: (projectId:string,spec:unknown) =>
+    post<{timelineId:string;version:number;status:string;rendered:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines`,spec),
+  updateMusicTimeline: (projectId:string,timelineId:string,version:number,spec:unknown) =>
+    put<{timelineId:string;version:number;status:string;rendered:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}`,
+      {expectedVersion:version,spec}),
+  assembleMusicTimeline: (projectId:string,timelineId:string) =>
+    post<{jobId:string;version:number;status:'queued';deduped:boolean}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/assemble`),
+  musicTimelineExports: (projectId:string,timelineId:string) =>
+    get<{exports:Array<{id:string;assetId:string;version:number;durationSeconds:number|null;url:string|null;createdAt:string}>;latestJob:{id:string;status:string}|null}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/exports`),
+  musicTimelineJob: (projectId:string,timelineId:string,jobId:string) =>
+    get<{jobId:string;status:string;error:string|null}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/jobs/${encodeURIComponent(jobId)}`),
+  musicTimelinePreview: (projectId:string,timelineId:string) =>
+    get<{timeline:{id:string;version:number;spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}};
+      audioUrl:string;durationSeconds:number;rendered:boolean;
+      clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number;
+        masterName:string;videoUrl:string;durationSeconds:number}>}>(
+      `/api/projects/${encodeURIComponent(projectId)}/music-timelines/${encodeURIComponent(timelineId)}/preview`),
+
+  beats: (assetId: string) =>
+    get<{ assetId: string; bpm: number|null; confidence: number; beats: number[];
+      durationSeconds: number; source: 'decoded_pcm_onset'; analysisVersion: 1; limitation: string }>(
+      `/api/assets/${encodeURIComponent(assetId)}/beats`),
+  waveform: (assetId: string) => get<{ assetId: string; peaks: number[]; durationSeconds: number; source: 'decoded_pcm' }>(`/api/assets/${encodeURIComponent(assetId)}/waveform`),
+
+  quickCreate: (projectId: string, body: {
+    title: string; creativeDirection: string; audioAssetId: string;
+    visualAssetId: string | null; startSeconds: number; endSeconds: number;
+    aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string; captions?: { start_seconds: number; end_seconds: number; text: string }[]
+  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false }>(`/api/projects/${projectId}/quick-create`, body),
 
   uploadAsset: (projectId: string, form: FormData) =>
     request<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/assets`, {
