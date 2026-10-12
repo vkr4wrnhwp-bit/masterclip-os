@@ -8,7 +8,7 @@ test('MOTION serves the real first-film entrance at phone width', async ({ page 
   expect(overflow).toBeLessThanOrEqual(2)
 })
 
-test('first film is cancellable from the authenticated app', async ({ page }) => {
+test('first film is cancellable from the authenticated app', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.locator('.login summary').click()
   const health = await (await page.request.get('/api/health')).json()
@@ -26,15 +26,15 @@ test('first film is cancellable from the authenticated app', async ({ page }) =>
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Start a film with an idea' }).click()
-  await page.getByLabel('Project name').fill('QA Idea Film')
-  await page.getByLabel('Brief', { exact: true }).fill('One performer beneath a practical cyan light on a film soundstage.')
+  await page.getByLabel('Project name').fill('QA Idea Film ' + testInfo.project.name)
+  await page.getByLabel('Visual direction').fill('One performer beneath a practical cyan light on a film soundstage.')
   await page.getByRole('button', { name: /Create the film/ }).click()
   await page.waitForURL(/#\/project\/[^?]+\?tab=shots/)
   await page.getByRole('button', { name: 'Brief & style' }).click()
   await expect(page.getByText('One performer beneath a practical cyan light on a film soundstage.')).toBeVisible()
   await page.goto('/#/')
   await page.getByRole('button', { name: 'Start a film with a template' }).click()
-  await page.getByLabel('Project name').fill('QA Template Film')
+  await page.getByLabel('Project name').fill('QA Template Film ' + testInfo.project.name)
   await page.getByRole('button', { name: /Create the film/ }).click()
   await page.waitForURL(/#\/project\/[^?]+\?tab=import/)
   await expect(page.getByText('Import shot list')).toBeVisible()
