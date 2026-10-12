@@ -37,4 +37,4 @@ jobs:
       - name: Install browser engines
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: First-film desktop and mobile WebKit smoke
-        run: pnpm exec playwright test tests/e2e/motion-first-film.spec.ts --project=chromium --project=mobile-webkit
+        run: pnpm exec playwright test tests/e2e/motion-first-film.spec.ts tests/e2e/motion-audio.spec.ts --project=chromium --project=mobile-webkit
