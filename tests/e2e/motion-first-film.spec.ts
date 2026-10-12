@@ -25,6 +25,10 @@ test('first film is cancellable from the authenticated app', async ({ page }, te
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  // The separate LET'S GO control must reopen the selected creation mode.
+  await page.getByRole('button', { name: 'Continue: Upload audio' }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
   await page.getByRole('button', { name: 'Start a film with an idea' }).click()
   await page.getByLabel('Project name').fill('QA Idea Film ' + testInfo.project.name)
   await page.getByLabel('Visual direction').fill('One performer beneath a practical cyan light on a film soundstage.')
