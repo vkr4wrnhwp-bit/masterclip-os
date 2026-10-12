@@ -27,8 +27,22 @@ test('authorized WAV upload appears in References and Quick Create', async ({ pa
   })
   await page.getByLabel('Rights owner').fill('QA Rights Holder')
   await page.getByRole('checkbox', { name: /I am authorized/ }).check()
+  const count = async () => (await (await page.request.get('/api/projects')).json()).projects.length as number
+  const before = await count()
+  let failOnce = true
+  await page.route('**/api/projects/*/assets', async route => {
+    if (route.request().method() === 'POST' && failOnce) {
+      failOnce = false
+      await route.fulfill({ status: 503, body: JSON.stringify({ error: 'temporary test failure' }),
+        contentType: 'application/json' })
+    } else await route.continue()
+  })
+  await page.getByRole('button', { name: /Create the film/ }).click()
+  await expect(page.getByRole('alert')).toContainText('Film created, but audio upload failed')
+  expect(await count()).toBe(before + 1)
   await page.getByRole('button', { name: /Create the film/ }).click()
   await page.waitForURL(/#\/project\/[^?]+\?tab=assets/)
+  expect(await count()).toBe(before + 1)
   await expect(page.getByText('qa-recording.wav')).toBeVisible()
   await page.getByRole('button', { name: 'Continue to Quick Create' }).click()
   await expect(page.getByText('Quick Create — music-first video brief')).toBeVisible()
