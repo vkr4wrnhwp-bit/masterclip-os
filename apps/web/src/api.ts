@@ -291,6 +291,15 @@ export const api = {
     version:number;sections:Array<{id:string;label:string;kind:string;start_seconds:number;end_seconds:number}>
   }>(`/api/projects/${encodeURIComponent(projectId)}/music-structure/${encodeURIComponent(assetId)}`,
     {expectedVersion:version,sections}),
+  handoffSceneShot: (projectId:string, body:{
+    requestId:string; reviewed:true;promotionalUseAttested:true;
+    audioAssetId:string;songStartSeconds:number;songEndSeconds:number;
+    title:string;sectionLabel:string;narrativePurpose:string;
+    cameraDirection:string;performanceDirection:string;
+    visualTreatment:string;aspectRatio:'9:16'|'16:9'|'1:1'|'4:5'
+  }) => post<{shotId:string;deduped:boolean;queued:false;rendered:false}>(
+    `/api/projects/${encodeURIComponent(projectId)}/scene-plan/handoff`,body),
+
   proposeScenePlan: (projectId:string, body:{
     audio_asset_id:string;song_start_seconds:number;target_seconds:number;
     direction:string;shot_count:number
