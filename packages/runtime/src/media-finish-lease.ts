@@ -95,6 +95,33 @@ export class MediaFinishLease {
     })
   }
 
+  /** Recheck source audio rights under the fenced asset-registration
+   * transaction. A revocation racing with rendering cannot be missed.
+   */
+  async assertAudioStillAuthorized(tx: Db, assetId: string, projectId: string): Promise<void> {
+    const sql = `SELECT project_id, kind, rights_owner, rights_authorized,
+      rights_consent, rights_expires_at FROM assets WHERE id = ?` +
+      (tx.dialect === 'postgres' ? ' FOR UPDATE' : '')
+    const row = await tx.get<{
+      project_id: string
+      kind: string
+      rights_owner: string
+      rights_authorized: number
+      rights_consent: string
+      rights_expires_at: string | null
+    }>(sql, [assetId])
+    const expiration = row?.rights_expires_at ? Date.parse(row.rights_expires_at) : null
+    if (!row || row.project_id !== projectId || row.kind !== 'audio' ||
+        Number(row.rights_authorized) !== 1 || row.rights_consent !== 'authorized' ||
+        !row.rights_owner.trim() ||
+        (expiration !== null && (!Number.isFinite(expiration) || expiration <= this.rt.clock.now()))) {
+      throw new AppError({
+        kind: 'forbidden', code: 'media_finish.rights_changed',
+        message: 'audio rights changed before finishing; derivative registration was refused',
+      })
+    }
+  }
+
   async release(): Promise<void> {
     this.released = true
     await this.rt.db.run('DELETE FROM media_finish_leases WHERE master_id = ? AND owner_token = ?', [
