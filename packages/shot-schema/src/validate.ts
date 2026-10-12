@@ -80,6 +80,14 @@ export function validateShot(input: CanonicalShotInput | unknown): ShotValidatio
   }
 
   // --- audio ----------------------------------------------------------------
+  // Song moments are metadata only; their range must remain valid even when
+  // imported or edited through the professional Shot Builder.
+  if (shot.music_cue) {
+    const span = shot.music_cue.end_seconds - shot.music_cue.start_seconds
+    if (span < 0.5 || span > 60) {
+      error('music_cue.end_seconds', 'audio.invalid_song_moment', 'song moments must last between 0.5 and 60 seconds')
+    }
+  }
   if (shot.audio_mode === 'native_dialogue' && shot.dialogue.trim().length === 0) {
     error('dialogue', 'audio.missing_dialogue', 'native_dialogue requires dialogue text')
   }
