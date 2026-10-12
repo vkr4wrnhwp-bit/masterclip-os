@@ -5,10 +5,11 @@ import { AppError } from '@masterclip/shared'
 import { ffmpeg } from './runner.js'
 import { concat, replaceAudioMoment } from './transform.js'
 import { probe } from './probe.js'
-import type { TimelineClip } from '@masterclip/shot-schema'
 
-export interface VideoCutInput extends Omit<TimelineClip, 'master_id'> {
+export interface VideoCutInput {
   path: string
+  source_start_seconds: number
+  source_end_seconds: number
 }
 
 export interface TimelineAssemblyOptions {
