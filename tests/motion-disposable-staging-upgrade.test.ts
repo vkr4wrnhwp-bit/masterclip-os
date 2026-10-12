@@ -17,9 +17,9 @@ describe('MOTION disposable staging migration preflight', () => {
     try {
       db = new SqliteDb(path)
       const baseMigrations = MIGRATIONS.filter(m =>
-        ['0001_initial', '0002_agent_runs', '0003_street_banker_workspaces'].includes(m.id))
+        ['0001_init', '0002_agent_runs', '0003_street_banker_workspaces'].includes(m.id))
       expect(baseMigrations.map(m => m.id)).toEqual([
-        '0001_initial', '0002_agent_runs', '0003_street_banker_workspaces',
+        '0001_init', '0002_agent_runs', '0003_street_banker_workspaces',
       ])
       await runMigrations(db, baseMigrations)
       const orgId = 'migration-preflight-org'
