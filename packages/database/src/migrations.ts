@@ -656,5 +656,22 @@ CREATE TABLE IF NOT EXISTS media_finish_leases (
 CREATE INDEX IF NOT EXISTS idx_media_finish_lease_expiry ON media_finish_leases(expires_at);
 `,
   },
+  {
+    id: '0005_motion_music_timelines',
+    sql: `
+-- Independent edit decisions, never a replacement for approved video assets.
+CREATE TABLE IF NOT EXISTS motion_music_timelines (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  name        TEXT NOT NULL,
+  version     INTEGER NOT NULL,
+  spec        TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_motion_timelines_project ON motion_music_timelines(project_id, updated_at);
+`,
+  },
 
 ]
