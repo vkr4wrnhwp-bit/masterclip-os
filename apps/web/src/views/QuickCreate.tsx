@@ -31,6 +31,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   const [duration, setDuration] = React.useState(0)
   const [loop, setLoop] = React.useState(true)
   const [attested, setAttested] = React.useState(false)
+  const [captions, setCaptions] = React.useState<Array<{start_seconds:number;end_seconds:number;text:string}>>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [saved, setSaved] = React.useState<string | null>(null)
@@ -51,6 +52,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
     setPosition(0)
     setAttested(false)
     setSaved(null)
+    setCaptions([])
   }
 
   const restore = (id: string, spec: Record<string, unknown>) => {
@@ -61,6 +63,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
     setEnd(cue.end_seconds)
     setPosition(cue.start_seconds)
     setTitle(String(spec.title ?? 'Release teaser'))
+    setCaptions(Array.isArray(spec.timed_captions) ? spec.timed_captions as typeof captions : [])
     setDirection(String(spec.narrative_purpose ?? ''))
     setLook(looks.find(v => v === cue.creative_look) ?? 'cinematic')
     setAspect(aspects.find(v => v === spec.aspect_ratio) ?? '9:16')
@@ -75,7 +78,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         title: title.trim(), creativeDirection: direction.trim(),
         audioAssetId: selected.id, visualAssetId: visualId || null,
         startSeconds: start, endSeconds: end, aspectRatio: aspect, look,
-        promotionalUseAttested: true, ...(editing ? { shotId: editing } : {}),
+        promotionalUseAttested: true, captions, ...(editing ? { shotId: editing } : {}),
       })
       setEditing(result.shotId)
       setSaved(result.shotId)
@@ -130,6 +133,21 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
           <Field label="Creative look"><select value={look} onChange={e => setLook(e.target.value as typeof look)}>{looks.map(a => <option key={a} value={a}>{a}</option>)}</select></Field>
           <Field label="Video format"><select value={aspect} onChange={e => setAspect(e.target.value as typeof aspect)}>{aspects.map(a => <option key={a}>{a}</option>)}</select></Field>
         </div>
+        <section aria-label="Timed lyrics and captions" className="mcq-trim">
+          <h4>Timed captions</h4>
+          <p className="muted">Enter approved lyric lines and exact times relative to the selected clip. No automatic transcription or synchronization is implied.</p>
+          {captions.map((caption, index) => <div className="field-row" key={index}>
+            <Field label="Start (clip seconds)"><input type="number" min="0" step="0.1" value={caption.start_seconds} onChange={e => setCaptions(old => old.map((row,i) => i===index ? {...row,start_seconds:Number(e.target.value)} : row))} /></Field>
+            <Field label="End (clip seconds)"><input type="number" min="0" step="0.1" value={caption.end_seconds} onChange={e => setCaptions(old => old.map((row,i) => i===index ? {...row,end_seconds:Number(e.target.value)} : row))} /></Field>
+            <Field label="Caption text"><input maxLength={160} value={caption.text} onChange={e => setCaptions(old => old.map((row,i) => i===index ? {...row,text:e.target.value} : row))} /></Field>
+            <button type="button" onClick={() => setCaptions(old => old.filter((_,i) => i!==index))}>Remove line</button>
+          </div>)}
+          <button type="button" disabled={captions.length >= 32} onClick={() => {
+            const from = captions.length ? captions[captions.length-1]!.end_seconds : 0
+            const to = Math.min(Math.max(.5,end-start),from+2)
+            if (to>from) setCaptions(old=>[...old,{start_seconds:from,end_seconds:to,text:''}])
+          }}>Add caption line</button>
+        </section>
         <label className="mcq-consent"><input type="checkbox" checked={attested} onChange={e => setAttested(e.target.checked)} /> I confirm the selected media is authorized for this promotional creative draft.</label>
         {error && <Callout tone="danger">{error}</Callout>}
         <div className="button-row"><button type="button" className="primary" disabled={!valid || busy} onClick={() => void submit()}>{busy ? 'Saving…' : editing ? 'Save new draft version' : 'Save Quick Create draft'}</button></div>
