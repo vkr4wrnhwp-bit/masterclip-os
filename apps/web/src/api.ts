@@ -252,6 +252,10 @@ export const api = {
   promote: (outputId: string, name: string) => post<{ masterId: string }>(`/api/outputs/${outputId}/promote`, { name }),
 
   masters: (projectId: string) => get<{ masters: Array<Record<string, unknown>> }>(`/api/projects/${projectId}/masters`),
+  finishCaptionedSong: (masterId: string) => post<{
+    assetId: string; url: string; durationSeconds: number; reused: boolean; sandbox: boolean; captionCount: number
+  }>(`/api/masters/${encodeURIComponent(masterId)}/captioned-song`),
+
   finishSongMoment: (masterId: string) => post<{
     assetId: string; url: string; durationSeconds: number; reused: boolean; sandbox: boolean
   }>(`/api/masters/${encodeURIComponent(masterId)}/song-moment`),
