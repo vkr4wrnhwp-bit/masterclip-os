@@ -442,14 +442,40 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
     const { auth } = await requireProject(runtime, request, master.projectId, 'director')
-    return finishCaptionedSongMoment(runtime, masterId, auth.userId, auth.orgId)
+    const queued = await runtime.queue.enqueue({
+      queue: QUEUES.media, type: JOB_TYPES.finishCaptionedSong,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:captioned:' + masterId,
+      maxAttempts: 2,
+    })
+    return { jobId: queued.id, status: 'queued' as const, deduped: queued.deduped }
   })
 
   app.post('/api/masters/:masterId/song-moment', async (request) => {
     const { masterId } = request.params as { masterId: string }
     const master = await runtime.renders.getMaster(masterId)
     const { auth } = await requireProject(runtime, request, master.projectId, 'director')
-    return masters.finishWithSongMoment(masterId, auth.userId, auth.orgId)
+    const queued = await runtime.queue.enqueue({
+      queue: QUEUES.media, type: JOB_TYPES.finishSongMoment,
+      payload: { masterId, actor: auth.userId, orgId: auth.orgId },
+      dedupeKey: 'motion:song:' + masterId,
+      maxAttempts: 2,
+    })
+    return { jobId: queued.id, status: 'queued' as const, deduped: queued.deduped }
+  })
+
+  app.get('/api/masters/:masterId/finishing/:jobId', async (request) => {
+    const { masterId, jobId } = request.params as { masterId: string; jobId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    await requireProject(runtime, request, master.projectId)
+    const job = await runtime.queue.get(jobId)
+    const payload = job?.payload as { masterId?: string } | null
+    if (!job || job.queueName !== QUEUES.media ||
+        ![JOB_TYPES.finishSongMoment, JOB_TYPES.finishCaptionedSong].includes(job.type as typeof JOB_TYPES.finishSongMoment) ||
+        payload?.masterId !== masterId) {
+      throw notFound('finishing job', jobId)
+    }
+    return { jobId, status: job.status, error: job.status === 'dead' || job.status === 'failed' ? job.lastError : null }
   })
 
   app.post('/api/masters/:masterId/finish', async (request) => {
