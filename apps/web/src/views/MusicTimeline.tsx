@@ -70,6 +70,7 @@ function CutPreview({draft,videos,audio}:{draft:TimelineDraft;videos:SourceVideo
 /** Pure explicit human edit decision list: one audio bed, cut-only sequence. */
 export function MusicTimeline({projectId,onCreated}:{projectId:string;onCreated:()=>void}){
   const sources=useAsync(()=>api.musicTimelineSources(projectId),[projectId])
+  const health=useAsync(()=>api.health(),[])
   const saved=useAsync(()=>api.musicTimelines(projectId),[projectId])
   const [timelineId,setTimelineId]=React.useState<string|null>(null)
   const exportsData=useAsync(()=>timelineId
@@ -350,8 +351,9 @@ export function MusicTimeline({projectId,onCreated}:{projectId:string;onCreated:
         </div>
         <section className="mc-timeline-render" aria-label="Real MP4 finishing">
           <h4>Finish a real video</h4>
+          {!health.data?.nativeFinishingEnabled && <p className="faint">MP4 assembly is paused during controlled release validation. Timeline editing and planning remain available.</p>}
           <p className="muted">Build a straight-cut MP4 from approved video masters and the original track. Source aspect ratios are preserved with padding; nothing is cropped or published automatically. No AI render credits are used.</p>
-          <button type="button" className="primary" disabled={!valid||!cleanSaved||busy||!!renderJob||persistedBusy}
+          <button type="button" className="primary" disabled={!health.data?.nativeFinishingEnabled||!valid||!cleanSaved||busy||!!renderJob||persistedBusy}
             onClick={()=>void assemble()}>
             {renderJob||persistedBusy?'Assembly in progress…':'Assemble MP4 from saved cut'}
           </button>
