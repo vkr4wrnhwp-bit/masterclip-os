@@ -3,6 +3,7 @@ import { api } from '../api.js'
 import { AsyncBlock, Callout, Card, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { MeasuredWaveform } from './MeasuredWaveform.jsx'
+import { BeatGrid } from './BeatGrid.jsx'
 
 type Media = { id: string; filename: string; kind: string; url: string; durationSeconds: number | null; rights?: { owner?: string; authorized?: boolean; consent?: string; expiresAt?: string | null } }
 type Cue = { asset_id: string; start_seconds: number; end_seconds: number; creative_look?: string }
@@ -124,6 +125,9 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
           <MeasuredWaveform assetId={audioId} duration={max} start={start} end={end} position={position} onSeek={seconds => {
             if (audio.current) audio.current.currentTime = seconds
             setPosition(seconds)
+          }} />
+          <BeatGrid assetId={audioId} start={start} end={end} duration={max} onTrim={(nextStart,nextEnd)=>{
+            setStart(nextStart);setEnd(nextEnd)
           }} />
           <p>Song moment: {time(start)} to {time(end)} ({(end - start).toFixed(1)} seconds). Play the source above; playback is original, unaltered audio.</p>
           <Field label={`Start at ${time(start)}`}><input type="range" min="0" max={Math.max(0.5, max)} step="0.1" value={start} onChange={e => { const v = Number(e.target.value); setStart(v); setEnd(old => Math.min(max, Math.max(v + 0.5, old))); }} /></Field>
