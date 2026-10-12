@@ -8,7 +8,7 @@ import { formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@m
 import { ffmpeg, probe } from '@masterclip/media-tools'
 import { JOB_TYPES, QueueWorker } from '@masterclip/queue'
 import { emptyShot, CharacterRecord, EnvironmentRecord } from '@masterclip/shot-schema'
-import { createRuntime, MasterService, RenderService, QUEUES, type Runtime } from '@masterclip/runtime'
+import { createRuntime, MasterService, RenderService, finishCaptionedSongMoment, QUEUES, type Runtime } from '@masterclip/runtime'
 
 /**
  * End-to-end pipeline test.
@@ -255,6 +255,7 @@ describe('render pipeline', () => {
           asset_id: song.id, start_seconds: 1, end_seconds: 4,
           creative_look: 'cinematic', promotional_use_attested: true,
         },
+        timed_captions: [{ start_seconds: 0.3, end_seconds: 2.4, text: 'SIGNED OFF BY THE DIRECTOR' }],
       },
     })
     const render = new RenderService(runtime)
@@ -285,6 +286,18 @@ describe('render pipeline', () => {
       expect.arrayContaining([candidate.assetId, song.id]),
     )
     expect((await runtime.renders.listDeliverables(masterId)).some(d => d.assetId === finished.assetId)).toBe(true)
+    const captioned = await finishCaptionedSongMoment(runtime, masterId, 'tester', orgId)
+    expect(captioned.captionCount).toBe(1)
+    expect(captioned.reused).toBe(false)
+    const captionAsset = await runtime.assets.get(captioned.assetId)
+    const captionInfo = await probe(runtime.storage.localPath(captionAsset.storageKey)!)
+    expect(captionInfo.video).not.toBeNull()
+    expect(captionInfo.audio).not.toBeNull()
+    const captionParents = (await runtime.assets.lineage(captioned.assetId)).parents.map(parent => parent.assetId)
+    expect(captionParents).toContain(finished.assetId)
+    expect((await finishCaptionedSongMoment(runtime, masterId, 'tester', orgId))).toMatchObject({
+      reused: true, assetId: captioned.assetId,
+    })
     expect((await masters.finishWithSongMoment(masterId, 'tester', orgId))).toMatchObject({
       reused: true, assetId: finished.assetId,
     })
@@ -294,6 +307,8 @@ describe('render pipeline', () => {
     // Revoking the source never silently reauthorizes a derivative operation.
     await runtime.assets.setRights(song.id, { consent: 'revoked', authorized: false }, 'tester')
     await expect(masters.finishWithSongMoment(masterId, 'tester', orgId)).rejects.toMatchObject({ code: 'song_moment.rights' })
+    await expect(finishCaptionedSongMoment(runtime, masterId, 'tester', orgId))
+      .rejects.toMatchObject({ code: 'song_moment.rights' })
   }, 120_000)
 
   it('auto-rejects a defective render without a human ever seeing it', async () => {
