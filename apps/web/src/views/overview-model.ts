@@ -42,15 +42,9 @@ export interface StartMode {
   next: string
 }
 
-/**
- * Three ways in.
- *
- * All three create the film the same way, through `api.createProject`, because
- * that is the only project-creating call the API has. What differs is what you
- * do on the project page afterwards, and `next` says so rather than implying
- * the app does it for you. The prototype offered a file picker and a format
- * menu here; neither has anything behind it, so neither is built.
- */
+/** Three real first-session workflows. Choosing a card opens its action
+ * immediately; audio uploads to MOTION References and templates create actual
+ * editable canonical draft shots, without starting paid generation. */
 export const START_MODES: readonly StartMode[] = [
   {
     id: 'audio',
@@ -59,7 +53,7 @@ export const START_MODES: readonly StartMode[] = [
     actionLabel: 'Start a film with audio',
     dialogTitle: 'Start with your track.',
     fieldLabel: 'Brief',
-    next: 'The film is created first. Add the track on its References tab, then build the shot list from it.',
+    next: 'Choose an audio file and confirm its rights. The film and recording are saved together; no video renders are submitted.',
   },
   {
     id: 'idea',
@@ -77,7 +71,7 @@ export const START_MODES: readonly StartMode[] = [
     actionLabel: 'Start a film with a template',
     dialogTitle: 'Start with a structure.',
     fieldLabel: 'Brief',
-    next: 'The film is created first. Its Import tab takes the shot-list template, so you start from a working format instead of a blank list.',
+    next: 'Select a structure to create three editable draft shots in your new film. No renders or provider charges are submitted.',
   },
 ]
 
@@ -717,4 +711,77 @@ export function railItems(projectId: string | null, firstShotId: string | null):
     { key: 'masters', label: 'Masters', href: projectId ? `/masters/${projectId}` : null },
     { key: 'costs', label: 'Costs', href: projectId ? `/costs/${projectId}` : null },
   ]
+}
+
+
+/** Real editable starter structures, not static mock cards. Canonical shot
+ * versions are created only after the user submits the film form. */
+export interface StarterTemplate {
+  id: 'performance' | 'narrative' | 'visualizer'
+  title: string
+  description: string
+  brief: string
+  shots: readonly { title: string; action: string; camera: string; seconds: number }[]
+}
+export const STARTER_TEMPLATES: readonly StarterTemplate[] = [
+  {
+    id: 'performance', title: 'Performance video',
+    description: 'A clear three-shot performance arc with an establishing shot, a moving performance, and a hook close-up.',
+    brief: 'Film a grounded artist performance, progressing from establishing space to movement and expressive close-up. Preserve identity, lighting and wardrobe continuity.',
+    shots: [
+      { title:'01 — Establish the performance world',action:'Reveal the performance environment and artist in a wide master shot.',camera:'Wide 24mm, slow dolly inward',seconds:5 },
+      { title:'02 — Follow the verse performance',action:'Artist performs to camera with natural movement and consistent space.',camera:'Medium 50mm tracking shot',seconds:5 },
+      { title:'03 — Hook hero close-up',action:'Deliver the musical hook in an emotionally direct close-up.',camera:'85mm close-up, subtle push',seconds:5 },
+    ],
+  },
+  {
+    id: 'narrative',title:'Cinematic story',
+    description:'An opening, a turning point, and a visual resolution you can rewrite scene by scene.',
+    brief:'A cinematic three-part visual story with one character, one motivated change, and a clear final image. Preserve costume and environmental continuity.',
+    shots: [
+      {title:'01 — Introduce the world',action:'Establish a believable cinematic location and the protagonist within it.',camera:'Wide 35mm, controlled establishing move',seconds:6},
+      {title:'02 — The turning point',action:'The protagonist encounters a decisive change expressed with an observable action.',camera:'Medium 50mm, restrained lateral motion',seconds:6},
+      {title:'03 — Visual resolution',action:'Close on a meaningful gesture or environmental detail that resolves the story.',camera:'Detail 85mm, slow hold',seconds:6},
+    ],
+  },
+  {
+    id:'visualizer',title:'Music visualizer',
+    description:'Three evolving texture-driven scenes designed for a continuous music-led visual.',
+    brief:'Build a rhythmic atmospheric visual world where materials, lighting and camera movement evolve across three shots. No invented captions or lyric transcriptions.',
+    shots: [
+      {title:'01 — Establish visual texture',action:'Introduce tactile materials, light and movement in a continuous abstract environment.',camera:'Wide 35mm, slow drifting orbit',seconds:5},
+      {title:'02 — Build visual intensity',action:'Increase the motion and contrast without changing the established visual identity.',camera:'Controlled forward tracking',seconds:5},
+      {title:'03 — Release and resolve',action:'Resolve the visual rhythm into a composed held ending.',camera:'Gentle pullback, final stillness',seconds:5},
+    ],
+  },
+]
+
+export function starterTemplate(id: string): StarterTemplate {
+  return STARTER_TEMPLATES.find(item => item.id === id) ?? STARTER_TEMPLATES[0]!
+}
+
+export function templateShotSpec(
+  blank: Record<string, unknown>,
+  template: StarterTemplate,
+  index: number,
+  key: string,
+): Record<string, unknown> {
+  const shot = template.shots[index]
+  if (!shot) throw new Error('Missing template shot')
+  return {
+    ...blank,shot_id:key,title:shot.title,
+    generation_mode:'text_to_video',
+    shot_category:index===0?'environment':'performance',
+    routing_profile:'DRAFT_MOTION',
+    duration_seconds:shot.seconds,
+    action:shot.action,
+    narrative_purpose:template.brief,
+    camera_position:shot.camera,
+    camera_movement:shot.camera,
+    performance_direction:shot.action,
+    candidate_count:1,
+    audio_mode:'none',
+    approval_requirements:['human_review_required','director_approval'],
+    notes:'Editable starter template only. Nothing has been rendered or charged.',
+  }
 }
