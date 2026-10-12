@@ -368,6 +368,7 @@ describe('render pipeline', () => {
       expect(publicResult.statusCode).toBe(200)
       expect(publicResult.json().exports).toHaveLength(1)
       expect(publicResult.json().exports[0].url).toContain('sig=')
+      expect(publicResult.json().latestJob).toMatchObject({id:requestAssembly.json().jobId,status:'completed'})
 
       const updatedCut = await server.inject({
         method:'PUT',url:timelineBase+'/'+timelineId,cookies,
