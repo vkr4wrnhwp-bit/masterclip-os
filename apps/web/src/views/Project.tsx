@@ -2,11 +2,18 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
+import { QuickCreate } from './QuickCreate.jsx'
+import { VariationCompare } from './VariationCompare.jsx'
+import { MusicTimeline } from './MusicTimeline.jsx'
 
 export function ProjectView({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'import' | 'assets' | 'bible'>(initialTab === 'assets' || initialTab === 'import' || initialTab === 'bible' ? initialTab : 'shots')
+  type ProjectTab = 'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'
+  const routeTab = (value?: string): ProjectTab =>
+    value === 'assets' || value === 'import' || value === 'bible' || value === 'quick' || value === 'timeline' || value === 'compare' ? value : 'shots'
+  const [tab, setTab] = React.useState<ProjectTab>(() => routeTab(initialTab))
+  React.useEffect(() => { setTab(routeTab(initialTab)) }, [projectId, initialTab])
 
   return (
     <>
@@ -16,6 +23,9 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
       </div>
 
       <div className="tabs">
+        <button className={tab === 'quick' ? 'active' : ''} onClick={() => setTab('quick')}>Quick Create</button>
+        <button className={tab === 'timeline' ? 'active' : ''} onClick={() => setTab('timeline')}>Music Video Timeline</button>
+        <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')}>Compare variants</button>
         <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>
           Shots
         </button>
@@ -85,6 +95,9 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
         </Card>
       )}
 
+      {tab === 'quick' && <QuickCreate projectId={projectId} onSaved={() => shots.reload()} onReferences={() => setTab('assets')} />}
+      {tab === 'timeline' && <MusicTimeline projectId={projectId} onCreated={() => shots.reload()} />}
+      {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
       {tab === 'assets' && <AssetsPanel projectId={projectId} />}
       {tab === 'bible' && (
