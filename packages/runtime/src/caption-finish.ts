@@ -82,6 +82,7 @@ export async function finishCaptionedSongMoment(
     const stored = await rt.storage.putFile(key, outputPath, { contentType: 'video/mp4', sha256: sha })
     storedKey = stored.key
     const asset = await lease.commit(async tx => {
+      await lease.assertAudioStillAuthorized(tx, version.spec.music_cue!.asset_id, master.projectId)
       const created = await rt.assets.create({
         projectId: master.projectId,
         kind: 'delivery',
