@@ -40,6 +40,12 @@ export async function assembleApprovedTimeline(rt:Runtime,request:{
   const {projectId,timelineId,version,actor,orgId}=request
   const spec=MotionTimelineInput.parse(request.spec)
   const fullDuration=timelineDuration(spec)
+  const timeline=await rt.db.get<{project_id:string}>(
+    'SELECT project_id FROM motion_music_timelines WHERE id = ?', [timelineId],
+  )
+  if(!timeline||timeline.project_id!==projectId){
+    throw new AppError({kind:'forbidden',code:'timeline.foreign',message:'timeline belongs to another project'})
+  }
   const existing=await rt.db.get<{asset_id:string}>(
     'SELECT asset_id FROM motion_timeline_exports WHERE timeline_id = ? AND version = ?',
     [timelineId,version],
@@ -48,12 +54,6 @@ export async function assembleApprovedTimeline(rt:Runtime,request:{
     const asset=await rt.assets.get(existing.asset_id)
     await assertMediaReadable(rt,asset.id)
     return {assetId:asset.id,reused:true,durationSeconds:asset.durationSeconds??fullDuration}
-  }
-  const timeline=await rt.db.get<{project_id:string}>(
-    'SELECT project_id FROM motion_music_timelines WHERE id = ?', [timelineId],
-  )
-  if(!timeline||timeline.project_id!==projectId){
-    throw new AppError({kind:'forbidden',code:'timeline.foreign',message:'timeline belongs to another project'})
   }
   const song=await rt.assets.get(spec.audio_asset_id)
   const expiration=song.rights.expiresAt?Date.parse(song.rights.expiresAt):null
