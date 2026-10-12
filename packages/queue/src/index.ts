@@ -18,6 +18,8 @@ export const JOB_TYPES = {
   runVisualQc: 'qc.visual',
   buildProxies: 'media.proxies',
   finishMaster: 'media.finish',
+  finishSongMoment: 'media.song_moment',
+  finishCaptionedSong: 'media.captioned_song',
   refreshCatalog: 'maintenance.refresh_catalog',
   providerHealth: 'maintenance.provider_health',
   recomputeStats: 'maintenance.recompute_stats',
