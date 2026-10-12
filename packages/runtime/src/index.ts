@@ -21,6 +21,7 @@ export * from './masters.js'
 export * from './caption-finish.js'
 export * from './media-finish-lease.js'
 export * from './media-rights.js'
+export * from './music-timeline.js'
 
 /**
  * The composition root.
