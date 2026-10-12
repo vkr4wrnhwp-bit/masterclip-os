@@ -33,3 +33,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      # Browser checks use disposable SQLite and sandbox mode; never production.
+      - name: Install browser engines
+        run: pnpm exec playwright install --with-deps chromium webkit
+      - name: First-film desktop and mobile WebKit smoke
+        run: pnpm exec playwright test tests/e2e/motion-first-film.spec.ts --project=chromium --project=mobile-webkit
