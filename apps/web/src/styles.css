@@ -464,7 +464,7 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 /* The soundstage, drawn rather than photographed. Setting --mo-hero-image on
    .mo-scenery paints a real photograph over the whole drawing. */
 .mo-scenery {
-  --mo-hero-image: url('/motion-film-studio.webp');
+  --mo-hero-image: url('/motion-start-film-hero.webp');
   position: absolute;
   right: 0;
   top: 0;
