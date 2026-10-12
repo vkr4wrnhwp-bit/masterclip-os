@@ -9,10 +9,10 @@ const style=readFileSync('apps/web/src/styles.css','utf8')
 
 describe('MOTION home hero and start action regressions',()=>{
   it('uses the supplied film studio and never puts pointer hit areas behind decorative layers',()=>{
-    const art=readFileSync('apps/web/public/motion-film-studio.webp')
+    const art=readFileSync('apps/web/public/motion-start-film-hero.webp')
     expect(art.subarray(0,4).toString()).toBe('RIFF')
     expect(art.subarray(8,12).toString()).toBe('WEBP')
-    expect(style).toContain("url('/motion-film-studio.webp')")
+    expect(style).toContain("url('/motion-start-film-hero.webp')")
     expect(style).toMatch(/\.mo-scenery\s*\{[^}]*pointer-events:\s*none;/s)
     expect(style).toContain('.mo-scenery > * { display: none; }')
   })
