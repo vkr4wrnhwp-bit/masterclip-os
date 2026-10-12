@@ -161,6 +161,33 @@ describe('MOTION native audio permissions', () => {
     expect(await rt.renders.listOutputs({ shotId: response.json().shotId })).toHaveLength(0)
   })
 
+  it('refuses already-signed local audio links after rights revocation', async () => {
+    const getLink = () => app.inject({
+      method: 'GET', url: `/api/assets/${audioId}/url`,
+      cookies: { [SESSION_COOKIE]: session },
+    })
+    const before = await getLink()
+    expect(before.statusCode).toBe(200)
+    const signedUrl = String(before.json().url)
+    expect(signedUrl).toContain('/api/assets/raw')
+    const playable = await app.inject({ method: 'GET', url: signedUrl })
+    expect(playable.statusCode).toBe(200)
+
+    await rt.assets.setRights(audioId, { consent: 'revoked', authorized: false }, userId)
+    const refusedNew = await getLink()
+    expect(refusedNew.statusCode).toBe(403)
+    const refusedOld = await app.inject({ method: 'GET', url: signedUrl })
+    expect(refusedOld.statusCode).toBe(403)
+
+    // Keep the record visible to its owner, but never mint playable URLs.
+    const listed = await app.inject({
+      method: 'GET', url: `/api/projects/${projectId}/assets`,
+      cookies: { [SESSION_COOKIE]: session },
+    })
+    expect(listed.statusCode).toBe(200)
+    expect(listed.json().assets.find((item: {id:string})=>item.id===audioId)?.url).toBeNull()
+  })
+
   it('refuses an audio source when its consent has been revoked', async () => {
     await rt.assets.setRights(audioId, { consent: 'revoked', authorized: false }, userId)
     const denied = await app.inject({
