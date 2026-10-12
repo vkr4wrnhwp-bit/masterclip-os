@@ -282,6 +282,10 @@ export const api = {
 
   createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
     post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
+  beats: (assetId: string) =>
+    get<{ assetId: string; bpm: number|null; confidence: number; beats: number[];
+      durationSeconds: number; source: 'decoded_pcm_onset'; analysisVersion: 1; limitation: string }>(
+      `/api/assets/${encodeURIComponent(assetId)}/beats`),
   waveform: (assetId: string) => get<{ assetId: string; peaks: number[]; durationSeconds: number; source: 'decoded_pcm' }>(`/api/assets/${encodeURIComponent(assetId)}/waveform`),
 
   quickCreate: (projectId: string, body: {
