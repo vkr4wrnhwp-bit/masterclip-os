@@ -28,21 +28,24 @@ export async function assertMediaReadable(
         message: 'media lineage exceeds the safe authorization limit',
       })
     }
-    const holders = frontier.map(() => '?').join(',')
-    const rows = await rt.db.query<{ parent_asset_id: string }>(
-      `SELECT parent_asset_id FROM asset_lineage WHERE child_asset_id IN (${holders})`,
-      frontier,
-    )
     const next: string[] = []
-    for (const row of rows) {
-      if (!seen.has(row.parent_asset_id)) {
-        seen.add(row.parent_asset_id)
-        next.push(row.parent_asset_id)
-        if (seen.size > MAX_NODES) {
-          throw new AppError({
-            kind: 'forbidden', code: 'media_rights.lineage_limit',
-            message: 'media lineage exceeds the safe authorization limit',
-          })
+    // A constant SQL statement with one bound child id per lookup also
+    // satisfies the repository's strict interpolation security guard.
+    for (const childId of frontier) {
+      const rows = await rt.db.query<{ parent_asset_id: string }>(
+        'SELECT parent_asset_id FROM asset_lineage WHERE child_asset_id = ?',
+        [childId],
+      )
+      for (const row of rows) {
+        if (!seen.has(row.parent_asset_id)) {
+          seen.add(row.parent_asset_id)
+          next.push(row.parent_asset_id)
+          if (seen.size > MAX_NODES) {
+            throw new AppError({
+              kind: 'forbidden', code: 'media_rights.lineage_limit',
+              message: 'media lineage exceeds the safe authorization limit',
+            })
+          }
         }
       }
     }
