@@ -74,6 +74,12 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
 
   const mode = modeById(modeId)
 
+  const openStart = (selected: StartMode) => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setModeId(selected.id)
+    setDialogMode(selected)
+  }
+
   const jobs = countJobs(film.data?.queue.jobs ?? [])
   const masterCounts = countMasters(film.data?.masters.masters ?? [])
   const takes = film.data?.takes ?? []
@@ -111,25 +117,9 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
       />
 
       <div className="mo-shell">
-        {/* The soundstage is drawn in CSS, because this repository holds no
-            photograph and the screen will not ship a binary to get one. To use
-            a real photograph instead, set a single custom property and nothing
-            else changes:  .mo-scenery { --mo-hero-image: url("/hero.jpg"); }
-            It paints over the drawn layers and is already sized to cover. */}
-        <div
-          className="mo-scenery"
-          role="img"
-          aria-label="Drawing of an empty soundstage with a lit doorway, road cases and a light stand"
-        >
-          <div className="mo-wall" />
-          <div className="mo-rig" />
-          <div className="mo-floor" />
-          <div className="mo-light" />
-          <div className="mo-door" />
-          <div className="mo-roadcase" />
-          <div className="mo-roadcase mo-case-two" />
-          <div className="mo-stand" />
-        </div>
+        {/* The exact artist-supplied cinematic studio image sits behind the
+            hero heading and never intercepts taps on starting actions. */}
+        <div className="mo-scenery mo-scenery-photo" aria-hidden="true" />
 
         <main className="mo-main" id="mo-main">
           <p className="mo-topline">Create something extraordinary.</p>
@@ -138,28 +128,28 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             <p className="mo-eyebrow">A DIRECTOR&rsquo;S ROOM</p>
             <h1 id="mo-hero-heading">Start a new film.</h1>
             <p className="mo-support">Ideas in. Films out. A faster, sharper way to make extraordinary music videos.</p>
+            <button
+              type="button"
+              className="mo-start mo-hero-cta"
+              onClick={() => openStart(modeById('idea'))}
+            >
+              START A FILM <span aria-hidden="true">&rarr;</span>
+            </button>
           </section>
 
-          {/* A real radio group: name-grouped native inputs inside their labels,
-              inside a fieldset. Arrow keys, Space and the roving tab stop are
-              the platform's, which is stronger than any hand-rolled version. */}
-          <fieldset className="mo-modes">
-            <legend className="mo-sr">Choose a starting point</legend>
+          {/* These are real actions, not a radio selection that waits for a
+              second off-screen button. Mouse, touch, Space and Enter all open
+              the selected workflow immediately. */}
+          <section className="mo-modes" aria-label="Choose how to start your film">
             <div className="mo-cards">
               {START_MODES.map((item) => (
-                <label className="mo-mode" key={item.id}>
-                  <input
-                    type="radio"
-                    name="mo-mode"
-                    value={item.id}
-                    checked={item.id === modeId}
-                    onChange={() => setModeId(item.id)}
-                  />
-                  {/* The selection is a mark as well as a border colour, so it
-                      reads on a monochrome screen. */}
-                  <span className="mo-selection" aria-hidden="true">
-                    &#10003;
-                  </span>
+                <button
+                  type="button"
+                  className={`mo-mode${item.id === modeId ? ' is-selected' : ''}`}
+                  key={item.id}
+                  onClick={() => openStart(item)}
+                  aria-label={item.actionLabel}
+                >
                   <ModeIcon id={item.id} />
                   <strong>{item.title}</strong>
                   <small>
@@ -167,13 +157,11 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
                     <br />
                     {item.description[1]}
                   </small>
-                  <span className="mo-chevron" aria-hidden="true">
-                    &rsaquo;
-                  </span>
-                </label>
+                  <span className="mo-chevron" aria-hidden="true">&rsaquo;</span>
+                </button>
               ))}
             </div>
-          </fieldset>
+          </section>
 
           <section className="mo-workflow" aria-label={`Production sequence, now at ${stage.label}`}>
             <ol className="mo-stages">
@@ -198,12 +186,9 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
               type="button"
               className="mo-start"
               aria-label={mode.actionLabel}
-              onClick={() => {
-                openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-                setDialogMode(mode)
-              }}
+              onClick={() => openStart(mode)}
             >
-              LET&rsquo;S GO <span aria-hidden="true">&rarr;</span>
+              START A FILM <span aria-hidden="true">&rarr;</span>
             </button>
           </section>
 
