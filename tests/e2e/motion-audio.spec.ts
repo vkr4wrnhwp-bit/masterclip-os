@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('authorized WAV upload appears in References and Quick Create', async ({ page }) => {
+test('authorized WAV upload appears in References and Quick Create', async ({ page }, testInfo) => {
   test.setTimeout(180_000)
   await page.goto('/')
   await page.locator('.login summary').click()
@@ -15,7 +15,7 @@ test('authorized WAV upload appears in References and Quick Create', async ({ pa
   await page.getByRole('button', { name: health.signupOpen ? 'Create account' : 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Start a new film.' })).toBeVisible()
   await page.getByRole('button', { name: 'Start a film with audio' }).click()
-  await page.getByLabel('Project name').fill('QA Recording')
+  await page.getByLabel('Project name').fill('QA Recording ' + testInfo.project.name)
   const wav = Buffer.alloc(44 + 64_000)
   wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8)
   wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22)
