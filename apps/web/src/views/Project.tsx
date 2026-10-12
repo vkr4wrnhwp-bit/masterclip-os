@@ -43,7 +43,7 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
         <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')}>Compare variants</button>
         <button className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>Import shots</button>
         <button className={tab === 'bible' ? 'active' : ''} onClick={() => setTab('bible')}>Brief &amp; style</button>
-      </div>>
+      </div>
 
       {tab === 'shots' && (
         <Card title="Shot list" action={<NewShotButton projectId={projectId} onCreated={() => shots.reload()} />}>
