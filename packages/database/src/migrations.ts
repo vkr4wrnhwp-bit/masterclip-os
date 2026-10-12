@@ -641,5 +641,67 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_agent ON agent_runs(agent, created_at)
 ALTER TABLE orgs ADD COLUMN street_banker_identity TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_street_banker ON orgs(street_banker_identity);
 `,
+  },  {
+    id: '0004_media_finish_leases',
+    sql: `
+-- One independent lease per approved master. Competing workers (or a
+-- concurrent retry) cannot both register post-production derivatives. A
+-- crashed worker's lock expires and can be atomically recovered.
+CREATE TABLE IF NOT EXISTS media_finish_leases (
+  master_id    TEXT PRIMARY KEY REFERENCES masters(id),
+  owner_token  TEXT NOT NULL,
+  expires_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_finish_lease_expiry ON media_finish_leases(expires_at);
+`,
   },
+  {
+    id: '0005_motion_music_timelines',
+    sql: `
+-- Independent edit decisions, never a replacement for approved video assets.
+CREATE TABLE IF NOT EXISTS motion_music_timelines (
+  id          TEXT PRIMARY KEY,
+  project_id  TEXT NOT NULL REFERENCES projects(id),
+  name        TEXT NOT NULL,
+  version     INTEGER NOT NULL,
+  spec        TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_motion_timelines_project ON motion_music_timelines(project_id, updated_at);
+`,
+  },
+  {
+    id: '0006_motion_timeline_exports',
+    sql: `
+-- One verified finished delivery per immutable timeline version.
+CREATE TABLE IF NOT EXISTS motion_timeline_exports (
+  id          TEXT PRIMARY KEY,
+  timeline_id TEXT NOT NULL REFERENCES motion_music_timelines(id),
+  version     INTEGER NOT NULL,
+  asset_id    TEXT NOT NULL REFERENCES assets(id),
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  UNIQUE(timeline_id,version)
+);
+CREATE INDEX IF NOT EXISTS idx_motion_timeline_exports_id ON motion_timeline_exports(timeline_id,version);
+`,
+  },
+  {
+    id: '0007_motion_music_sections',
+    sql: `
+-- User-authored, project-scoped song landmarks, not AI-generated claims.
+CREATE TABLE IF NOT EXISTS motion_music_sections (
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  audio_asset_id TEXT NOT NULL REFERENCES assets(id),
+  version INTEGER NOT NULL,
+  sections TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(project_id,audio_asset_id)
+);
+`,
+  },
+
 ]
