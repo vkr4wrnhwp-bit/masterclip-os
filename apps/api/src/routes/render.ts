@@ -436,7 +436,7 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
                 payload?.masterId === master.id
             }).slice(0, 4).map(job => ({
               id: job.id, status: job.status, type: job.type,
-              lastError: job.status === 'dead' ? job.lastError : null,
+              lastError: job.status === 'dead' ? 'Media finishing failed. Review server logs for details.' : null,
               createdAt: job.createdAt,
             })),
             captionCount: cue?.promotional_use_attested ? (version?.spec.timed_captions.length ?? 0) : 0,
@@ -499,7 +499,7 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
         payload?.masterId !== masterId) {
       throw notFound('finishing job', jobId)
     }
-    return { jobId, status: job.status, error: job.status === 'dead' || job.status === 'failed' ? job.lastError : null }
+    return { jobId, status: job.status, error: job.status === 'dead' || job.status === 'failed' ? 'Media processing failed. Retry the job or contact support.' : null }
   })
 
   // Explicit recovery of a failed *nonbillable* media job. The prior job is
