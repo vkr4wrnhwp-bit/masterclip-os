@@ -92,7 +92,7 @@ export function ProjectView({ projectId }: { projectId: string }) {
       )}
 
       {tab === 'quick' && <QuickCreate projectId={projectId} onSaved={() => shots.reload()} onReferences={() => setTab('assets')} />}
-      {tab === 'timeline' && <MusicTimeline projectId={projectId} />}
+      {tab === 'timeline' && <MusicTimeline projectId={projectId} onCreated={() => shots.reload()} />}
       {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
       {tab === 'assets' && <AssetsPanel projectId={projectId} />}
