@@ -18,6 +18,7 @@ import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type
 
 export * from './render.js'
 export * from './masters.js'
+export * from './caption-finish.js'
 
 /**
  * The composition root.
