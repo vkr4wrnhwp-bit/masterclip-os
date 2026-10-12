@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { AppError, asAppError, httpStatusFor, type Logger } from '@masterclip/shared'
 import type { Runtime } from '@masterclip/runtime'
+import { nativeFinishingEnabled } from '@masterclip/runtime'
 import { registerProjectRoutes } from './routes/projects.js'
 import { registerQuickCreateRoutes } from './routes/quick-create.js'
 import { registerQuickVariants } from './routes/quick-variants.js'
@@ -109,6 +110,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
       mode: runtime.config.MASTERCLIP_MODE,
       dialect: runtime.db.dialect,
       storage: runtime.storage.name,
+      nativeFinishingEnabled: nativeFinishingEnabled(runtime.config),
       agents: runtime.agents.available,
       time: runtime.clock.isoNow(),
       streetBankerUrl: (process.env.STREET_BANKER_URL ?? 'https://app.streetbankermusic.com').replace(/\/+$/, ''),
