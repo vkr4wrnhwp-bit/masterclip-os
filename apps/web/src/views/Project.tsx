@@ -14,6 +14,19 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
     value === 'assets' || value === 'import' || value === 'bible' || value === 'quick' || value === 'timeline' || value === 'compare' ? value : 'shots'
   const [tab, setTab] = React.useState<ProjectTab>(() => routeTab(initialTab))
   React.useEffect(() => { setTab(routeTab(initialTab)) }, [projectId, initialTab])
+  const tabsRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    const container = tabsRef.current
+    const selected = container?.querySelector<HTMLButtonElement>('button.active')
+    if (!container || !selected) return
+    // Scroll only the tab strip, never the document. Deep links to Import or
+    // References remain visible on 320px portrait screens.
+    const left = selected.offsetLeft - container.offsetLeft
+    const right = left + selected.offsetWidth
+    if (left < container.scrollLeft) container.scrollLeft = left
+    else if (right > container.scrollLeft + container.clientWidth) container.scrollLeft = right - container.clientWidth
+  }, [tab])
+
 
   return (
     <>
@@ -22,23 +35,15 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
         <div className="meta">{shots.data ? `${shots.data.shots.length} shots` : ''}</div>
       </div>
 
-      <div className="tabs">
+      <div className="tabs" ref={tabsRef} role="group" aria-label="Film workflow tools">
+        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>References</button>
         <button className={tab === 'quick' ? 'active' : ''} onClick={() => setTab('quick')}>Quick Create</button>
+        <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>Shots</button>
         <button className={tab === 'timeline' ? 'active' : ''} onClick={() => setTab('timeline')}>Music Video Timeline</button>
         <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')}>Compare variants</button>
-        <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>
-          Shots
-        </button>
-        <button className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>
-          Import
-        </button>
-        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
-          References
-        </button>
-        <button className={tab === 'bible' ? 'active' : ''} onClick={() => setTab('bible')}>
-          Brief &amp; style
-        </button>
-      </div>
+        <button className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>Import shots</button>
+        <button className={tab === 'bible' ? 'active' : ''} onClick={() => setTab('bible')}>Brief &amp; style</button>
+      </div>>
 
       {tab === 'shots' && (
         <Card title="Shot list" action={<NewShotButton projectId={projectId} onCreated={() => shots.reload()} />}>
