@@ -272,6 +272,13 @@ export const api = {
       body,
     ),
 
+  creativeTreatments: (projectId: string) =>
+    get<{ treatments: Array<{ id: string; name: string; look: string; aspect_ratio: string; direction: string }> }>(
+      `/api/projects/${encodeURIComponent(projectId)}/creative-treatments`),
+  saveCreativeTreatment: (projectId: string, treatment: { name: string; look: string; aspect_ratio: string; direction: string }) =>
+    post<{ treatment: { id: string; name: string; look: string; aspect_ratio: string; direction: string } }>(
+      `/api/projects/${encodeURIComponent(projectId)}/creative-treatments`, treatment),
+
   createVariant: (projectId: string, body: {sourceShotId:string;label:string;direction:string;look:string}) =>
     post<{shotId:string;sourceShotId:string;status:string;rendered:boolean}>(`/api/projects/${projectId}/quick-variants`, body),
   waveform: (assetId: string) => get<{ assetId: string; peaks: number[]; durationSeconds: number; source: 'decoded_pcm' }>(`/api/assets/${encodeURIComponent(assetId)}/waveform`),
