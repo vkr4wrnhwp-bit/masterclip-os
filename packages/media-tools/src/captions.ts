@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { AppError } from '@masterclip/shared'
@@ -69,6 +69,7 @@ export async function burnTimedCaptions(
     // The exact visual treatment is deterministic; no user-provided filter
     // strings. Captions are justified at the bottom with an actual outline.
     const style = "FontName=DejaVu Sans,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=40"
+    await mkdir(dirname(outputPath), { recursive: true })
     await ffmpeg([
       '-i', sourcePath,
       '-map', '0:v:0', ...(media.audio ? ['-map', '0:a:0'] : []),
