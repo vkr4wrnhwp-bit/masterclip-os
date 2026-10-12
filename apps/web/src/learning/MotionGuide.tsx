@@ -34,7 +34,8 @@ function focusSafely(node: HTMLElement | null): void {
 /** Pure educational UI: highlights existing DOM; never invokes product handlers. */
 export function MotionGuide({ preview = false }: { preview?: boolean }) {
   const route = useRoute()
-  const lessonKey:LessonKey = Object.prototype.hasOwnProperty.call(LESSONS, route.name) ? route.name as LessonKey : 'dashboard'
+  const requestedKey = route.name === 'project' && ['references','quick','timeline','compare'].includes(route.params.tab === 'assets' ? 'references' : route.params.tab) ? (route.params.tab === 'assets' ? 'references' : route.params.tab) : route.name
+  const lessonKey:LessonKey = Object.prototype.hasOwnProperty.call(LESSONS, requestedKey) ? requestedKey as LessonKey : 'dashboard'
   const lesson = LESSONS[lessonKey]
   const [open, setOpen] = React.useState(false)
   const [view, setView] = React.useState<View>('intro')
@@ -46,7 +47,7 @@ export function MotionGuide({ preview = false }: { preview?: boolean }) {
   const launchRef = React.useRef<HTMLButtonElement>(null)
   const previous = React.useRef<HTMLElement | null>(null)
   const firstStep = lesson.steps[step]
-  const routeSignature = [route.name,route.params.projectId ?? '',route.params.shotId ?? '',route.params.walkthrough ?? ''].join('/')
+  const routeSignature = [route.name,route.params.projectId ?? '',route.params.shotId ?? '',route.params.tab ?? '',route.params.walkthrough ?? ''].join('/')
 
   const close = React.useCallback(() => {
     setOpen(false); setHighlight(null)
@@ -145,6 +146,10 @@ export function MotionGuide({ preview = false }: { preview?: boolean }) {
     {title:'Providers & models',href:'/providers'},
     ...(route.params.projectId ? [
       {title:'Current film',href:'/project/'+encodeURIComponent(route.params.projectId)},
+      {title:'References & rights',href:'/project/'+encodeURIComponent(route.params.projectId)+'?tab=assets&walkthrough=1'},
+      {title:'Quick Create & Beat Intelligence',href:'/project/'+encodeURIComponent(route.params.projectId)+'?tab=quick&walkthrough=1'},
+      {title:'Music Video Timeline',href:'/project/'+encodeURIComponent(route.params.projectId)+'?tab=timeline&walkthrough=1'},
+      {title:'Compare variants',href:'/project/'+encodeURIComponent(route.params.projectId)+'?tab=compare&walkthrough=1'},
       {title:'Render queue',href:'/queue/'+encodeURIComponent(route.params.projectId)},
       {title:'Masters',href:'/masters/'+encodeURIComponent(route.params.projectId)},
       {title:'Cost lab',href:'/costs/'+encodeURIComponent(route.params.projectId)}
