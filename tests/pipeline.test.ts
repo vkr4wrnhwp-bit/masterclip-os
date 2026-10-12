@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, toNum, type Db } from '@masterclip/database'
 import { LocalStorage } from '@masterclip/asset-storage'
-import { formatUsd, loadConfig, silentLogger, usdToMicros } from '@masterclip/shared'
+import { formatUsd, loadConfig, sha256File, silentLogger, usdToMicros } from '@masterclip/shared'
+import { ffmpeg, probe } from '@masterclip/media-tools'
 import { JOB_TYPES, QueueWorker } from '@masterclip/queue'
 import { emptyShot, CharacterRecord, EnvironmentRecord } from '@masterclip/shot-schema'
 import { createRuntime, MasterService, RenderService, QUEUES, type Runtime } from '@masterclip/runtime'
@@ -230,6 +231,70 @@ describe('render pipeline', () => {
     expect(metrics.approvedCount).toBe(1)
     expect(metrics.costPerApprovedSecond).not.toBeNull()
   })
+
+  it('finishes a human-approved MOTION video using an exact, rights-checked song cue', async () => {
+    const audioPath = join(storageRoot, 'original-track.wav')
+    await ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=740:duration=6', '-c:a', 'pcm_s16le', audioPath])
+    const inputSha = await sha256File(audioPath)
+    const stored = await runtime.storage.putFile(`${projectId}/audio/test-song/track.wav`, audioPath, {
+      contentType: 'audio/wav', sha256: inputSha,
+    })
+    const song = await runtime.assets.create({
+      projectId, kind: 'audio', storageKey: stored.key,
+      filename: 'track.wav', mime: 'audio/wav', bytes: stored.bytes, sha256: stored.sha256,
+      durationSeconds: 6, createdBy: 'tester',
+      rights: { owner: 'Authorized Artist', authorized: true, consent: 'authorized', allowedUse: 'promotional video' },
+    })
+
+    const current = await runtime.projects.currentVersion(shotId)
+    const version = await runtime.projects.addVersion({
+      shotId, createdBy: 'tester', note: 'authorized music cue',
+      spec: {
+        ...current.spec,
+        music_cue: {
+          asset_id: song.id, start_seconds: 1, end_seconds: 4,
+          creative_look: 'cinematic', promotional_use_attested: true,
+        },
+      },
+    })
+    const render = new RenderService(runtime)
+    await render.planBatch({ projectId, shotId, batchName: 'music-video', candidates: candidates(1), createdBy: 'tester', orgId })
+    await drain(render)
+    const outputs = await runtime.renders.listOutputs({ shotId })
+    const candidate = outputs[0]
+    expect(candidate).toBeDefined()
+    if (!candidate) throw new Error('sandbox did not produce a valid output')
+    await runtime.renders.addReview({
+      outputId: candidate.id, projectId, shotId, userId: 'tester',
+      decision: 'approve', rejectionReasons: [], note: 'director approved',
+    })
+    const masters = new MasterService(runtime)
+    const masterId = await masters.promote({ outputId: candidate.id, name: 'Music Master', approvedBy: 'tester', orgId })
+    const finished = await masters.finishWithSongMoment(masterId, 'tester', orgId)
+    expect(finished.reused).toBe(false)
+    expect(finished.sandbox).toBe(true)
+    const derivative = await runtime.assets.get(finished.assetId)
+    const path = runtime.storage.localPath(derivative.storageKey)
+    expect(path).not.toBeNull()
+    const media = await probe(path!)
+    expect(media.audio).not.toBeNull()
+    expect(media.video?.codec).toBe('h264')
+    expect(media.durationSeconds).toBeGreaterThan(2.55)
+    expect(media.durationSeconds).toBeLessThan(3.45)
+    expect((await runtime.assets.lineage(finished.assetId)).parents.map(p => p.assetId)).toEqual(
+      expect.arrayContaining([candidate.assetId, song.id]),
+    )
+    expect((await runtime.renders.listDeliverables(masterId)).some(d => d.assetId === finished.assetId)).toBe(true)
+    expect((await masters.finishWithSongMoment(masterId, 'tester', orgId))).toMatchObject({
+      reused: true, assetId: finished.assetId,
+    })
+    expect(await sha256File(audioPath)).toBe(inputSha)
+    expect((await runtime.projects.getVersion(version.id)).spec.music_cue?.asset_id).toBe(song.id)
+
+    // Revoking the source never silently reauthorizes a derivative operation.
+    await runtime.assets.setRights(song.id, { consent: 'revoked', authorized: false }, 'tester')
+    await expect(masters.finishWithSongMoment(masterId, 'tester', orgId)).rejects.toMatchObject({ code: 'song_moment.rights' })
+  }, 120_000)
 
   it('auto-rejects a defective render without a human ever seeing it', async () => {
     // Force every candidate defective at the provider.
