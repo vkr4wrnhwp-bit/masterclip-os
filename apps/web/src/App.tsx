@@ -10,6 +10,7 @@ import { ReviewGrid } from './views/ReviewGrid.jsx'
 import { MastersView } from './views/Masters.jsx'
 import { CostLab } from './views/CostLab.jsx'
 import { ProvidersView } from './views/Providers.jsx'
+import { MotionLogo } from './motion-logo.jsx'
 
 export interface Route {
   name: string
@@ -63,6 +64,8 @@ export function App() {
   const [user, setUser] = React.useState<User | null>(null)
   const [sbUrl, setSbUrl] = React.useState(streetBankerHome)
   const [checking, setChecking] = React.useState(true)
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
+  React.useEffect(() => { setMobileNavOpen(false) }, [route.name, route.params.projectId])
   const health = useAsync(() => api.health(), [])
 
   React.useEffect(() => {
@@ -145,11 +148,19 @@ export function App() {
     <>
       {banner}
       <div className="app">
-        <nav className="sidebar">
+        <div className="mobile-console-bar">
+          <MotionLogo />
+          <button type="button" aria-controls="motion-console-sidebar" aria-expanded={mobileNavOpen}
+            onClick={() => setMobileNavOpen(open => !open)}>
+            {mobileNavOpen ? "Close menu" : "Menu"}
+          </button>
+        </div>
+        <nav id="motion-console-sidebar" className={`sidebar${mobileNavOpen ? " is-mobile-open" : ""}`}
+          aria-label="MOTION project navigation" onClick={event => {
+            if ((event.target as HTMLElement).closest("a")) setMobileNavOpen(false)
+          }}>
           <div className="brand">
-            <h1>
-              <img className="brand-mark" src="/motion-wordmark.png" alt="Motion" width={440} height={413} />
-            </h1>
+            <h1><MotionLogo /></h1>
             <div className="sub">cinematic render factory</div>
           </div>
           <div className="nav">
@@ -202,7 +213,7 @@ export function App() {
         </nav>
 
         <main className="main">
-          {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} />}
+          {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} initialTab={route.params.tab} />}
           {route.name === 'shot' && <ShotBuilder shotId={route.params.shotId ?? ''} />}
           {route.name === 'review' && <ReviewGrid shotId={route.params.shotId ?? ''} />}
           {route.name === 'queue' && <QueueView projectId={route.params.projectId ?? ''} />}
