@@ -273,7 +273,7 @@ export const api = {
   quickCreate: (projectId: string, body: {
     title: string; creativeDirection: string; audioAssetId: string;
     visualAssetId: string | null; startSeconds: number; endSeconds: number;
-    aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string
+    aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string; captions?: { start_seconds: number; end_seconds: number; text: string }[]
   }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false }>(`/api/projects/${projectId}/quick-create`, body),
 
   uploadAsset: (projectId: string, form: FormData) =>
