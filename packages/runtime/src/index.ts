@@ -18,6 +18,10 @@ import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type
 
 export * from './render.js'
 export * from './masters.js'
+export * from './caption-finish.js'
+export * from './media-finish-lease.js'
+export * from './media-rights.js'
+export * from './music-timeline.js'
 
 /**
  * The composition root.
