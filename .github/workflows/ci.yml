@@ -38,3 +38,11 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium webkit
       - name: First-film desktop and mobile WebKit smoke
         run: pnpm exec playwright test tests/e2e/motion-first-film.spec.ts tests/e2e/motion-audio.spec.ts --project=chromium --project=mobile-webkit
+      - name: Preserve browser failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motion-browser-failures
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
