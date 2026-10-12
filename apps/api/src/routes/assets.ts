@@ -6,7 +6,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, DEV_ASSET_SIGNING_SECRET, newId, sha256File } from '@masterclip/shared'
 import { LocalStorage, objectKey, sanitizeFilename, verifySignedUrl } from '@masterclip/asset-storage'
-import { probe, waveformPeaks } from '@masterclip/media-tools'
+import { beatAnalysis, probe, waveformPeaks } from '@masterclip/media-tools'
 import { assertMediaReadable, signedReadableUrl, type Runtime } from '@masterclip/runtime'
 import { requireAuth, requireProject } from '../server.js'
 
@@ -102,6 +102,36 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
       return { ...waveform, assetId }
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Conservative beat estimates from the actual recording. No song is
+  // uploaded to a third party; rights are rechecked on each request.
+  const beatsCache = new Map<string, Awaited<ReturnType<typeof beatAnalysis>>>()
+  app.get('/api/assets/:assetId/beats', async request => {
+    const { assetId } = request.params as { assetId: string }
+    const asset = await runtime.assets.get(assetId)
+    await requireProject(runtime, request, asset.projectId)
+    if (asset.kind !== 'audio') {
+      throw new AppError({ kind: 'validation', code: 'beats.asset_kind', message: 'beat analysis requires a recording' })
+    }
+    await assertMediaReadable(runtime, asset.id)
+    if (!asset.rights.authorized || asset.rights.consent !== 'authorized') {
+      throw new AppError({ kind: 'forbidden', code: 'beats.rights', message: 'recording needs current authorization' })
+    }
+    const cacheKey = asset.sha256 + ':beat-v1'
+    const cached = beatsCache.get(cacheKey)
+    if (cached) return { ...cached, assetId }
+    const directory = await mkdtemp(join(tmpdir(), 'motion-beats-'))
+    try {
+      const path = runtime.storage.localPath(asset.storageKey) ??
+        await runtime.storage.materialize(asset.storageKey, join(directory, 'track'))
+      const analysis = await beatAnalysis(path)
+      if (beatsCache.size >= 32) beatsCache.delete(beatsCache.keys().next().value ?? '')
+      beatsCache.set(cacheKey, analysis)
+      return { ...analysis, assetId }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
     }
   })
 
