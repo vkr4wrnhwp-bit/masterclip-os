@@ -20,6 +20,7 @@
  * it will never perform is worse than a container the platform restarts.
  */
 import { spawn } from 'node:child_process'
+import { verifyPreMigrationBackup } from './motion-release-backup.mjs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -56,6 +57,25 @@ function shutdown(code) {
 
 process.on('SIGTERM', () => shutdown(0))
 process.on('SIGINT', () => shutdown(0))
+
+// Fail closed before the seed, API or worker can run new schema migrations.
+// A failed or misplaced backup leaves the live database unmodified.
+try {
+  const backup = await verifyPreMigrationBackup(env)
+  if (backup.verified) {
+    console.log(JSON.stringify({
+      level:'info',msg:'motion.release_backup_verified',releaseId:backup.releaseId,
+      existing:backup.existing,sha256Prefix:backup.sha256.slice(0,16),
+      scope:'sqlite_snapshot_same_persistent_disk',
+    }))
+  }
+} catch(error) {
+  console.error(JSON.stringify({
+    level:'error',msg:'motion.release_backup_failed',
+    reason:error instanceof Error ? error.message : 'unknown backup error',
+  }))
+  process.exit(1)
+}
 
 const seed = spawn(node, [join(root, 'dist/seed.js')], { stdio: 'inherit', env })
 seed.on('exit', (code) => {
