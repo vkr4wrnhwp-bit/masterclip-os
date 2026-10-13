@@ -18,6 +18,24 @@ const SignupBody = z.object({
   orgName: z.string().min(1),
 })
 
+/**
+ * Where one customer stands against the per-customer monthly cap, in the shape
+ * the cost screens read. Nothing here is invented: when no cap is set the figure
+ * is null and `customerSpendCapConfigured` says so, and an organization the cap
+ * does not apply to (the house organization) is told that rather than shown a
+ * number it is not held to. The spend is this organization's own, this calendar
+ * month (UTC), settled charges only.
+ */
+async function customerCapFacts(runtime: Runtime, orgId: string) {
+  const standing = await runtime.cost.customerStanding(orgId)
+  return {
+    customerSpendCapUsd: runtime.config.CUSTOMER_SPEND_CAP_USD ?? null,
+    customerSpendCapConfigured: standing.configured,
+    customerCapApplies: standing.applies,
+    customerSpentThisMonthUsd: formatUsd(standing.spentMicros, 2),
+  }
+}
+
 /** Auth, providers, cost reporting, and provider webhooks. */
 export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, rateLimit: RateLimitHandle): Promise<void> {
   /** Street Banker hand-off tokens already turned into a session, until they expire. */
@@ -194,7 +212,12 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       // Without it the two are the same number and a screen cannot tell a
       // deployment that set a two-dollar cap from one that set no cap at all.
       liveSpendCapConfigured: runtime.config.liveSpendCapConfigured,
-      liveSpentUsd: formatUsd(await runtime.ledger.totalLiveSpend(), 4),
+      // This calendar month (UTC), every customer together: the figure the
+      // whole-service ceiling above is measured against, not a lifetime total.
+      liveSpentUsd: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+      // The signed-in customer's own cap and spend this month. The cap is the
+      // most one customer may spend; the ceiling above is the whole service.
+      ...(await customerCapFacts(runtime, me.orgId)),
       providers: runtime.registry.list().map((provider) => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
@@ -278,7 +301,10 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
         // Same fact as on /api/providers: the cost lab reads this figure too,
         // and it should be able to say whose figure it is.
         capConfigured: runtime.config.liveSpendCapConfigured,
-        spent: formatUsd(await runtime.ledger.totalLiveSpend(), 4),
+        // This calendar month (UTC), every customer together.
+        spent: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+        // This film's organization: the customer whose cap applies to it.
+        ...(await customerCapFacts(runtime, project.orgId)),
       },
     }
   })

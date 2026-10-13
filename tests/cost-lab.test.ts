@@ -59,7 +59,7 @@ describe('the live-spend banner', () => {
     const markup = bannerFor({ capUsd: 25, capConfigured: true, spent: '$4.1000' })
     expect(markup).toContain('Live-spend authorization')
     expect(markup).toContain(
-      '$4.1000 of $25.00 authorized has been spent on real provider calls. That figure was configured for this deployment. Sandbox spend is tracked separately and never counts against this cap.',
+      '$4.1000 of $25.00 authorized has been spent on real provider calls this month, by all customers. That figure was configured for this deployment. Sandbox spend is tracked separately and never counts against this cap.',
     )
     // Blue while there is room, red once the authorization is used up.
     expect(markup).toContain('callout info')
@@ -69,7 +69,7 @@ describe('the live-spend banner', () => {
   it('reports a configured cap whose spend could not be read, without inventing a spend', () => {
     const markup = bannerFor({ capUsd: 25, capConfigured: true })
     expect(markup).toContain(
-      '$25.00 is authorized for real provider calls, configured for this deployment. How much of it has been spent could not be read. Sandbox spend is tracked separately and never counts against this cap.',
+      '$25.00 is authorized for real provider calls, configured for this deployment. How much of it has been spent this month could not be read. Sandbox spend is tracked separately and never counts against this cap.',
     )
     expect(markup).not.toContain('$0.0000')
     // An unread spend is not an exhausted authorization, so it is not red.
@@ -80,7 +80,7 @@ describe('the live-spend banner', () => {
     const markup = bannerFor({ capUsd: 2, capConfigured: false, spent: '$0.4210' })
     expect(markup).toContain('No live-spend cap configured')
     expect(markup).toContain(
-      'Nobody set a cap for this deployment, so live renders run against the built-in $2.00 safety limit, of which $0.4210 has been spent. That limit is enforced either way: the cost controller refuses any submission that would carry live spend past it. Set LIVE_SPEND_CAP_USD to choose your own figure. Sandbox spend is tracked separately and never counts against it.',
+      'Nobody set a cap for this deployment, so live renders run against the built-in $2.00 safety limit, of which $0.4210 has been spent this month by all customers. That limit is enforced either way: the cost controller refuses any submission that would carry live spend past it. Set LIVE_SPEND_CAP_USD to choose your own figure. Sandbox spend is tracked separately and never counts against it.',
     )
     // Never the old sentence, which called the fallback an authorization.
     expect(markup).not.toContain('of $2.00 authorized has been spent')
@@ -114,13 +114,28 @@ describe('the live-spend banner', () => {
     // Told a cap is set but not what it is, is the same unread state.
     expect(bannerFor({ capConfigured: true, spent: '$1.0000' })).toContain('Live-spend authorization could not be read')
     // A spend that is known is still reported, because it is a measurement.
-    expect(bannerFor({ capConfigured: true, spent: '$1.0000' })).toContain('$1.0000 has been spent on real provider calls.')
+    expect(bannerFor({ capConfigured: true, spent: '$1.0000' })).toContain(
+      '$1.0000 has been spent on real provider calls this month, by all customers.',
+    )
   })
 
   it('reads an API too old to send the flag as not having told us a cap was set', () => {
     const markup = bannerFor({ capUsd: 2, spent: '$0.0000' })
     expect(markup).toContain('No live-spend cap configured')
     expect(markup).not.toContain('That figure was configured for this deployment')
+  })
+
+  it('adds the customer’s own cap and spend this month, in the rail’s words, when the API sent them', () => {
+    const facts = { customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: true, customerSpentThisMonthUsd: '$3.21' }
+    const markup = bannerFor({ capUsd: 25, capConfigured: true, spent: '$4.1000', ...facts })
+    expect(markup).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    // And it sits with every one of the four states, not only the configured one.
+    for (const liveCap of [{ capUsd: 2, capConfigured: false }, { capUsd: 0, capConfigured: true }, { spent: '$1.0000' }]) {
+      expect(bannerFor({ ...liveCap, ...facts })).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    }
+    expect(bannerFor({ capUsd: 25, capConfigured: true, spent: '$4.1000', customerSpendCapConfigured: false })).toContain('No per-customer cap set.')
+    // Nothing about the customer cap was sent, so nothing is said about it.
+    expect(bannerFor({ capUsd: 25, capConfigured: true, spent: '$4.1000' })).not.toContain('per-customer cap')
   })
 
   it('tells each of the four states apart by its heading, not only by its colour', () => {

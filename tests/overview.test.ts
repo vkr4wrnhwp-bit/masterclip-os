@@ -6,6 +6,7 @@ import { Overview, StartDialog } from '../apps/web/src/views/Overview.jsx'
 import {
   countJobs,
   countMasters,
+  customerCapLine,
   deriveShotCard,
   deriveSpend,
   deriveStage,
@@ -292,7 +293,7 @@ describe('deriveSpend', () => {
     expect(deriveSpend({ mode: 'live', liveSpendCapUsd: 2, liveSpendCapConfigured: true, liveSpentUsd: '$0.4210' })).toEqual({
       modeLabel: 'Live',
       capSet: true,
-      line: '$0.4210 of $2.00 authorized.',
+      line: '$0.4210 of $2.00 authorized this month, all customers.',
       // One line is the whole story when the figure is the operator's own.
       detail: null,
     })
@@ -308,7 +309,7 @@ describe('deriveSpend', () => {
       modeLabel: 'Sandbox',
       capSet: false,
       line: 'Cap not set.',
-      detail: 'Live renders stop at the $2.00 safety limit until one is set.',
+      detail: 'Live renders stop at the $2.00 safety limit (this month, all customers) until one is set.',
     })
     // Never "no limit": the sentence that would read that way is not written.
     expect(unset.detail).not.toContain('no limit')
@@ -323,7 +324,9 @@ describe('deriveSpend', () => {
     expect(deriveSpend({ mode: 'sandbox', liveSpendCapUsd: Number.NaN }).line).toBe('Cap not set.')
     expect(deriveSpend({ mode: 'sandbox' }).line).toBe('Cap not set.')
     // With no usable figure to name, the limit is described rather than priced.
-    expect(deriveSpend({ mode: 'sandbox' }).detail).toBe('Live renders stop at the built-in safety limit until one is set.')
+    expect(deriveSpend({ mode: 'sandbox' }).detail).toBe(
+      'Live renders stop at the built-in safety limit (this month, all customers) until one is set.',
+    )
   })
 
   it('separates a cap configured at nothing from a cap nobody configured', () => {
@@ -360,6 +363,65 @@ describe('deriveSpend', () => {
       line: 'Cap could not be read.',
       detail: 'The cap could not be read, so this is not a claim that none is set.',
     })
+  })
+})
+
+/* ----------------------------------------------- the customer's own cap --- */
+
+describe('customerCapLine', () => {
+  it('shows the customer their own spend this month against the cap', () => {
+    expect(
+      customerCapLine({ customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: true, customerSpentThisMonthUsd: '$3.21' }),
+    ).toBe('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    // A figure that was not sent is not replaced by a guess.
+    expect(customerCapLine({ customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: true })).toBe(
+      'Per-customer cap: $10.00 a month.',
+    )
+  })
+
+  it('says "No per-customer cap set." when there is none, and invents no number', () => {
+    const line = customerCapLine({ customerSpendCapUsd: null, customerSpendCapConfigured: false, customerCapApplies: false, customerSpentThisMonthUsd: '$3.21' })
+    expect(line).toBe('No per-customer cap set.')
+    expect(line).not.toMatch(/[0-9]/)
+  })
+
+  it('tells the house account the cap is not its own, rather than showing a figure it is held to', () => {
+    expect(
+      customerCapLine({ customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: false, customerSpentThisMonthUsd: '$44.00' }),
+    ).toBe('The $10.00 a month per-customer cap does not apply to this account.')
+  })
+
+  it('says nothing at all when the API did not say, which is not the same as no cap', () => {
+    expect(customerCapLine(null)).toBeNull()
+    expect(customerCapLine(undefined)).toBeNull()
+    expect(customerCapLine({})).toBeNull()
+    expect(customerCapLine({ customerSpendCapConfigured: true })).toBeNull()
+    expect(customerCapLine({ customerSpendCapConfigured: true, customerSpendCapUsd: Number.NaN })).toBeNull()
+  })
+})
+
+describe('deriveSpend and the customer cap', () => {
+  const facts = { customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: true, customerSpentThisMonthUsd: '$3.21' }
+
+  it('adds the customer line beside the whole-service line, whatever state that one is in', () => {
+    const configured = deriveSpend({ mode: 'live', liveSpendCapUsd: 25, liveSpendCapConfigured: true, liveSpentUsd: '$4.1000', ...facts })
+    expect(configured.line).toBe('$4.1000 of $25.00 authorized this month, all customers.')
+    expect(configured.customerLine).toBe('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+
+    const unset = deriveSpend({ mode: 'sandbox', liveSpendCapUsd: 2, liveSpendCapConfigured: false, ...facts })
+    expect(unset.line).toBe('Cap not set.')
+    expect(unset.customerLine).toBe('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+  })
+
+  it('says no per-customer cap is set when the API says so', () => {
+    const none = deriveSpend({ mode: 'live', liveSpendCapUsd: 25, liveSpendCapConfigured: true, customerSpendCapConfigured: false, customerSpendCapUsd: null })
+    expect(none.customerLine).toBe('No per-customer cap set.')
+  })
+
+  it('leaves the card exactly as it was when the API sent nothing about the customer cap', () => {
+    const card = deriveSpend({ mode: 'live', liveSpendCapUsd: 25, liveSpendCapConfigured: true, liveSpentUsd: '$0.0000' })
+    expect('customerLine' in card).toBe(false)
+    expect('customerLine' in deriveSpend(null, false)).toBe(false)
   })
 })
 

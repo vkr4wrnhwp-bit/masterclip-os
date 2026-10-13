@@ -1,7 +1,7 @@
 import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Callout, Card, Empty, Field, Stat, useAsync } from '../ui.jsx'
-import { capFigure, readCap, type CapFacts } from './overview-model.js'
+import { capFigure, customerCapLine, readCap, type CapFacts, type CustomerCapFacts } from './overview-model.js'
 
 export function CostLab({ projectId }: { projectId: string }) {
   const costs = useAsync(() => api.costs(projectId), [projectId])
@@ -22,7 +22,7 @@ export function CostLab({ projectId }: { projectId: string }) {
           // used to be asserted as `{ capUsd: number; spent: string }` and then
           // dereferenced, so a response without a liveCap took the page down
           // with a TypeError rather than saying it could not read the cap.
-          const liveCap = (data.liveCap ?? null) as ({ capUsd?: number; capConfigured?: boolean; spent?: string } & CapFacts) | null
+          const liveCap = (data.liveCap ?? null) as ({ capUsd?: number; capConfigured?: boolean; spent?: string } & CapFacts & CustomerCapFacts) | null
           const avoided = data.qcAvoided as { autoRejected: number; usd: string }
 
           return (
@@ -176,11 +176,15 @@ export function CostLab({ projectId }: { projectId: string }) {
  * deployment had configured, which presented the runtime's own fallback as an
  * authorization somebody granted.
  */
-function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts) | null }) {
+function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts & CustomerCapFacts) | null }) {
   const reading = readCap(liveCap)
   // The spend is reported wherever it is known, including when the cap is not,
-  // because it is a measurement rather than a claim about policy.
+  // because it is a measurement rather than a claim about policy. It is this
+  // calendar month's, every customer together: that is what the ceiling counts.
   const spent = typeof liveCap?.spent === 'string' && liveCap.spent.length > 0 ? liveCap.spent : null
+  // This customer's own cap and spend, when the API said. Same words as the rail.
+  const customer = customerCapLine(liveCap)
+  const customerSentence = customer === null ? '' : ` ${customer}`
 
   if (reading.state === 'configured') {
     const spentNumber = spent === null ? null : Number(spent.replace(/[^0-9.]/g, ''))
@@ -190,9 +194,9 @@ function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts) 
     return (
       <Callout tone={exhausted ? 'danger' : 'info'} title="Live-spend authorization">
         {spent === null
-          ? `$${reading.capUsd.toFixed(2)} is authorized for real provider calls, configured for this deployment. How much of it has been spent could not be read.`
-          : `${spent} of $${reading.capUsd.toFixed(2)} authorized has been spent on real provider calls. That figure was configured for this deployment.`}{' '}
-        Sandbox spend is tracked separately and never counts against this cap.
+          ? `$${reading.capUsd.toFixed(2)} is authorized for real provider calls, configured for this deployment. How much of it has been spent this month could not be read.`
+          : `${spent} of $${reading.capUsd.toFixed(2)} authorized has been spent on real provider calls this month, by all customers. That figure was configured for this deployment.`}{' '}
+        Sandbox spend is tracked separately and never counts against this cap.{customerSentence}
       </Callout>
     )
   }
@@ -201,7 +205,7 @@ function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts) 
     return (
       <Callout tone="danger" title="No live spend authorized">
         The cap is configured at {capFigure(reading.capUsd)}, which authorizes nothing, so the cost controller refuses every live render. Raise
-        LIVE_SPEND_CAP_USD to permit any real provider call. Sandbox renders are unaffected.
+        LIVE_SPEND_CAP_USD to permit any real provider call. Sandbox renders are unaffected.{customerSentence}
       </Callout>
     )
   }
@@ -211,7 +215,8 @@ function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts) 
       <Callout tone="warn" title="Live-spend authorization could not be read">
         This page could not read the cap from the cost summary, so it is not saying whether one is set. The cost controller is unaffected
         and still refuses any live submission that would carry spend past whatever cap is in force.
-        {spent === null ? '' : ` ${spent} has been spent on real provider calls.`}
+        {spent === null ? '' : ` ${spent} has been spent on real provider calls this month, by all customers.`}
+        {customerSentence}
       </Callout>
     )
   }
@@ -222,9 +227,9 @@ function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts) 
     <Callout tone="warn" title="No live-spend cap configured">
       Nobody set a cap for this deployment, so live renders run against the built-in
       {reading.fallbackUsd === null ? ' safety limit' : ` $${reading.fallbackUsd.toFixed(2)} safety limit`}
-      {spent === null ? '' : `, of which ${spent} has been spent`}. That limit is enforced either way: the cost controller refuses any
-      submission that would carry live spend past it. Set LIVE_SPEND_CAP_USD to choose your own figure. Sandbox spend is tracked separately
-      and never counts against it.
+      {spent === null ? '' : `, of which ${spent} has been spent this month by all customers`}. That limit is enforced either way: the cost
+      controller refuses any submission that would carry live spend past it. Set LIVE_SPEND_CAP_USD to choose your own figure. Sandbox spend is
+      tracked separately and never counts against it.{customerSentence}
     </Callout>
   )
 }

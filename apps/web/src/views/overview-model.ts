@@ -542,6 +542,47 @@ export function readCap(facts: CapFacts | null): CapReading {
   return { state: 'unconfigured', fallbackUsd: figure !== null && figure > 0 ? figure : null }
 }
 
+/* ------------------------------------------------- the customer's own cap --- */
+
+/**
+ * What `/api/providers` and the cost summary say about the per-customer monthly
+ * cap (CUSTOMER_SPEND_CAP_USD) and the signed-in customer's spend against it.
+ * Every field is optional: an API too old to send them has not told us anything
+ * about the customer cap, and the screens then say nothing about it rather than
+ * guess.
+ */
+export interface CustomerCapFacts {
+  /** The cap in dollars, or null when none is set. */
+  customerSpendCapUsd?: number | null
+  /** False when no per-customer cap is set for this deployment. */
+  customerSpendCapConfigured?: boolean
+  /** False for the house account, which the cap is set for but does not hold. */
+  customerCapApplies?: boolean
+  /** This customer's own live spend this calendar month, already formatted ("$3.21"). */
+  customerSpentThisMonthUsd?: string
+}
+
+/**
+ * The sentence about the per-customer cap, or null when the API did not say.
+ *
+ * Three decisions live here so the rail, the cost lab and the providers screen
+ * cannot disagree: an API that did not send the flag gets no sentence at all
+ * (not "no cap"); a cap that is not set says exactly that, with no figure made
+ * up; and a figure that was not sent is not replaced by a guess.
+ */
+export function customerCapLine(facts: CustomerCapFacts | null | undefined): string | null {
+  if (!facts || typeof facts.customerSpendCapConfigured !== 'boolean') return null
+  if (!facts.customerSpendCapConfigured) return 'No per-customer cap set.'
+  const cap =
+    typeof facts.customerSpendCapUsd === 'number' && Number.isFinite(facts.customerSpendCapUsd) ? facts.customerSpendCapUsd : null
+  if (cap === null) return null
+  if (facts.customerCapApplies === false) return `The ${capFigure(cap)} a month per-customer cap does not apply to this account.`
+  const spent = typeof facts.customerSpentThisMonthUsd === 'string' && facts.customerSpentThisMonthUsd.length > 0 ? facts.customerSpentThisMonthUsd : null
+  return spent === null
+    ? `Per-customer cap: ${capFigure(cap)} a month.`
+    : `Your spend this month: ${spent} of the ${capFigure(cap)} per-customer cap.`
+}
+
 /* ------------------------------------------------------- the spend card --- */
 
 export interface SpendReading {
@@ -553,9 +594,14 @@ export interface SpendReading {
   line: string
   /** The line beneath it, or null when one line says the whole thing. */
   detail: string | null
+  /**
+   * This customer's own cap and spend this month, from `customerCapLine`. Left
+   * off entirely when the API did not say anything about it.
+   */
+  customerLine?: string
 }
 
-export interface SpendInput {
+export interface SpendInput extends CustomerCapFacts {
   mode?: string
   liveSpendCapUsd?: number
   /**
@@ -592,11 +638,18 @@ export function deriveSpend(input: SpendInput | null, loading = false): SpendRea
   }
   const modeLabel = input.mode === 'live' ? 'Live' : input.mode === 'sandbox' ? 'Sandbox' : 'Mode unknown'
   const reading = readCap({ capUsd: input.liveSpendCapUsd, capConfigured: input.liveSpendCapConfigured })
+  const customerLine = customerCapLine(input)
+  const withCustomer = (card: SpendReading): SpendReading => (customerLine === null ? card : { ...card, customerLine })
 
+  return withCustomer(deriveCapCard(modeLabel, reading, input))
+}
+
+/** The rail's two lines for the whole-service ceiling, which counts this month and every customer. */
+function deriveCapCard(modeLabel: string, reading: CapReading, input: SpendInput): SpendReading {
   switch (reading.state) {
     case 'configured': {
       const spent = typeof input.liveSpentUsd === 'string' && input.liveSpentUsd.length > 0 ? input.liveSpentUsd : '$0.0000'
-      return { modeLabel, capSet: true, line: `${spent} of $${reading.capUsd.toFixed(2)} authorized.`, detail: null }
+      return { modeLabel, capSet: true, line: `${spent} of $${reading.capUsd.toFixed(2)} authorized this month, all customers.`, detail: null }
     }
     case 'forbidden':
       return {
@@ -624,8 +677,8 @@ export function deriveSpend(input: SpendInput | null, loading = false): SpendRea
         // would read as "no limit", and there is a limit.
         detail:
           reading.fallbackUsd !== null
-            ? `Live renders stop at the $${reading.fallbackUsd.toFixed(2)} safety limit until one is set.`
-            : 'Live renders stop at the built-in safety limit until one is set.',
+            ? `Live renders stop at the $${reading.fallbackUsd.toFixed(2)} safety limit (this month, all customers) until one is set.`
+            : 'Live renders stop at the built-in safety limit (this month, all customers) until one is set.',
       }
   }
 }

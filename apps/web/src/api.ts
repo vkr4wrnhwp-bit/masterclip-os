@@ -209,7 +209,15 @@ export const api = {
       liveSpendCapUsd: number
       /** False when no cap was configured and the figure above is the fallback. */
       liveSpendCapConfigured: boolean
+      /** This calendar month (UTC), every customer together. */
       liveSpentUsd: string
+      /** The most one customer may spend in a month; null when no per-customer cap is set. */
+      customerSpendCapUsd: number | null
+      customerSpendCapConfigured: boolean
+      /** False for the house account, which the per-customer cap does not hold. */
+      customerCapApplies: boolean
+      /** The signed-in customer's own live spend this month, e.g. "$3.21". */
+      customerSpentThisMonthUsd: string
       providers: Array<{ providerId: string; displayName: string; configured: boolean; keyFingerprint: string; health: Record<string, unknown> | null }>
     }>('/api/providers'),
   providerHealth: () => get<{ health: Array<{ providerId: string; status: string; latencyMs: number | null; message: string }> }>('/api/providers/health'),
@@ -238,7 +246,7 @@ export const api = {
     }>(`/api/shots/${shotId}/matrix`, body),
 
   render: (shotId: string, body: Record<string, unknown>) =>
-    post<{ jobIds: string[]; skipped: Array<{ reason: string }>; estimatedUsd: string; warnings: string[]; queued: number }>(
+    post<{ jobIds: string[]; skipped: Array<{ reason: string; code?: string }>; estimatedUsd: string; warnings: string[]; queued: number }>(
       `/api/shots/${shotId}/render`,
       body,
     ),
