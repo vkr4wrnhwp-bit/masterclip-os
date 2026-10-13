@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cookie from '@fastify/cookie'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
+import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { AppError, asAppError, httpStatusFor, type Logger } from '@masterclip/shared'
@@ -79,10 +80,23 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
 
   app.setErrorHandler((error, _request, reply) => {
     const appError = asAppError(error)
-    if (appError.kind === 'internal') runtime.logger.error('api.unhandled', { err: appError })
-    else runtime.logger.debug('api.error', { kind: appError.kind, code: appError.code, message: appError.message })
     // Tell a well-behaved client when to come back instead of making it guess.
     if (appError.retryAfterSeconds !== undefined) void reply.header('retry-after', String(appError.retryAfterSeconds))
+    if (appError.kind === 'internal' || appError.kind === 'io') {
+      // An unexpected failure's own text is for the log, not the browser: a
+      // database or ffmpeg message names tables, columns and disk paths. In
+      // production the caller gets a reference that finds it in the log.
+      const reference = randomBytes(4).toString('hex')
+      runtime.logger.error('api.unhandled', { err: appError, reference })
+      if (runtime.config.NODE_ENV === 'production') {
+        void reply.status(httpStatusFor(appError.kind)).send({
+          error: { kind: appError.kind, code: appError.code, message: `Something went wrong on our side (reference ${reference}).` },
+        })
+        return
+      }
+    } else {
+      runtime.logger.debug('api.error', { kind: appError.kind, code: appError.code, message: appError.message })
+    }
     void reply.status(httpStatusFor(appError.kind)).send(appError.toJSON())
   })
 
