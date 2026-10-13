@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,7 +104,7 @@ const SECRET = 'vault-test-handoff-secret'
 
 function mint(claims: { uid: string; email: string }): string {
   const b64 = (value: Buffer) => value.toString('base64url')
-  const payload = b64(Buffer.from(JSON.stringify({ v: 1, plan: 'label', suite: 'motion', nonce: 'n', name: 'Artist', ...claims })))
+  const payload = b64(Buffer.from(JSON.stringify({ v: 1, plan: 'label', suite: 'motion', nonce: randomBytes(9).toString('base64url'), name: 'Artist', ...claims })))
   const stamp: number[] = []
   for (let n = Math.floor(Date.now() / 1000); n > 0; n = Math.floor(n / 256)) stamp.unshift(n % 256)
   const signed = `${payload}.${b64(Buffer.from(stamp))}`

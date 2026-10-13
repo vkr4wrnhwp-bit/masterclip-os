@@ -27,6 +27,7 @@ import { decide, runTechnicalQc, runVisualQc, HeuristicVisionClient, type Vision
 import { ClaudeVisionClient } from '@masterclip/agents'
 import { CanonicalShot, deriveRequirements, type CanonicalShot as Shot } from '@masterclip/shot-schema'
 import type { Runtime } from './index.js'
+import { assertRenderInput } from './media-rights.js'
 
 export interface PlannedCandidate {
   providerId: string
@@ -265,6 +266,11 @@ export class RenderService {
       if (!assetId) return undefined
       const asset = await this.rt.assets.find(assetId)
       if (!asset) return undefined
+      // A shot names its frames and references by id, and the id is all it
+      // takes: these were sent to the provider whatever project they belonged
+      // to and whatever their rights. An artist could render from another
+      // artist's video, or from a recording whose rights were revoked.
+      await assertRenderInput(this.rt, input.projectId, asset.id)
       const localPath = this.rt.storage.localPath(asset.storageKey)
       return {
         assetId: asset.id,
@@ -357,6 +363,19 @@ export class RenderService {
     const request = this.requestFor(job)
     const model = await this.rt.registry.findModel(job.providerId, job.modelId)
     const project = await this.rt.projects.get(job.projectId)
+
+    // Checked again here, not only when the batch was planned: a reference
+    // whose rights were revoked while the render waited is not sent.
+    const refused = await this.inputRefusal(job.projectId, request)
+    if (refused) {
+      await this.rt.renders.updateJob(jobId, {
+        status: 'failed',
+        failedAt: this.rt.clock.isoNow(),
+        error: { code: refused.code, message: refused.message },
+      })
+      this.rt.logger.warn('render.input_refused', { job_id: jobId, code: refused.code })
+      return
+    }
 
     await this.rt.renders.updateJob(jobId, { status: 'authorizing' })
 
@@ -465,6 +484,22 @@ export class RenderService {
       })
       throw err
     }
+  }
+
+  private async inputRefusal(projectId: string, request: CanonicalRenderRequest): Promise<AppError | null> {
+    const inputs = request.inputs ?? { references: [] }
+    const ids = [inputs.firstFrame, inputs.lastFrame, inputs.video, ...(inputs.references ?? [])]
+      .filter((input): input is ProviderInputAsset => Boolean(input))
+      .map((input) => input.assetId)
+    for (const assetId of ids) {
+      try {
+        await assertRenderInput(this.rt, projectId, assetId)
+      } catch (err) {
+        if (err instanceof AppError && (err.kind === 'forbidden' || err.kind === 'not_found')) return err
+        throw err
+      }
+    }
+    return null
   }
 
   private async queueFirstPoll(jobId: string, attemptNumber: number): Promise<void> {
@@ -801,6 +836,8 @@ export class RenderService {
     const parents: Array<{ assetId: string; relation: 'generated_from' }> = []
     if (request?.inputs?.firstFrame) parents.push({ assetId: request.inputs.firstFrame.assetId, relation: 'generated_from' })
     if (request?.inputs?.lastFrame) parents.push({ assetId: request.inputs.lastFrame.assetId, relation: 'generated_from' })
+    // The reference video too, so revoking it reaches what was made from it.
+    if (request?.inputs?.video) parents.push({ assetId: request.inputs.video.assetId, relation: 'generated_from' })
     for (const reference of request?.inputs?.references ?? []) parents.push({ assetId: reference.assetId, relation: 'generated_from' })
     return parents
   }

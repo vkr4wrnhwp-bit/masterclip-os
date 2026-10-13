@@ -190,6 +190,9 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     if (asset.kind !== 'audio') {
       throw new AppError({ kind: 'validation', code: 'waveform.asset_kind', message: 'waveform requires an audio asset' })
     }
+    // A revoked recording's waveform is its shape in time; refuse it as a
+    // signed link to the file would be refused.
+    await assertMediaReadable(runtime, asset.id)
 
     const cached = waveCache.get(asset.sha256)
     if (cached) return { ...cached, assetId }

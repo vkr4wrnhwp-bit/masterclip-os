@@ -1,6 +1,7 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, toNum, type Db } from '@masterclip/database'
 import { LocalStorage } from '@masterclip/asset-storage'
@@ -753,6 +754,73 @@ describe('render pipeline', () => {
     expect(outputs).toHaveLength(1)
     expect(outputs[0]?.proxyAssetId).toBeTruthy()
     expect((await runtime.renders.qcFor(stored.id)).some((row) => row.layer === 'combined')).toBe(true)
+  })
+
+  // Security pass, 2026-10-12: inputs and exports stay inside their project.
+
+  async function referenceImage(forProjectId: string, name: string) {
+    const path = join(storageRoot, `${name}.png`)
+    await ffmpeg(['-f', 'lavfi', '-i', 'color=c=red:s=320x180', '-frames:v', '1', path])
+    const sha = await sha256File(path)
+    const stored = await runtime.storage.putFile(`${forProjectId}/reference_image/${name}/${name}.png`, path, { contentType: 'image/png', sha256: sha })
+    return runtime.assets.create({
+      projectId: forProjectId, kind: 'reference_image', storageKey: stored.key,
+      filename: `${name}.png`, mime: 'image/png', bytes: stored.bytes, sha256: stored.sha256, createdBy: 'tester',
+      rights: { owner: 'Tester', authorized: true, consent: 'authorized', allowedUse: 'reference' },
+    })
+  }
+
+  async function firstFrameFrom(assetId: string) {
+    const current = await runtime.projects.currentVersion(shotId)
+    await runtime.projects.addVersion({
+      shotId, createdBy: 'tester', note: 'first frame',
+      spec: { ...current.spec, generation_mode: 'image_to_video', first_frame_asset: assetId },
+    })
+  }
+
+  it('will not render from a frame that belongs to another project', async () => {
+    const other = await runtime.projects.createOrg('Another Artist')
+    const theirs = await runtime.projects.create({ orgId: other.id, name: 'Their Project', createdBy: 'someone' })
+    const frame = await referenceImage(theirs.id, 'their-frame')
+    await firstFrameFrom(frame.id)
+
+    const plan = await new RenderService(runtime).planBatch({ projectId, shotId, batchName: 'foreign frame', candidates: candidates(1), createdBy: 'tester', orgId })
+    expect(plan.jobIds).toHaveLength(0)
+    expect(plan.skipped[0]?.reason).toMatch(/another project/)
+  })
+
+  it('will not send a frame whose rights were revoked while the render waited', async () => {
+    const render = new RenderService(runtime)
+    const frame = await referenceImage(projectId, 'our-frame')
+    await firstFrameFrom(frame.id)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'revoked frame', candidates: candidates(1), createdBy: 'tester', orgId })
+    expect(plan.jobIds).toHaveLength(1)
+
+    await runtime.assets.setRights(frame.id, { consent: 'revoked' }, 'tester')
+    await drain(render)
+    const job = await runtime.renders.getJob(plan.jobIds[0]!)
+    expect(job.status).toBe('failed')
+    expect(job.error).toMatchObject({ code: 'media_rights.revoked' })
+    expect(job.externalJobId).toBeFalsy()
+  })
+
+  it('keeps a delivery label inside the scratch folder and a sequence inside its project', async () => {
+    const render = new RenderService(runtime)
+    await render.planBatch({ projectId, shotId, batchName: 'export', candidates: candidates(1), createdBy: 'tester', orgId })
+    await drain(render)
+    const output = (await runtime.renders.listOutputs({ shotId }))[0]!
+    await runtime.renders.addReview({ outputId: output.id, projectId, shotId, userId: 'tester', decision: 'approve', rejectionReasons: [], note: '' })
+    const masters = new MasterService(runtime)
+    const masterId = await masters.promote({ outputId: output.id, name: 'S01 master', approvedBy: 'tester', orgId })
+
+    const escaped = join(dirname(tmpdir()), 'motion-escape-check.mp4')
+    const [deliveryId] = await masters.finish(masterId, [{ format: 'review_h264', label: '../../motion-escape-check' }], 'tester')
+    expect(existsSync(escaped)).toBe(false)
+    expect((await runtime.assets.get(deliveryId!)).filename).toBe('motion-escape-check.mp4')
+
+    const other = await runtime.projects.createOrg('Another Artist')
+    const theirs = await runtime.projects.create({ orgId: other.id, name: 'Their Project', createdBy: 'someone' })
+    await expect(masters.buildSequence(theirs.id, [masterId])).rejects.toThrow(/another project/)
   })
 
   it('records provenance from the delivery back to the shot version', async () => {
