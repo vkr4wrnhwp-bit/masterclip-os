@@ -16,6 +16,41 @@ export function MastersView({ projectId }: { projectId: string }) {
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [pending, setPending] = React.useState<{masterId:string;jobId:string}|null>(null)
+  const finishingInProgress = (masters.data?.masters ?? []).some(master =>
+    ((master.finishingJobs ?? []) as Array<{status: string}>).some(job =>
+      job.status === 'pending' || job.status === 'active'))
+  React.useEffect(() => {
+    if (!finishingInProgress) return
+    const interval = window.setInterval(() => masters.reload(), 5000)
+    return () => window.clearInterval(interval)
+  }, [finishingInProgress])
+
+
+  React.useEffect(() => {
+    if (!pending) return
+    let active = true
+    const poll = async () => {
+      try {
+        const job = await api.finishStatus(pending.masterId, pending.jobId)
+        if (!active) return
+        if (job.status === 'completed') {
+          setMessage('Media finishing completed. Verified outputs are listed below.')
+          setPending(null)
+          masters.reload()
+        } else if (['dead', 'failed', 'cancelled'].includes(job.status)) {
+          setError(job.error || 'Finishing failed; no completed output was reported.')
+          masters.reload()
+          setPending(null)
+        }
+      } catch (err) {
+        if (active) { setError((err as Error).message); setPending(null) }
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 3000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [pending])
 
   const finish = async (masterId: string, specs: unknown[]) => {
     setBusy(masterId)
@@ -23,6 +58,54 @@ export function MastersView({ projectId }: { projectId: string }) {
     try {
       const result = await api.finishMaster(masterId, specs)
       setMessage(`created ${result.assetIds.length} deliverable(s)`)
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const finishSong = async (masterId: string) => {
+    setBusy(masterId)
+    setError(null)
+    setMessage(null)
+    try {
+      const result = await api.finishSongMoment(masterId)
+      setPending({ masterId, jobId: result.jobId })
+      setMessage(result.deduped ? 'Existing media finishing job found; checking its status.' : 'Song finishing queued. No output is claimed until the worker finishes.')
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const finishCaptions = async (masterId: string) => {
+    setBusy(masterId)
+    setMessage(null)
+    setError(null)
+    try {
+      const result = await api.finishCaptionedSong(masterId)
+      setPending({ masterId, jobId: result.jobId })
+      setMessage(result.deduped ? 'Existing caption job found; checking its status.' : 'Caption rendering queued. No output is claimed until the worker finishes.')
+      masters.reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const retryFinishing = async (masterId: string, jobId: string) => {
+    setBusy(masterId)
+    setError(null)
+    setMessage(null)
+    try {
+      const next = await api.retryFinishing(masterId, jobId)
+      setPending({ masterId, jobId: next.jobId })
+      setMessage('Failed finishing job resubmitted for worker processing.')
       masters.reload()
     } catch (err) {
       setError((err as Error).message)
@@ -55,9 +138,8 @@ export function MastersView({ projectId }: { projectId: string }) {
         1080p ProRes is still a 720p image, and the provenance sidecar says so.
       </Callout>
 
-      {message && <Callout tone="ok">{message}</Callout>}
+      {message && <Callout tone="info">{message}</Callout>}
       {error && <Callout tone="danger">{error}</Callout>}
-
       <AsyncBlock state={masters}>
         {(data) =>
           data.masters.length === 0 ? (
@@ -71,6 +153,9 @@ export function MastersView({ projectId }: { projectId: string }) {
                   busy={busy === String(master.id)}
                   onFinish={(specs) => finish(String(master.id), specs)}
                   onPackage={() => buildPackage(String(master.id))}
+                  onSong={() => finishSong(String(master.id))}
+                  onCaptions={() => finishCaptions(String(master.id))}
+                  onRetry={jobId => retryFinishing(String(master.id), jobId)}
                 />
               ))}
             </div>
@@ -86,17 +171,32 @@ function MasterCard({
   busy,
   onFinish,
   onPackage,
+  onSong,
+  onCaptions,
+  onRetry,
 }: {
   master: Record<string, unknown>
   busy: boolean
   onFinish: (specs: unknown[]) => Promise<void>
   onPackage: () => Promise<void>
+  onSong: () => Promise<void>
+  onCaptions: () => Promise<void>
+  onRetry: (jobId: string) => Promise<void>
 }) {
   const [format, setFormat] = React.useState('delivery_h264')
   const [aspect, setAspect] = React.useState('')
   const [reframeMode, setReframeMode] = React.useState<'crop' | 'pad'>('crop')
   const deliverables = (master.deliverables ?? []) as Array<Record<string, unknown>>
   const metadata = (master.metadata ?? {}) as Record<string, unknown>
+  const finishingHistory = (master.finishingJobs ?? []) as Array<{
+    id: string; type: string; status: string; lastError: string | null
+  }>
+  const newestFinishing = finishingHistory[0] ?? null
+  const finishingActive = finishingHistory.some(job => job.status === 'pending' || job.status === 'active')
+  const song = master.songMoment as { startSeconds: number; endSeconds: number } | null
+  const musicDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'song_moment' && typeof item.url === 'string')
+  const captionCount = Number(master.captionCount ?? 0)
+  const captionedDeliveries = deliverables.filter(item => (item.spec as Record<string, unknown>)?.kind === 'captioned_song_moment' && typeof item.url === 'string')
 
   return (
     <Card
@@ -107,6 +207,18 @@ function MasterCard({
         {String(metadata.provider ?? '')}/{String(metadata.model ?? '')} · approved {String(master.approvedAt ?? '').slice(0, 16).replace('T', ' ')}
       </div>
 
+      {newestFinishing && (
+        <div className="mcq-finishing-status" role="status">
+          <strong>{newestFinishing.type === 'media.captioned_song' ? 'Caption finishing' : 'Music finishing'}</strong>
+          <span> — {newestFinishing.status}</span>
+          {newestFinishing.lastError && <p className="faint">{newestFinishing.lastError}</p>}
+          {['dead', 'failed'].includes(newestFinishing.status) && (
+            <button type="button" className="small" disabled={busy} onClick={() => void onRetry(newestFinishing.id)}>
+              Retry failed finishing job
+            </button>
+          )}
+        </div>
+      )}
       <div className="field-row">
         <Field label="Format">
           <select value={format} onChange={(e) => setFormat(e.target.value)}>
@@ -151,6 +263,38 @@ function MasterCard({
           Build delivery package
         </button>
       </div>
+
+      {song && (
+        <section className="mcq-master-audio" aria-label="Music video finishing">
+          <h4>Song-moment finishing</h4>
+          <p className="muted">Use the approved shot's selection, {song.startSeconds.toFixed(1)}–{song.endSeconds.toFixed(1)} seconds. This replaces generated sound with the authorized recording in a real MP4. It does not publish or incur provider charges.</p>
+          <button className="primary small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onSong()}>
+            {busy ? 'Finishing…' : 'Finish with selected song'}
+          </button>
+          {captionCount > 0 && (
+            <div className="mcq-caption-delivery">
+              <p className="muted">This master has {captionCount} approved, timed caption lines.</p>
+              <button className="small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onCaptions()}>
+                {busy ? 'Rendering captions…' : 'Burn captions into a separate MP4'}
+              </button>
+              <p className="faint">Burning captions creates a second derivative. The clean music master is preserved.</p>
+            </div>
+          )}
+          {captionedDeliveries.map(item => (
+            <div key={String(item.id)} className="mcq-video-delivery">
+              <span>Captioned music video</span>
+              <video controls playsInline preload="metadata" src={String(item.url)} aria-label="Finished music video with timed captions" />
+              <a href={String(item.url)} target="_blank" rel="noopener noreferrer">Open captioned MP4</a>
+            </div>
+          ))}
+          {musicDeliveries.map(item => (
+            <div key={String(item.id)} className="mcq-video-delivery">
+              <video controls playsInline preload="metadata" src={String(item.url)} aria-label="Finished music video with recorded audio" />
+              <a href={String(item.url)} target="_blank" rel="noopener noreferrer">Open verified MP4</a>
+            </div>
+          ))}
+        </section>
+      )}
 
       {deliverables.length > 0 && (
         <table style={{ marginTop: 12 }}>

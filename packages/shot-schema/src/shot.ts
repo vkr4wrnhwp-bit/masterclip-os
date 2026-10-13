@@ -112,6 +112,28 @@ export const MaterialRequirement = looseObject(
 )
 export type MaterialRequirement = z.infer<typeof MaterialRequirement>
 
+/** A non-destructive song-moment cue for MOTION's native Quick Create.
+ * This is editing metadata, NOT a promise that the video renderer has mixed audio.
+ * Playback/render mixing requires a separately verified media operation.
+ */
+export const MusicCue = z.object({
+  asset_id: z.string().min(1),
+  start_seconds: z.number().finite().min(0),
+  end_seconds: z.number().finite().positive(),
+  creative_look: z.enum(['performance', 'cinematic', 'editorial', 'atmosphere']).default('cinematic'),
+  /** Per-version declaration by the user, not platform licensing or ad-spend consent. */
+  promotional_use_attested: z.boolean().default(false),
+})
+export type MusicCue = z.infer<typeof MusicCue>
+
+/** Timed user-approved captions. Seconds are relative to the selected clip, not the complete recording. */
+export const TimedCaption = z.object({
+  start_seconds: z.number().finite().min(0),
+  end_seconds: z.number().finite().positive(),
+  text: z.string().trim().min(1).max(160),
+})
+export type TimedCaption = z.infer<typeof TimedCaption>
+
 export const CanonicalShot = z.object({
   // --- identity ------------------------------------------------------------
   project_id: z.string().default(''),
@@ -170,6 +192,12 @@ export const CanonicalShot = z.object({
   screen_direction: ScreenDirection.default('unspecified'),
 
   // --- audio ---------------------------------------------------------------
+  music_cue: MusicCue.nullable().default(null),
+  timed_captions: z.array(TimedCaption).max(32).default([]),
+  creative_variant: z.object({
+    source_shot_id: z.string().min(1),
+    label: z.string().trim().min(1).max(80),
+  }).nullable().default(null),
   audio_mode: AudioMode.default('none'),
   dialogue: z.string().default(''),
   ambient_audio: z.string().default(''),
@@ -191,7 +219,7 @@ export const CanonicalShot = z.object({
 export type CanonicalShot = z.infer<typeof CanonicalShot>
 export type CanonicalShotInput = z.input<typeof CanonicalShot>
 
-export const SHOT_SCHEMA_VERSION = '1.0.0'
+export const SHOT_SCHEMA_VERSION = '1.1.0'
 
 export function parseShot(input: unknown): CanonicalShot {
   return CanonicalShot.parse(input)

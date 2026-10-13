@@ -1,6 +1,6 @@
-import { createRuntime, RenderService, QueueWorker, QUEUES } from '@masterclip/runtime'
+import { createRuntime, RenderService, MasterService, assembleApprovedTimeline, finishCaptionedSongMoment, QueueWorker, QUEUES } from '@masterclip/runtime'
 import { JOB_TYPES } from '@masterclip/queue'
-import { applyEnvFile, loadConfig } from '@masterclip/shared'
+import { AppError, applyEnvFile, loadConfig } from '@masterclip/shared'
 
 /**
  * The render worker.
@@ -48,6 +48,42 @@ async function main(): Promise<void> {
       await ctx.heartbeat()
       const result = await render.runQc(outputId)
       ctx.logger.info('worker.qc', { output_id: outputId, action: result.action, technical_pass: result.technicalPass })
+    })
+
+    const deferLocked = async (work: () => Promise<void>, ctx: { defer(delayMs: number): void }) => {
+      try {
+        await work()
+      } catch (err) {
+        if (err instanceof AppError && err.code === 'media_finish.busy') {
+          // Another worker is still operating on this master. This is not a
+          // failed job, and deferring does not consume another attempt.
+          ctx.defer(15_000)
+          return
+        }
+        throw err
+      }
+    }
+    // Finishing can outlive the standard lease; keep it owned by this worker.
+    const withMediaLease = async (ctx: { heartbeat(): Promise<void> }, work: () => Promise<void>) => {
+      await ctx.heartbeat()
+      const timer = setInterval(() => { void ctx.heartbeat().catch(() => undefined) }, 30_000)
+      try { await work() } finally { clearInterval(timer) }
+    }
+    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishSongMoment, async (payload, ctx) => {
+      await deferLocked(() => withMediaLease(ctx, () =>
+        new MasterService(runtime).finishWithSongMoment(payload.masterId, payload.actor, payload.orgId).then(() => undefined)), ctx)
+    })
+    worker.register<{ masterId: string; actor: string; orgId: string }>(JOB_TYPES.finishCaptionedSong, async (payload, ctx) => {
+      await deferLocked(() => withMediaLease(ctx, () =>
+        finishCaptionedSongMoment(runtime, payload.masterId, payload.actor, payload.orgId).then(() => undefined)), ctx)
+    })
+
+    worker.register<{
+      projectId:string;timelineId:string;version:number;actor:string;orgId:string;
+      spec:{name:string;audio_asset_id:string;song_start_seconds:number;
+        clips:Array<{master_id:string;source_start_seconds:number;source_end_seconds:number}>}
+    }>(JOB_TYPES.assembleMusicTimeline, async (payload, ctx) => {
+      await withMediaLease(ctx, () => assembleApprovedTimeline(runtime, payload).then(() => undefined))
     })
 
     worker.register<{ outputId: string }>(JOB_TYPES.buildProxies, async ({ outputId }, ctx) => {

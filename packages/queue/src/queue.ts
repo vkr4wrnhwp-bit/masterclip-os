@@ -95,6 +95,11 @@ export class DurableQueue {
     return this.workerId
   }
 
+  /** How long a claim lasts unless it is renewed. */
+  get leaseMs(): number {
+    return this.leaseSeconds * 1000
+  }
+
   async enqueue<P>(opts: EnqueueOptions<P>): Promise<{ id: string; deduped: boolean }> {
     const now = this.clock.now()
     const runAt = opts.runAt ?? new Date(now + (opts.delayMs ?? 0)).toISOString()
@@ -270,6 +275,40 @@ export class DurableQueue {
    */
   async recoverStalled(): Promise<number> {
     const iso = this.clock.isoNow()
+    // A job whose worker died on every attempt it was given goes to the dead
+    // letters instead of back to the pool: claim() counts the attempt, and
+    // nothing else would ever stop it. On the 512 MB staging service a render
+    // whose QC killed the container came back on each restart and killed it
+    // again, in a loop (2026-10-12).
+    const exhausted = await this.db.query<Record<string, unknown>>(
+      `SELECT * FROM queue_jobs
+        WHERE status = 'active' AND lease_until IS NOT NULL AND lease_until < ? AND attempts >= max_attempts`,
+      [iso],
+    )
+    for (const row of exhausted) {
+      const job = mapJob(row)
+      const detail = `worker stopped mid-job on each of ${job.attempts} attempts (lease expired); not retried again`
+      await this.db.transaction(async (tx) => {
+        const moved = await tx.run(
+          `UPDATE queue_jobs SET status = 'dead', last_error = ?, updated_at = ?, lease_until = NULL, locked_by = NULL
+            WHERE id = ? AND status = 'active'`,
+          [detail, iso, job.id],
+        )
+        if (moved.changes === 0) return
+        await insertRow(tx, 'queue_dead', {
+          id: newId('qmsg'),
+          original_id: job.id,
+          queue_name: job.queueName,
+          job_type: job.type,
+          payload: JSON.stringify(job.payload ?? null),
+          attempts: job.attempts,
+          last_error: detail,
+          failed_at: iso,
+          replayed_at: null,
+        })
+      })
+      this.logger.error('queue.dead_letter', { job_id: job.id, type: job.type, attempts: job.attempts, err: detail })
+    }
     const result = await this.db.run(
       `UPDATE queue_jobs
          SET status = 'pending', lease_until = NULL, locked_by = NULL, updated_at = ?

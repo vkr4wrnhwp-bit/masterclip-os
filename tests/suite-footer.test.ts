@@ -26,9 +26,11 @@ describe('suite footer', () => {
 
 describe('what is in Motion', () => {
   it('lists what the suite does with boxes only the person ticks', () => {
-    expect(src).toContain('Do you know all the features Motion has? Click here.')
+    expect(src).toContain('Did you know MOTION can do all this?')
+    expect(src).toContain('FEATURES.length')
+    expect(src).toContain("['CREATE','DIRECT','FINISH']")
     expect(src).toContain('type="checkbox"')
-    expect(src).toContain('Saved on this device')
+    expect(src).toContain('progress stays on this device')
     expect(src).toContain("sbFeatures:motion")
     expect(src).not.toMatch(/setTicks\(\{[^}]*true/)
   })

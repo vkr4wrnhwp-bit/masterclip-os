@@ -59,7 +59,7 @@ export const START_MODES: readonly StartMode[] = [
     actionLabel: 'Start a film with audio',
     dialogTitle: 'Start with your track.',
     fieldLabel: 'Brief',
-    next: 'The film is created first. Add the track on its References tab, then build the shot list from it.',
+    next: 'Your recording uploads as the film is created. Review it in References, then use Quick Create to build a music-led draft.',
   },
   {
     id: 'idea',

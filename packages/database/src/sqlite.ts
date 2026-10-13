@@ -24,9 +24,12 @@ export class SqliteDb implements Db {
   readonly dialect = 'sqlite' as const
   private readonly db: DatabaseSyncType
   private inTransaction = false
+  /** The database file, or ':memory:'. */
+  readonly path: string
 
   constructor(path: string) {
     const resolved = path === ':memory:' ? path : resolve(path)
+    this.path = resolved
     if (resolved !== ':memory:') mkdirSync(dirname(resolved), { recursive: true })
     this.db = new DatabaseSync(resolved)
     // WAL lets the API and the worker hold the same file open concurrently;
@@ -52,6 +55,16 @@ export class SqliteDb implements Db {
 
   async exec(sql: string): Promise<void> {
     this.db.exec(sql)
+  }
+
+  /**
+   * A consistent copy of the whole database in one new file (SQLite's VACUUM
+   * INTO), safe while other connections read and write in WAL mode, unlike
+   * copying the file.
+   */
+  async backupTo(dest: string): Promise<void> {
+    mkdirSync(dirname(resolve(dest)), { recursive: true })
+    this.db.exec(`VACUUM INTO '${resolve(dest).replace(/'/g, "''")}'`)
   }
 
   async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {

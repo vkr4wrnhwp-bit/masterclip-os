@@ -87,7 +87,7 @@ export function ProvidersView() {
                             {provider.providerId}
                           </div>
                         </td>
-                        <td className="mono faint">{provider.configured ? provider.keyFingerprint : '—'}</td>
+                        <td className="mono faint">{provider.configured ? provider.keyFingerprint || 'set' : '—'}</td>
                         <td>
                           <Badge tone={statusTone(health?.status ?? (provider.configured ? 'unknown' : 'unconfigured'))}>
                             {health?.status ?? (provider.configured ? 'unchecked' : 'unconfigured')}

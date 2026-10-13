@@ -4,7 +4,7 @@ import { AppError, formatUsd, maskSecret } from '@masterclip/shared'
 import { toNum, toStr } from '@masterclip/database'
 import { verifyCallbackToken } from '@masterclip/provider-core'
 import { ROUTING_PROFILES } from '@masterclip/model-router'
-import { HandoffRejected, verifyHandoff, workspaceKey } from '@masterclip/auth'
+import { HandoffRejected, SUITE_SSO_MAX_AGE_SECONDS, verifyHandoff, workspaceKey } from '@masterclip/auth'
 import type { Runtime } from '@masterclip/runtime'
 import { SESSION_COOKIE, requireAuth, requireProject } from '../server.js'
 import { clearCsrfCookie, issueCsrfCookie } from '../security/csrf.js'
@@ -20,6 +20,8 @@ const SignupBody = z.object({
 
 /** Auth, providers, cost reporting, and provider webhooks. */
 export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, rateLimit: RateLimitHandle): Promise<void> {
+  /** Street Banker hand-off tokens already turned into a session, until they expire. */
+  const usedHandoffs = new Map<string, number>()
   // ---------------------------------------------------------------- auth ----
   app.post('/api/auth/signup', async (request, reply) => {
     const body = SignupBody.parse(request.body)
@@ -76,6 +78,22 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       }
       return refuse(401, words[reason] ?? 'The sign-in link could not be verified.')
     }
+    // Street Banker may name the screen to open (2026-10-05: Rollout's "New
+    // film" and "All films" buttons). Only this app's own home or one of its
+    // hash routes is honoured, so the link can never send anyone elsewhere.
+    const next = typeof query.next === 'string' && /^\/(#\/[A-Za-z0-9/_-]{0,64})?$/.test(query.next) ? query.next : '/'
+    // A link opens one session. It used to work again for its whole two
+    // minutes, so one copied out of a history or a log was a way in. The same
+    // browser coming back to it (the Back button) is already signed in and
+    // simply goes through. Kept in memory: MOTION runs one API process.
+    const now = Date.now()
+    for (const [seen, until] of usedHandoffs) if (until < now) usedHandoffs.delete(seen)
+    if (usedHandoffs.has(query.token)) {
+      const current = await requireAuth(runtime, request).catch(() => null)
+      if (current && current.email.toLowerCase() === who.email.toLowerCase()) return reply.redirect(next)
+      return refuse(401, 'This sign-in link was already used. Open Motion from Street Banker again.')
+    }
+    usedHandoffs.set(query.token, now + (SUITE_SSO_MAX_AGE_SECONDS + 30) * 1000)
     // Every artist works in an organization of their own and owns it, so no
     // one lists or opens another artist's projects. Owners named in
     // OWNER_EMAILS land in the house organization, where the existing data is.
@@ -112,10 +130,6 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
     }
     void reply.setCookie(SESSION_COOKIE, session.token, { httpOnly: true, sameSite: 'lax', path: '/', secure: runtime.config.NODE_ENV === 'production' })
     issueCsrfCookie(runtime, reply, session.token)
-    // Street Banker may name the screen to open (2026-10-05: Rollout's "New
-    // film" and "All films" buttons). Only this app's own home or one of its
-    // hash routes is honoured, so the link can never send anyone elsewhere.
-    const next = typeof query.next === 'string' && /^\/(#\/[A-Za-z0-9/_-]{0,64})?$/.test(query.next) ? query.next : '/'
     return reply.redirect(next)
   })
 
@@ -164,7 +178,11 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
 
   // ----------------------------------------------------------- providers ----
   app.get('/api/providers', async (request) => {
-    await requireAuth(runtime, request)
+    const me = await requireAuth(runtime, request)
+    // Key fingerprints are for whoever runs the platform (OWNER_EMAILS), not for
+    // every artist with an account: they are part of the platform's own keys.
+    const operator = (process.env.OWNER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+      .includes(me.email.toLowerCase())
     const health = await runtime.db.query('SELECT * FROM provider_health')
     const healthByProvider = new Map(health.map((row) => [toStr(row.provider_id), row]))
 
@@ -181,7 +199,7 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
         providerId: provider.providerId,
         displayName: provider.displayName,
         configured: provider.isConfigured(),
-        keyFingerprint: maskSecret(credentialFor(runtime, provider.providerId)),
+        keyFingerprint: operator ? maskSecret(credentialFor(runtime, provider.providerId)) : '',
         health: healthByProvider.get(provider.providerId) ?? null,
       })),
     }
@@ -379,7 +397,9 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
         queue: 'render',
         type: 'render.poll',
         payload: { jobId: job.id },
-        dedupeKey: `poll-hook:${job.id}:${event.status.state}`,
+        // Per attempt, as the timer poll is: a retry's webhook with the same
+        // state as the first attempt's must still trigger a poll.
+        dedupeKey: `poll-hook:${job.id}:${job.attempts}:${event.status.state}`,
       })
     }
     await runtime.db.run('UPDATE webhook_events SET processed_at = ? WHERE provider_id = ? AND dedupe_key = ?', [

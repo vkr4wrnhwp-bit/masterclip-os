@@ -13,6 +13,8 @@ export function ffmpegPaths(): FfmpegPaths {
 
 export interface RunOptions {
   timeoutMs?: number
+  /** Optional isolated media work directory; never a user supplied path. */
+  cwd?: string
   logger?: Logger
   /** ffmpeg writes progress to stderr; large filters can exceed the default cap. */
   maxBufferBytes?: number
@@ -37,6 +39,7 @@ export function run(binary: string, args: string[], opts: RunOptions = {}): Prom
         timeout: opts.timeoutMs ?? 10 * 60_000,
         maxBuffer: opts.maxBufferBytes ?? 32 * 1024 * 1024,
         windowsHide: true,
+        ...(opts.cwd ? { cwd: opts.cwd } : {}),
         shell: false,
       },
       (error, stdout, stderr) => {
@@ -74,8 +77,54 @@ export function run(binary: string, args: string[], opts: RunOptions = {}): Prom
   })
 }
 
+/**
+ * How many ffmpeg processes one Motion process may run at once
+ * (MEDIA_MAX_PARALLEL, default 1) and how many threads each may use
+ * (FFMPEG_THREADS, default 2).
+ *
+ * Technical QC decodes a render five ways at once and the proxy build encodes
+ * it alongside; each ffmpeg left to itself sizes its threads, and the frame
+ * buffers that come with them, to every CPU the host reports, not the
+ * container's share. On a 512 MB service a single 1080p render was enough to
+ * get the container killed for memory, over and over, as the recovered job
+ * ran again on each restart (staging, 2026-10-12). Queued here, the same work
+ * finishes one decode at a time. Raise both on a larger instance.
+ */
+function mediaLimit(name: 'MEDIA_MAX_PARALLEL' | 'FFMPEG_THREADS', fallback: number): number {
+  const value = Number(process.env[name])
+  return Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+let mediaActive = 0
+const mediaWaiting: Array<() => void> = []
+
+async function withMediaSlot<T>(work: () => Promise<T>): Promise<T> {
+  while (mediaActive >= mediaLimit('MEDIA_MAX_PARALLEL', 1)) {
+    await new Promise<void>((resolve) => mediaWaiting.push(resolve))
+  }
+  mediaActive += 1
+  try {
+    return await work()
+  } finally {
+    mediaActive -= 1
+    mediaWaiting.shift()?.()
+  }
+}
+
+/**
+ * The ffmpeg argv with a thread cap: before the first input (decoding) and
+ * before the output, which is always the last argument (encoding and the
+ * filter graph feeding it). A command that sets -threads itself is left alone.
+ */
+export function withThreadCap(args: string[], threads: number): string[] {
+  if (args.includes('-threads') || args.length === 0) return args
+  const t = String(threads)
+  return ['-threads', t, ...args.slice(0, -1), '-threads', t, args[args.length - 1]!]
+}
+
 export async function ffmpeg(args: string[], opts: RunOptions = {}): Promise<string> {
-  const { stderr } = await run(ffmpegPaths().ffmpeg, ['-hide_banner', '-nostdin', '-y', ...args], opts)
+  const capped = withThreadCap(args, mediaLimit('FFMPEG_THREADS', 2))
+  const { stderr } = await withMediaSlot(() => run(ffmpegPaths().ffmpeg, ['-hide_banner', '-nostdin', '-y', ...capped], opts))
   return stderr
 }
 

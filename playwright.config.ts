@@ -47,6 +47,10 @@ export default defineConfig({
         launchOptions: { executablePath },
       },
     },
+    {
+      name: 'mobile-webkit',
+      use: { ...devices['iPhone 13'] },
+    },
   ],
   webServer: {
     command: `node scripts/e2e-server.mjs`,

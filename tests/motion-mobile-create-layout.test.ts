@@ -11,7 +11,11 @@ describe('MOTION mobile create and editor usability',()=>{
   expect(css).toContain('.app > .main { width:100%;')
  })
  it('keeps dialog within visual viewport and avoids iOS input auto zoom',()=>{
-  expect(css).toContain('max-height:calc(100dvh - 24px)')
+  expect(css).toContain('max-height:calc(var(--mo-vv-height, 100dvh)')
+  expect(css).toContain('width:calc(var(--mo-vv-width, 100vw) - 24px)')
+  expect(css).toContain('env(safe-area-inset-bottom, 0px)')
+  expect(shell).toContain("window.visualViewport")
+  expect(shell).toContain('onFocusCapture={onFormFocus}')
   expect(css).toContain('font-size:16px')
   expect(css).toContain('.mo-dialog .mo-audio-consent input[type="checkbox"]')
  })

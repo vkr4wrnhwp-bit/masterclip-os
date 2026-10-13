@@ -43,6 +43,15 @@ async function main(): Promise<void> {
     // every container boot, and once the owner exists the password is never used
     // again — refusing to boot over an unused variable would turn a healthy,
     // already-seeded deployment into a crash loop.
+    // Street Banker is the account of record: with the hand-off key set,
+    // artists arrive signed in through /auth/street-banker and no local
+    // owner account is needed. A deployment like that (the staging server)
+    // starts with no seed rather than refusing to start.
+    if (process.env.NODE_ENV === 'production' && passwordIsPublic && (process.env.SUITE_SSO_SECRET ?? '').trim()) {
+      console.log('no seed account: SEED_PASSWORD is not set and sign-in comes through Street Banker')
+      await runtime.close()
+      return
+    }
     if (process.env.NODE_ENV === 'production' && passwordIsPublic) {
       console.error('refusing to create the owner account: set SEED_PASSWORD — the development default is public')
       await runtime.close()

@@ -21,6 +21,21 @@ export async function runMigrations(db: Db, migrations: Migration[] = MIGRATIONS
   const applied: string[] = []
   const skipped: string[] = []
 
+  // Before changing an existing database, keep an exact copy of it as it was:
+  // the rollback point for a deploy that brings new migrations, taken on the
+  // same disk at the moment it matters. A fresh database has nothing to keep.
+  // MIGRATION_BACKUP=off skips it.
+  const pending = migrations.filter((m) => !done.has(m.id))
+  const file = (db as { path?: unknown }).path
+  const backup = (db as { backupTo?: (dest: string) => Promise<void> }).backupTo
+  if (pending.length > 0 && done.size > 0 && typeof file === 'string' && file !== ':memory:' &&
+      typeof backup === 'function' && process.env.MIGRATION_BACKUP !== 'off') {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const dest = `${file}.before-${pending[0]!.id}-${stamp}.sqlite`
+    await backup.call(db, dest)
+    console.log(JSON.stringify({ level: 'info', msg: 'migrations.backup', before: pending[0]!.id, pending: pending.length, file: dest }))
+  }
+
   for (const migration of migrations) {
     if (done.has(migration.id)) {
       skipped.push(migration.id)

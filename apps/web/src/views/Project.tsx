@@ -2,11 +2,31 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
+import { QuickCreate } from './QuickCreate.jsx'
+import { VariationCompare } from './VariationCompare.jsx'
+import { MusicTimeline } from './MusicTimeline.jsx'
 
 export function ProjectView({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
-  const [tab, setTab] = React.useState<'shots' | 'import' | 'assets' | 'bible'>(initialTab === 'assets' || initialTab === 'import' || initialTab === 'bible' ? initialTab : 'shots')
+  type ProjectTab = 'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'
+  const routeTab = (value?: string): ProjectTab =>
+    value === 'assets' || value === 'import' || value === 'bible' || value === 'quick' || value === 'timeline' || value === 'compare' ? value : 'shots'
+  const [tab, setTab] = React.useState<ProjectTab>(() => routeTab(initialTab))
+  React.useEffect(() => { setTab(routeTab(initialTab)) }, [projectId, initialTab])
+  const tabsRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    const container = tabsRef.current
+    const selected = container?.querySelector<HTMLButtonElement>('button.active')
+    if (!container || !selected) return
+    // Scroll only the tab strip, never the document. Deep links to Import or
+    // References remain visible on 320px portrait screens.
+    const left = selected.offsetLeft - container.offsetLeft
+    const right = left + selected.offsetWidth
+    if (left < container.scrollLeft) container.scrollLeft = left
+    else if (right > container.scrollLeft + container.clientWidth) container.scrollLeft = right - container.clientWidth
+  }, [tab])
+
 
   return (
     <>
@@ -15,19 +35,14 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
         <div className="meta">{shots.data ? `${shots.data.shots.length} shots` : ''}</div>
       </div>
 
-      <div className="tabs">
-        <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>
-          Shots
-        </button>
-        <button className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>
-          Import
-        </button>
-        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
-          References
-        </button>
-        <button className={tab === 'bible' ? 'active' : ''} onClick={() => setTab('bible')}>
-          Brief &amp; style
-        </button>
+      <div className="tabs" ref={tabsRef} role="group" aria-label="Film workflow tools">
+        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>References</button>
+        <button className={tab === 'quick' ? 'active' : ''} onClick={() => setTab('quick')}>Quick Create</button>
+        <button className={tab === 'shots' ? 'active' : ''} onClick={() => setTab('shots')}>Shots</button>
+        <button className={tab === 'timeline' ? 'active' : ''} onClick={() => setTab('timeline')}>Music Video Timeline</button>
+        <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')}>Compare variants</button>
+        <button className={tab === 'import' ? 'active' : ''} onClick={() => setTab('import')}>Import shots</button>
+        <button className={tab === 'bible' ? 'active' : ''} onClick={() => setTab('bible')}>Brief &amp; style</button>
       </div>
 
       {tab === 'shots' && (
@@ -85,8 +100,11 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
         </Card>
       )}
 
+      {tab === 'quick' && <QuickCreate projectId={projectId} onSaved={() => shots.reload()} onReferences={() => setTab('assets')} />}
+      {tab === 'timeline' && <MusicTimeline projectId={projectId} onCreated={() => shots.reload()} />}
+      {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
-      {tab === 'assets' && <AssetsPanel projectId={projectId} />}
+      {tab === 'assets' && <AssetsPanel projectId={projectId} onQuickCreate={() => setTab('quick')} />}
       {tab === 'bible' && (
         <AsyncBlock state={project}>
           {(data) => (
@@ -190,7 +208,7 @@ function ImportPanel({ projectId, onImported }: { projectId: string; onImported:
   )
 }
 
-function AssetsPanel({ projectId }: { projectId: string }) {
+function AssetsPanel({ projectId, onQuickCreate }: { projectId: string; onQuickCreate: () => void }) {
   const assets = useAsync(() => api.assets(projectId), [projectId])
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -239,6 +257,18 @@ function AssetsPanel({ projectId }: { projectId: string }) {
         <input type="file" onChange={(e) => void upload(e)} disabled={busy} accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/wav,audio/mpeg" />
         {error && <Callout tone="danger">{error}</Callout>}
       </Card>
+
+      {assets.data?.assets.some((asset) =>
+        asset.kind === 'audio' && (asset.rights as { authorized?: boolean })?.authorized
+      ) && (
+        <Callout tone="info">
+          Your authorized recording is ready. Continue to Quick Create to choose a song moment,
+          prepare the first shot, and preserve the original audio.
+          <div className="button-row" style={{ marginTop: 12 }}>
+            <button type="button" className="primary" onClick={onQuickCreate}>Continue to Quick Create</button>
+          </div>
+        </Callout>
+      )}
 
       <Card title="References">
         <AsyncBlock state={assets}>
