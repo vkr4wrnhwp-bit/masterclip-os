@@ -161,7 +161,7 @@ export function App() {
           }}>
           <div className="brand">
             <h1><MotionLogo /></h1>
-            <div className="sub">cinematic render factory</div>
+            <div className="sub">by Street Banker</div>
           </div>
           <div className="nav">
             <NavLink route={route} to="/" name="dashboard">
