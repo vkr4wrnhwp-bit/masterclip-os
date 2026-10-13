@@ -150,6 +150,16 @@ export class QueueWorker {
       },
     }
 
+    // The lease is how the queue tells a dead worker from a slow one, so it is
+    // renewed for as long as the handler runs. A heartbeat only at the start let
+    // a 33-second QC outlive a 15-second lease in the two-worker crash drill
+    // (2026-10-12): this worker's own stalled sweep took it for abandoned and ran
+    // a second copy beside the first. With visual QC on, that is paid twice.
+    const renewEveryMs = Math.max(1_000, Math.floor(this.queue.leaseMs / 3))
+    const renewal = setInterval(() => {
+      void this.queue.extendLease(job.id).catch((err) => logger.warn('worker.lease_renewal_failed', { err }))
+    }, renewEveryMs)
+
     const startedAt = this.clock.now()
     try {
       await handler(job.payload as never, ctx)
@@ -167,6 +177,8 @@ export class QueueWorker {
       }
       logger.error('worker.failed', { err, duration_ms: this.clock.now() - startedAt })
       await this.queue.fail(job.id, err)
+    } finally {
+      clearInterval(renewal)
     }
   }
 }

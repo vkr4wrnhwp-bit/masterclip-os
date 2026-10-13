@@ -95,6 +95,11 @@ export class DurableQueue {
     return this.workerId
   }
 
+  /** How long a claim lasts unless it is renewed. */
+  get leaseMs(): number {
+    return this.leaseSeconds * 1000
+  }
+
   async enqueue<P>(opts: EnqueueOptions<P>): Promise<{ id: string; deduped: boolean }> {
     const now = this.clock.now()
     const runAt = opts.runAt ?? new Date(now + (opts.delayMs ?? 0)).toISOString()

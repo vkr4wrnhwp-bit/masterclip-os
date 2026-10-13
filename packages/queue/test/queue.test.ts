@@ -171,6 +171,34 @@ describe('queue worker', () => {
     expect((await queue.stats()).dead).toBe(1)
   })
 
+  it('keeps the lease of a handler that outlives it, so a sweep never starts a second copy', async () => {
+    // Two-worker crash drill, 2026-10-12: a 33-second QC on a 15-second lease
+    // was swept as abandoned while still running and ran twice.
+    const queue = new DurableQueue(db, { leaseSeconds: 1 })
+    const worker = new QueueWorker(queue, { concurrency: 1 })
+    let runs = 0
+    worker.register('slow', async () => {
+      runs++
+      await new Promise((resolve) => setTimeout(resolve, 2_500))
+    })
+    const { id } = await queue.enqueue({ type: 'slow', payload: {} })
+
+    const running = worker.runOnce(1)
+    const swept: number[] = []
+    // Sweeps at about 1.5 s and 2.2 s: both past the original 1-second lease.
+    for (const waitMs of [1_500, 700]) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+      swept.push(await queue.recoverStalled())
+    }
+    await running
+
+    expect(swept).toEqual([0, 0])
+    expect(runs).toBe(1)
+    const job = await queue.get(id)
+    expect(job?.status).toBe('completed')
+    expect(job?.attempts).toBe(1)
+  })
+
   it('reschedules a deferred job rather than completing it', async () => {
     const { queue, clock } = makeQueue()
     const worker = new QueueWorker(queue, { concurrency: 1, clock })
