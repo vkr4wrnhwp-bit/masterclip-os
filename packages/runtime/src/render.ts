@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppError, formatUsd, newId, sha256File, type MicroUsd } from '@masterclip/shared'
+import { customerCapMessage } from '@masterclip/cost-engine'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { toNum } from '@masterclip/database'
 import { objectKey, type StorageDriver } from '@masterclip/asset-storage'
@@ -42,7 +43,12 @@ export interface PlannedCandidate {
 
 export interface PlanResult {
   jobIds: string[]
-  skipped: Array<{ candidate: PlannedCandidate; reason: string }>
+  /**
+   * `reason` is the sentence to show. `code` is the cost controller's code for
+   * why, when it refused: `spend.customer_cap` means the customer has used this
+   * month's allowance, which is where the app will offer credits.
+   */
+  skipped: Array<{ candidate: PlannedCandidate; reason: string; code?: string }>
   estimatedMicros: MicroUsd
   warnings: string[]
 }
@@ -190,7 +196,10 @@ export class RenderService {
         warnings.push(...authorization.warnings.map((w) => `${candidate.providerId}/${candidate.modelId}: ${w}`))
 
         if (!authorization.allowed) {
-          skipped.push({ candidate, reason: authorization.denials.map((d) => d.message).join('; ') })
+          const code = authorization.denials.some((d) => d.code === 'spend.customer_cap')
+            ? 'spend.customer_cap'
+            : authorization.denials[0]?.code
+          skipped.push({ candidate, reason: authorization.denials.map((d) => d.message).join('; '), ...(code ? { code } : {}) })
           await this.rt.audit.record({
             orgId: input.orgId,
             projectId: input.projectId,
@@ -385,6 +394,7 @@ export class RenderService {
       projectId: job.projectId,
       shotId: job.shotId,
       batchId: job.batchId,
+      jobId: job.id,
       request,
       quote,
       tier: model.capabilities.tier,
@@ -665,23 +675,34 @@ export class RenderService {
    * that the figure is ours rather than the provider's.
    */
   /**
-   * Refuses QC work once the global live-spend ceiling is gone.
+   * Refuses QC work once this customer's monthly cap, or the whole-service
+   * monthly ceiling, is gone.
    *
    * QC is not a provider generation, so it never passes through
    * `CostController.authorize()` — which is where every other spend meets the
-   * cap. That left one class of real spending permanently outside the only
-   * global limit in the system. This is the narrow equivalent: the same ledger
-   * total, the same ceiling, checked before the request rather than after.
+   * caps. That left one class of real spending permanently outside the only
+   * limits in the system. This is the narrow equivalent: the same ledger totals,
+   * the same limits, checked before the request rather than after. The customer
+   * is told in the same words, under the same code, as when a render is refused.
    */
-  private async assertQcSpendAllowed(outputId: string): Promise<void> {
+  private async assertQcSpendAllowed(outputId: string, orgId: string): Promise<void> {
     if (this.rt.config.isSandbox) return
-    const spent = (await this.rt.ledger.totalLiveSpend()) + (await this.rt.ledger.committedInFlight())
+    const reached = await this.rt.cost.customerCapReached(orgId)
+    if (reached) {
+      throw new AppError({
+        kind: 'budget_exceeded',
+        code: 'spend.customer_cap',
+        message: customerCapMessage(reached.capMicros, reached.usedMicros),
+        details: { outputId },
+      })
+    }
+    const spent = (await this.rt.ledger.liveSpendThisMonth()) + (await this.rt.ledger.committedInFlight())
     const cap = this.rt.config.liveSpendCapMicros
     if (spent < cap) return
     throw new AppError({
       kind: 'budget_exceeded',
       code: 'qc.live_cap',
-      message: `visual QC needs to spend, but live spend of ${formatUsd(spent)} has reached the ${formatUsd(cap, 2)} cap`,
+      message: `visual QC needs to spend, but this month's live spend of ${formatUsd(spent)} has reached the ${formatUsd(cap, 2)} cap`,
       details: { outputId },
     })
   }
@@ -892,8 +913,9 @@ export class RenderService {
         // reference to the cap at all: the charge was appended to the ledger
         // after the fact, so QC kept spending long after LIVE_SPEND_CAP_USD was
         // exhausted. It is not a provider generation and does not go through
-        // authorize(), but it must still respect the one global ceiling.
-        await this.assertQcSpendAllowed(outputId)
+        // authorize(), but it must still respect the customer's monthly cap and
+        // the whole-service ceiling.
+        await this.assertQcSpendAllowed(outputId, project.orgId)
 
         const client = this.visionClient(() => technical)
         const characters = [...(await this.rt.bibles.listCharacters(output.projectId))]

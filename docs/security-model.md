@@ -51,7 +51,12 @@
 - `MASTERCLIP_MODE=sandbox` (the default) refuses every billable submission
   outright, independent of budgets.
 - `LIVE_SPEND_CAP_USD` is a global ceiling across every org and project, checked
-  last and separately, precisely so a routing bug cannot spend at scale.
+  last and separately, precisely so a routing bug cannot spend at scale. It counts
+  the current calendar month (UTC), not all time.
+- `CUSTOMER_SPEND_CAP_USD`, when set, limits one customer (one org) to that many
+  dollars of live renders per calendar month (UTC), under the denial code
+  `spend.customer_cap`. It is checked beside the org monthly budget, the smaller
+  of the two applies, and the house org (the owner's) is exempt.
 - Premium-tier renders and estimates above the project threshold require an
   explicit human approval flag; an agent cannot supply it —
   `assertCanApprovePremium` restricts that to the cost controller agent, and even

@@ -33,6 +33,22 @@ const optionalNum = () =>
     .transform((v) => (v === undefined || v === '' ? undefined : Number(v)))
     .pipe(z.number().finite().optional())
 
+/**
+ * A dollar amount the environment may or may not set, for a limit rather than a
+ * tuning knob: junk ("ten", "$10"), a negative figure and Infinity are refused
+ * at startup with a sentence saying what is wanted, instead of becoming NaN or
+ * a limit that nobody can ever reach. Unset and blank both mean "not set", and
+ * a blank must not quietly become zero dollars, which would shut every customer
+ * out, so whitespace is trimmed before the blank check.
+ */
+const PLAIN_DOLLARS = 'must be a plain number of dollars, like 10'
+const optionalDollars = () =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v.trim() === '' ? undefined : Number(v)))
+    .pipe(z.number({ invalid_type_error: PLAIN_DOLLARS }).finite(PLAIN_DOLLARS).nonnegative('must not be negative').optional())
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -45,7 +61,11 @@ const EnvSchema = z.object({
    */
   MASTERCLIP_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
   /**
-   * The global live-spend ceiling, in dollars.
+   * The whole-service live-spend ceiling, in dollars: the most real money every
+   * customer together may cost in one calendar month (UTC). It is the safety
+   * net under CUSTOMER_SPEND_CAP_USD, not a share-out between customers, and it
+   * starts over on the 1st of each month so a live service does not stop for
+   * good once its lifetime spend passes it.
    *
    * No schema default on purpose. It used to be `num(2)`, which meant a
    * deployment that never configured a cap was indistinguishable from one that
@@ -55,6 +75,21 @@ const EnvSchema = z.object({
    * a number, so nothing that enforces the cap changes.
    */
   LIVE_SPEND_CAP_USD: optionalNum(),
+  /**
+   * The most one customer (one organization) may spend on live renders in one
+   * calendar month (UTC), in dollars. When it is set it is that organization's
+   * monthly cap; where an organization also has a stored monthly budget, the
+   * smaller of the two applies. When it is unset, nothing changes: the stored
+   * organization budget (500 dollars by default) is the only monthly cap.
+   *
+   * The house organization, where OWNER_EMAILS accounts live, is exempt and is
+   * bound only by LIVE_SPEND_CAP_USD. Credits will lift this cap later; until
+   * then it is the one place that decides what a customer may spend.
+   *
+   * A value that is not a plain non-negative number stops the service at
+   * startup. Zero is allowed and means no customer may run a live render.
+   */
+  CUSTOMER_SPEND_CAP_USD: optionalDollars(),
 
   API_HOST: z.string().default('127.0.0.1'),
   API_PORT: num(4310),
@@ -186,7 +221,8 @@ function assertProductionSecrets(env: RawEnv): void {
 }
 
 /**
- * The live-spend ceiling a deployment gets when it never set one.
+ * The whole-service monthly live-spend ceiling a deployment gets when it never
+ * set one.
  *
  * It is a real, enforced limit rather than a placeholder: the cost controller
  * refuses any live submission that would carry spend past it, configured or
@@ -209,6 +245,10 @@ export interface AppConfig extends RawEnv {
    */
   liveSpendCapConfigured: boolean
   liveSpendCapMicros: MicroUsd
+  /** True only when CUSTOMER_SPEND_CAP_USD came from the environment. */
+  customerSpendCapConfigured: boolean
+  /** The per-customer monthly cap in micro-dollars, or null when none is set. */
+  customerSpendCapMicros: MicroUsd | null
   isSandbox: boolean
   isTest: boolean
 }
@@ -251,6 +291,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
     LIVE_SPEND_CAP_USD: liveSpendCapUsd,
     liveSpendCapConfigured,
     liveSpendCapMicros: usdToMicros(liveSpendCapUsd),
+    customerSpendCapConfigured: env.CUSTOMER_SPEND_CAP_USD !== undefined,
+    customerSpendCapMicros: env.CUSTOMER_SPEND_CAP_USD === undefined ? null : usdToMicros(env.CUSTOMER_SPEND_CAP_USD),
     isSandbox: env.MASTERCLIP_MODE === 'sandbox',
     isTest: env.NODE_ENV === 'test',
   }

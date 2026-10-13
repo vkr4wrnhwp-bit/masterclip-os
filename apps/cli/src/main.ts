@@ -159,7 +159,8 @@ async function cmdDoctor(ctx: Ctx): Promise<number> {
       })
     }
 
-    const liveSpend = await runtime.ledger.totalLiveSpend()
+    // This calendar month (UTC), every customer together: what the ceiling counts.
+    const liveSpend = await runtime.ledger.liveSpendThisMonth()
     checks.push({
       name: 'live-spend allowance',
       // Unchanged: this reports, it does not authorize. What the cost
@@ -168,8 +169,10 @@ async function cmdDoctor(ctx: Ctx): Promise<number> {
       // Whose figure it is, said out loud. `doctor` is where an operator checks
       // a deployment before pointing it at real money, and a cap nobody set
       // reading the same as a cap somebody chose is the thing worth catching.
-      detail: `${formatUsd(liveSpend, 4)} of ${formatUsd(config.liveSpendCapMicros, 2)} used. The cap was ${
+      detail: `${formatUsd(liveSpend, 4)} of ${formatUsd(config.liveSpendCapMicros, 2)} used this month, all customers. The cap was ${
         config.liveSpendCapConfigured ? 'configured for this deployment' : 'not configured, so this is the built-in safety limit'
+      }. Per-customer monthly cap: ${
+        config.customerSpendCapMicros === null ? 'not set' : formatUsd(config.customerSpendCapMicros, 2)
       }. Mode is ${config.MASTERCLIP_MODE}.`,
       required: true,
     })

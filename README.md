@@ -60,9 +60,22 @@ Going live is a deliberate act:
 MASTERCLIP_MODE=live LIVE_SPEND_CAP_USD=2 FAL_KEY=... pnpm dev
 ```
 
-`LIVE_SPEND_CAP_USD` is a hard global ceiling across every org and project,
-checked separately from budgets, precisely so a bug in routing cannot spend at
-scale. The banner at the top of every screen says which mode you are in.
+`LIVE_SPEND_CAP_USD` is a hard whole-service ceiling: the most real money every
+org and project together may spend in one calendar month (UTC). It starts over on
+the 1st, and it is checked separately from budgets, precisely so a bug in routing
+cannot spend at scale. The banner at the top of every screen says which mode you
+are in.
+
+`CUSTOMER_SPEND_CAP_USD` (optional, a plain number of dollars such as `10`) is the
+most one customer may spend on live renders in one calendar month (UTC). Each
+Street Banker account is its own organization, so each has its own allowance. A
+customer who reaches it is told in plain words ("You've used this month's $10 of
+MOTION renders. More renders need credits.") and refused under the code
+`spend.customer_cap`, which is where credits will plug in later. If the
+organization also has a stored monthly budget, the smaller of the two applies. The
+owner's account (`OWNER_EMAILS`, the house organization) is exempt and is held only
+to `LIVE_SPEND_CAP_USD`. Left unset, nothing changes: the stored organization
+monthly budget ($500 by default) is the only monthly limit per customer.
 
 ---
 
@@ -191,7 +204,8 @@ Three things about a deployment that are not obvious:
   a proxy you control writes `X-Forwarded-For`; otherwise the key is forgeable.
 - **Sandbox is still the default.** A deployment refuses every billable
   submission until `MASTERCLIP_MODE=live` is set deliberately, and is bound by
-  `LIVE_SPEND_CAP_USD` after that.
+  `LIVE_SPEND_CAP_USD` (the whole service, per calendar month) and, when set,
+  `CUSTOMER_SPEND_CAP_USD` (one customer, per calendar month) after that.
 
 ---
 

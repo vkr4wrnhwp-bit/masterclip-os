@@ -20,6 +20,11 @@ async function main(): Promise<void> {
     // from one that never set a cap at all, which is the same gap the screens
     // had. It is the one line somebody reads when a render was refused.
     live_spend_cap_configured: config.liveSpendCapConfigured,
+    // The live cap above is the whole service's ceiling for the calendar month.
+    // This one is the most a single customer may spend in a month; null means no
+    // per-customer cap is set (and the stored organization budget is the only
+    // monthly limit).
+    customer_spend_cap_usd: config.CUSTOMER_SPEND_CAP_USD ?? null,
     db: runtime.db.dialect,
     storage: runtime.storage.name,
     web_root: webRoot,

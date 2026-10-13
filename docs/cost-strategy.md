@@ -103,8 +103,12 @@ Ordered by how often they save you:
 
 1. **Sandbox by default.** `MASTERCLIP_MODE=sandbox` refuses every billable
    submission. Going live is a deliberate act.
-2. **A global live-spend cap.** `LIVE_SPEND_CAP_USD` is checked across every org
-   and project, separately from budgets, so a routing bug cannot spend at scale.
+2. **A global live-spend cap, and a cap per customer.** `LIVE_SPEND_CAP_USD` is
+   checked across every org and project, separately from budgets, so a routing bug
+   cannot spend at scale; it counts the current calendar month (UTC) and starts
+   over on the 1st. `CUSTOMER_SPEND_CAP_USD`, when set, is the most one customer
+   (one org) may spend in a calendar month, enforced with the org monthly budget
+   (the smaller of the two applies); the house org is exempt.
 3. **Price the whole matrix before queueing.** The candidate matrix shows the
    total and the per-provider split *before* anything is submitted, and expensive
    branches can be pruned.
