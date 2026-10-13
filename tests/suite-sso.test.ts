@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -61,7 +61,10 @@ describe('verifyHandoff', () => {
  */
 function mint(claims: { uid: string; email: string; name?: string }): string {
   const b64 = (value: Buffer) => value.toString('base64url')
-  const payload = b64(Buffer.from(JSON.stringify({ v: 1, plan: 'label', suite: 'motion', nonce: 'n', ...claims })))
+  // A fresh nonce each time, as sb_suite_sso.py does (secrets.token_urlsafe),
+  // so two links minted in the same second are two links.
+  const nonce = randomBytes(9).toString('base64url')
+  const payload = b64(Buffer.from(JSON.stringify({ v: 1, plan: 'label', suite: 'motion', nonce, ...claims })))
   const stamp: number[] = []
   for (let n = Math.floor(Date.now() / 1000); n > 0; n = Math.floor(n / 256)) stamp.unshift(n % 256)
   const signed = `${payload}.${b64(Buffer.from(stamp))}`
@@ -103,6 +106,25 @@ describe('GET /auth/street-banker', () => {
     expect(await go('https://evil.test/')).toBe('/')
     expect(await go('//evil.test')).toBe('/')
     expect(await go('/#/projects?x=<script>')).toBe('/')
+  })
+
+  it('opens one session per link: a copied link is refused, the same browser going Back is let through', async () => {
+    process.env.SUITE_SSO_SECRET = SECRET
+    const token = mint({ uid: '702', email: 'once@artists.test' })
+    const url = `/auth/street-banker?token=${token}&next=${encodeURIComponent('/#/projects')}`
+    const first = await app.inject({ method: 'GET', url })
+    expect(first.statusCode).toBe(302)
+    const session = first.cookies.find((c) => c.name === SESSION_COOKIE)?.value ?? ''
+    expect(session).not.toBe('')
+
+    const copied = await app.inject({ method: 'GET', url })
+    expect(copied.statusCode).toBe(401)
+    expect(copied.body).toContain('already used')
+    expect(copied.cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined()
+
+    const back = await app.inject({ method: 'GET', url, cookies: { [SESSION_COOKIE]: session } })
+    expect(back.statusCode).toBe(302)
+    expect(back.headers.location).toBe('/#/projects')
   })
 
   it('refuses a bare visit plainly, and says so when the suite is not connected', async () => {

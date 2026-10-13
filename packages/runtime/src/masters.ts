@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { AppError, formatUsd, newId, sha256File } from '@masterclip/shared'
-import { objectKey } from '@masterclip/asset-storage'
+import { objectKey, sanitizeFilename } from '@masterclip/asset-storage'
 import { AUDIT_ACTIONS } from '@masterclip/domain'
 import { buildEdl, buildFcpXml, probe, reframe, replaceAudioMoment, transcode, type DeliveryFormat } from '@masterclip/media-tools'
 import { frameSize, type AspectRatio, type TargetResolution } from '@masterclip/shot-schema'
@@ -104,7 +104,11 @@ export class MasterService {
     try {
       const info = await probe(localPath)
       for (const spec of specs) {
-        const label = spec.label ?? `${spec.format}${spec.aspectRatio ? `_${spec.aspectRatio.replace(/[:.]/g, '')}` : ''}`
+        // The label names files in the scratch folder, so it is reduced to one
+        // plain file-name segment: a label like "../../x" used to write outside it.
+        const label = sanitizeFilename(
+          spec.label ?? `${spec.format}${spec.aspectRatio ? `_${spec.aspectRatio.replace(/[:.]/g, '')}` : ''}`,
+        ).slice(0, 80)
         const extension = spec.format.startsWith('prores') ? 'mov' : 'mp4'
         const outPath = join(workDir, `${label}.${extension}`)
 
@@ -410,6 +414,11 @@ export class MasterService {
     const clips = []
     for (const masterId of masterIds) {
       const master = await this.rt.renders.getMaster(masterId)
+      // The caller was checked against projectId only; a master id from any
+      // other project used to be listed, name, file and format included.
+      if (master.projectId !== projectId) {
+        throw new AppError({ kind: 'forbidden', code: 'sequence.other_project', message: 'a master in this sequence belongs to another project' })
+      }
       const output = await this.rt.renders.getOutput(master.outputId)
       const asset = await this.rt.assets.get(master.sourceAssetId)
       clips.push({

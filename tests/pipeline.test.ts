@@ -1,6 +1,7 @@
+import { existsSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDb, toNum, type Db } from '@masterclip/database'
 import { LocalStorage } from '@masterclip/asset-storage'
@@ -647,6 +648,179 @@ describe('render pipeline', () => {
 
     await drain(render)
     expect(await runtime.renders.listOutputs({ shotId })).toHaveLength(2)
+  })
+
+  it('polls a retried render again, so a retry after a provider failure finishes', async () => {
+    // Seen on the staging server, 2026-10-12: a render the provider failed
+    // was retried, resubmitted, and then sat at "submitted" for good. The
+    // retry's poll was queued under the same dedupe key as the first
+    // attempt's finished poll, so the queue dropped it and nothing ever
+    // asked the provider again.
+    const { createMockProvider } = await import('@masterclip/provider-mock')
+    const mock = (failureRate: number) => createMockProvider({
+      logger: silentLogger, sandbox: true, publicBaseUrl: '', now: () => Date.now(),
+      workDir: join(storageRoot, `mock-${failureRate}`), latencyMs: 0, defectRate: 0, failureRate,
+    })
+    runtime.registry.register(mock(1))
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'retry', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('failed')
+
+    // What POST /api/jobs/:jobId/retry does, against a provider that now succeeds.
+    runtime.registry.register(mock(0))
+    const failed = await runtime.renders.getJob(jobId)
+    await runtime.renders.updateJob(jobId, { status: 'queued', error: null })
+    await runtime.queue.enqueue({
+      queue: QUEUES.render,
+      type: JOB_TYPES.submitRender,
+      payload: { jobId },
+      dedupeKey: `submit:${jobId}:retry:${failed.attempts + 1}`,
+    })
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ shotId })).toHaveLength(1)
+  })
+
+  // Crash windows. Each test sets up exactly what a worker killed at that point
+  // leaves behind, then lets the recovered queue job run again (2026-10-12).
+
+  it('sends a render whose worker stopped before anything reached the provider', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash before send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    // Killed while quoting or authorizing: status moved, no attempt recorded.
+    await runtime.renders.updateJob(jobId, { status: 'authorizing' })
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(1)
+  })
+
+  it('fails, rather than sends again, a render whose worker stopped while sending it', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash mid send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    const job = await runtime.renders.getJob(jobId)
+    // Killed while provider.submit() was in flight: the provider may have it.
+    await runtime.renders.updateJob(jobId, { status: 'authorizing' })
+    await runtime.renders.recordAttempt({
+      jobId, attempt: 1, providerId: job.providerId, modelId: job.modelId,
+      status: 'submitting', estimatedMicros: job.estimatedMicros, billable: false,
+    })
+
+    await drain(render)
+    const after = await runtime.renders.getJob(jobId)
+    expect(after.status).toBe('failed')
+    expect(after.externalJobId).toBeFalsy()
+    expect(after.error).toMatchObject({ code: 'render.submit_interrupted' })
+    const charges = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM cost_ledger WHERE job_id = ? AND entry_type = 'charge'`, [jobId])
+    expect(toNum(charges?.n)).toBe(1)
+    const open = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM render_attempts WHERE job_id = ? AND status = 'submitting'`, [jobId])
+    expect(toNum(open?.n)).toBe(0)
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(0)
+  })
+
+  it('collects a render the provider took just before its worker stopped', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash after send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await render.submitRender(jobId)
+    // Killed after the job was marked submitted, before the first poll was queued.
+    await db.run(`DELETE FROM queue_jobs WHERE job_type = ?`, [JOB_TYPES.pollRender])
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(1)
+  })
+
+  it('finishes a render whose worker stopped right after storing its output', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash after store', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await render.submitRender(jobId)
+    while (!(await render.pollRender(jobId)).done) { /* the mock answers at once */ }
+    await render.ingestOutputs(jobId)
+    // Killed after the output row was written, before QC and proxies were
+    // queued and before the job was closed.
+    const stored = (await runtime.renders.listOutputs({ jobId }))[0]!
+    await db.run(`DELETE FROM queue_jobs WHERE dedupe_key IN (?, ?)`, [`qc:${stored.id}`, `proxies:${stored.id}`])
+    await runtime.renders.updateJob(jobId, { status: 'downloading' })
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    const outputs = await runtime.renders.listOutputs({ jobId })
+    expect(outputs).toHaveLength(1)
+    expect(outputs[0]?.proxyAssetId).toBeTruthy()
+    expect((await runtime.renders.qcFor(stored.id)).some((row) => row.layer === 'combined')).toBe(true)
+  })
+
+  // Security pass, 2026-10-12: inputs and exports stay inside their project.
+
+  async function referenceImage(forProjectId: string, name: string) {
+    const path = join(storageRoot, `${name}.png`)
+    await ffmpeg(['-f', 'lavfi', '-i', 'color=c=red:s=320x180', '-frames:v', '1', path])
+    const sha = await sha256File(path)
+    const stored = await runtime.storage.putFile(`${forProjectId}/reference_image/${name}/${name}.png`, path, { contentType: 'image/png', sha256: sha })
+    return runtime.assets.create({
+      projectId: forProjectId, kind: 'reference_image', storageKey: stored.key,
+      filename: `${name}.png`, mime: 'image/png', bytes: stored.bytes, sha256: stored.sha256, createdBy: 'tester',
+      rights: { owner: 'Tester', authorized: true, consent: 'authorized', allowedUse: 'reference' },
+    })
+  }
+
+  async function firstFrameFrom(assetId: string) {
+    const current = await runtime.projects.currentVersion(shotId)
+    await runtime.projects.addVersion({
+      shotId, createdBy: 'tester', note: 'first frame',
+      spec: { ...current.spec, generation_mode: 'image_to_video', first_frame_asset: assetId },
+    })
+  }
+
+  it('will not render from a frame that belongs to another project', async () => {
+    const other = await runtime.projects.createOrg('Another Artist')
+    const theirs = await runtime.projects.create({ orgId: other.id, name: 'Their Project', createdBy: 'someone' })
+    const frame = await referenceImage(theirs.id, 'their-frame')
+    await firstFrameFrom(frame.id)
+
+    const plan = await new RenderService(runtime).planBatch({ projectId, shotId, batchName: 'foreign frame', candidates: candidates(1), createdBy: 'tester', orgId })
+    expect(plan.jobIds).toHaveLength(0)
+    expect(plan.skipped[0]?.reason).toMatch(/another project/)
+  })
+
+  it('will not send a frame whose rights were revoked while the render waited', async () => {
+    const render = new RenderService(runtime)
+    const frame = await referenceImage(projectId, 'our-frame')
+    await firstFrameFrom(frame.id)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'revoked frame', candidates: candidates(1), createdBy: 'tester', orgId })
+    expect(plan.jobIds).toHaveLength(1)
+
+    await runtime.assets.setRights(frame.id, { consent: 'revoked' }, 'tester')
+    await drain(render)
+    const job = await runtime.renders.getJob(plan.jobIds[0]!)
+    expect(job.status).toBe('failed')
+    expect(job.error).toMatchObject({ code: 'media_rights.revoked' })
+    expect(job.externalJobId).toBeFalsy()
+  })
+
+  it('keeps a delivery label inside the scratch folder and a sequence inside its project', async () => {
+    const render = new RenderService(runtime)
+    await render.planBatch({ projectId, shotId, batchName: 'export', candidates: candidates(1), createdBy: 'tester', orgId })
+    await drain(render)
+    const output = (await runtime.renders.listOutputs({ shotId }))[0]!
+    await runtime.renders.addReview({ outputId: output.id, projectId, shotId, userId: 'tester', decision: 'approve', rejectionReasons: [], note: '' })
+    const masters = new MasterService(runtime)
+    const masterId = await masters.promote({ outputId: output.id, name: 'S01 master', approvedBy: 'tester', orgId })
+
+    const escaped = join(dirname(tmpdir()), 'motion-escape-check.mp4')
+    const [deliveryId] = await masters.finish(masterId, [{ format: 'review_h264', label: '../../motion-escape-check' }], 'tester')
+    expect(existsSync(escaped)).toBe(false)
+    expect((await runtime.assets.get(deliveryId!)).filename).toBe('motion-escape-check.mp4')
+
+    const other = await runtime.projects.createOrg('Another Artist')
+    const theirs = await runtime.projects.create({ orgId: other.id, name: 'Their Project', createdBy: 'someone' })
+    await expect(masters.buildSequence(theirs.id, [masterId])).rejects.toThrow(/another project/)
   })
 
   it('records provenance from the delivery back to the shot version', async () => {

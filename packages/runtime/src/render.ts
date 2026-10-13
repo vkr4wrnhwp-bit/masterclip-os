@@ -27,6 +27,7 @@ import { decide, runTechnicalQc, runVisualQc, HeuristicVisionClient, type Vision
 import { ClaudeVisionClient } from '@masterclip/agents'
 import { CanonicalShot, deriveRequirements, type CanonicalShot as Shot } from '@masterclip/shot-schema'
 import type { Runtime } from './index.js'
+import { assertRenderInput } from './media-rights.js'
 
 export interface PlannedCandidate {
   providerId: string
@@ -265,6 +266,11 @@ export class RenderService {
       if (!assetId) return undefined
       const asset = await this.rt.assets.find(assetId)
       if (!asset) return undefined
+      // A shot names its frames and references by id, and the id is all it
+      // takes: these were sent to the provider whatever project they belonged
+      // to and whatever their rights. An artist could render from another
+      // artist's video, or from a recording whose rights were revoked.
+      await assertRenderInput(this.rt, input.projectId, asset.id)
       const localPath = this.rt.storage.localPath(asset.storageKey)
       return {
         assetId: asset.id,
@@ -335,7 +341,20 @@ export class RenderService {
    */
   async submitRender(jobId: string): Promise<void> {
     const job = await this.rt.renders.getJob(jobId)
-    if (job.status !== 'queued' && job.status !== 'blocked') {
+    if (job.status === 'authorizing' && (await this.settleInterruptedSubmit(job))) return
+    if (job.status === 'submitted' && job.externalJobId) {
+      // The provider took it, but the worker may have stopped before queuing the
+      // first poll, and with no poll nothing would ever collect the output. When
+      // the poll is already there the dedupe key makes this a no-op.
+      const unclosed = await this.rt.db.query<{ id: string }>(
+        `SELECT id FROM render_attempts WHERE job_id = ? AND status = 'submitting'`,
+        [jobId],
+      )
+      for (const attempt of unclosed) await this.rt.renders.completeAttempt(attempt.id, { status: 'submitted' })
+      await this.queueFirstPoll(jobId, job.attempts)
+      return
+    }
+    if (job.status !== 'queued' && job.status !== 'blocked' && job.status !== 'authorizing') {
       this.rt.logger.debug('render.submit_skipped', { job_id: jobId, status: job.status })
       return
     }
@@ -344,6 +363,19 @@ export class RenderService {
     const request = this.requestFor(job)
     const model = await this.rt.registry.findModel(job.providerId, job.modelId)
     const project = await this.rt.projects.get(job.projectId)
+
+    // Checked again here, not only when the batch was planned: a reference
+    // whose rights were revoked while the render waited is not sent.
+    const refused = await this.inputRefusal(job.projectId, request)
+    if (refused) {
+      await this.rt.renders.updateJob(jobId, {
+        status: 'failed',
+        failedAt: this.rt.clock.isoNow(),
+        error: { code: refused.code, message: refused.message },
+      })
+      this.rt.logger.warn('render.input_refused', { job_id: jobId, code: refused.code })
+      return
+    }
 
     await this.rt.renders.updateJob(jobId, { status: 'authorizing' })
 
@@ -437,14 +469,7 @@ export class RenderService {
         data: { provider: job.providerId, model: job.modelId, estimated: formatUsd(quote.estimatedMicros), external: submitted.externalJobId },
       })
 
-      await this.rt.queue.enqueue({
-        queue: QUEUES.render,
-        type: JOB_TYPES.pollRender,
-        payload: { jobId },
-        delayMs: this.rt.config.PROVIDER_POLL_INTERVAL_MS,
-        dedupeKey: `poll:${jobId}`,
-        maxAttempts: 200,
-      })
+      await this.queueFirstPoll(jobId, attemptNumber)
     } catch (err) {
       await this.rt.renders.completeAttempt(attemptId, {
         status: 'failed',
@@ -459,6 +484,70 @@ export class RenderService {
       })
       throw err
     }
+  }
+
+  private async inputRefusal(projectId: string, request: CanonicalRenderRequest): Promise<AppError | null> {
+    const inputs = request.inputs ?? { references: [] }
+    const ids = [inputs.firstFrame, inputs.lastFrame, inputs.video, ...(inputs.references ?? [])]
+      .filter((input): input is ProviderInputAsset => Boolean(input))
+      .map((input) => input.assetId)
+    for (const assetId of ids) {
+      try {
+        await assertRenderInput(this.rt, projectId, assetId)
+      } catch (err) {
+        if (err instanceof AppError && (err.kind === 'forbidden' || err.kind === 'not_found')) return err
+        throw err
+      }
+    }
+    return null
+  }
+
+  private async queueFirstPoll(jobId: string, attemptNumber: number): Promise<void> {
+    await this.rt.queue.enqueue({
+      queue: QUEUES.render,
+      type: JOB_TYPES.pollRender,
+      payload: { jobId },
+      delayMs: this.rt.config.PROVIDER_POLL_INTERVAL_MS,
+      // One poll chain per attempt: a retry's poll must not be dropped as a
+      // duplicate of the first attempt's finished one, or a retried job sits at
+      // "submitted" for good with nothing asking the provider again.
+      dedupeKey: `poll:${jobId}:${attemptNumber}`,
+      maxAttempts: 200,
+    })
+  }
+
+  /**
+   * A submit job finds its render still `authorizing` only when an earlier run
+   * of it stopped part-way: the worker died between authorizing and recording
+   * the provider's answer. Skipping it, as the status check used to, left the
+   * render at "authorizing" for good, holding its estimate against the cap.
+   *
+   * Nothing recorded as `submitting` means the provider was never called, and
+   * the submit simply runs again. A `submitting` attempt means the request may
+   * well have reached the provider. Sending it again could pay for a second
+   * generation, so the render is failed instead, charged at its estimate (the
+   * same conservative rule as a provider that never reports a cost), and the
+   * artist decides whether to render again. Returns true when it settled one.
+   */
+  private async settleInterruptedSubmit(job: RenderJob): Promise<boolean> {
+    const sent = await this.rt.db.query<{ id: string }>(
+      `SELECT id FROM render_attempts WHERE job_id = ? AND status = 'submitting'`,
+      [job.id],
+    )
+    if (sent.length === 0) return false
+    const message =
+      'the worker stopped while sending this render to the provider; it may have started there, so it was not sent again'
+    for (const attempt of sent) {
+      await this.rt.renders.completeAttempt(attempt.id, { status: 'failed', error: { code: 'render.submit_interrupted', message } })
+    }
+    await this.rt.renders.updateJob(job.id, {
+      status: 'failed',
+      failedAt: this.rt.clock.isoNow(),
+      error: { code: 'render.submit_interrupted', message },
+    })
+    await chargeJobOnce(this.rt, job, job.estimatedMicros, null, 'submit interrupted; the provider may have charged; recorded at estimate')
+    this.rt.logger.error('render.submit_interrupted', { job_id: job.id, provider: job.providerId, model: job.modelId })
+    return true
   }
 
   /** Reuses a still-valid quote; otherwise asks the provider again. */
@@ -627,7 +716,14 @@ export class RenderService {
     if (!job.externalJobId) throw new AppError({ kind: 'internal', message: `job ${jobId} has no external id` })
 
     const existing = await this.rt.renders.listOutputs({ jobId })
-    if (existing.length > 0) return existing.map((o) => o.id)
+    if (existing.length > 0) {
+      // Already stored by an earlier run. That run may have stopped before it
+      // queued the QC and proxies or closed the job, which left the render at
+      // "downloading" with an output nobody checked. Both are safe to repeat.
+      for (const output of existing) await this.queueOutputChecks(output.id)
+      if (job.status === 'downloading') await this.rt.renders.updateJob(jobId, { status: 'completed' })
+      return existing.map((o) => o.id)
+    }
 
     const provider = this.rt.registry.get(job.providerId)
     const status = await provider.getStatus(job.externalJobId)
@@ -710,19 +806,7 @@ export class RenderService {
           metadata: { compiled_prompt: job.compiledPrompt, routing_profile: job.routingProfile },
         })
         outputIds.push(output.id)
-
-        await this.rt.queue.enqueue({
-          queue: QUEUES.qc,
-          type: JOB_TYPES.runTechnicalQc,
-          payload: { outputId: output.id },
-          dedupeKey: `qc:${output.id}`,
-        })
-        await this.rt.queue.enqueue({
-          queue: QUEUES.media,
-          type: JOB_TYPES.buildProxies,
-          payload: { outputId: output.id },
-          dedupeKey: `proxies:${output.id}`,
-        })
+        await this.queueOutputChecks(output.id)
       }
 
       await this.rt.renders.updateJob(jobId, { status: 'completed' })
@@ -732,11 +816,28 @@ export class RenderService {
     return outputIds
   }
 
+  private async queueOutputChecks(outputId: string): Promise<void> {
+    await this.rt.queue.enqueue({
+      queue: QUEUES.qc,
+      type: JOB_TYPES.runTechnicalQc,
+      payload: { outputId },
+      dedupeKey: `qc:${outputId}`,
+    })
+    await this.rt.queue.enqueue({
+      queue: QUEUES.media,
+      type: JOB_TYPES.buildProxies,
+      payload: { outputId },
+      dedupeKey: `proxies:${outputId}`,
+    })
+  }
+
   private parentAssetsFor(job: RenderJob): Array<{ assetId: string; relation: 'generated_from' }> {
     const request = job.request as unknown as CanonicalRenderRequest
     const parents: Array<{ assetId: string; relation: 'generated_from' }> = []
     if (request?.inputs?.firstFrame) parents.push({ assetId: request.inputs.firstFrame.assetId, relation: 'generated_from' })
     if (request?.inputs?.lastFrame) parents.push({ assetId: request.inputs.lastFrame.assetId, relation: 'generated_from' })
+    // The reference video too, so revoking it reaches what was made from it.
+    if (request?.inputs?.video) parents.push({ assetId: request.inputs.video.assetId, relation: 'generated_from' })
     for (const reference of request?.inputs?.references ?? []) parents.push({ assetId: reference.assetId, relation: 'generated_from' })
     return parents
   }

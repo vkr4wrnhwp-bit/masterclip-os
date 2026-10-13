@@ -10,7 +10,7 @@ import { buildMatrix, defaultStopLoss, summarize } from '@masterclip/domain'
 import { compareStrategies, routeShot } from '@masterclip/model-router'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { MasterService, RenderService, finishCaptionedSongMoment, signedReadableUrl, type PlannedCandidate, type Runtime, settleCancelledJob } from '@masterclip/runtime'
-import { requireProject } from '../server.js'
+import { requireAuth, requireProject } from '../server.js'
 
 const CandidateSchema = z.object({
   providerId: z.string(),
@@ -558,10 +558,13 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
               aspectRatio: z.string().optional(),
               resolution: z.string().optional(),
               reframeMode: z.enum(['crop', 'pad']).optional(),
-              label: z.string().optional(),
+              // A file-name label only: no folders, no dots leading anywhere.
+              label: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9 _-]{0,79}$/, 'use letters, numbers, spaces, - and _').optional(),
             }),
           )
-          .min(1),
+          .min(1)
+          // FFmpeg runs inside this request; six formats covers every delivery.
+          .max(6),
       })
       .parse(request.body)
     const assetIds = await masters.finish(masterId, body.specs as never, auth.userId)
@@ -585,7 +588,9 @@ export async function registerRenderRoutes(app: FastifyInstance, runtime: Runtim
 
   // ------------------------------------------------------------ cost lab ----
   app.post('/api/cost-lab/strategy', async (request) => {
-    await requireProject(runtime, request, String((request.body as { projectId?: string })?.projectId ?? ''), 'viewer').catch(() => undefined)
+    // Pure arithmetic, but still for signed-in users only: the project check
+    // it used to swallow left the route open to anyone.
+    await requireAuth(runtime, request)
     const body = z
       .object({
         masters: z.number().int().min(1),

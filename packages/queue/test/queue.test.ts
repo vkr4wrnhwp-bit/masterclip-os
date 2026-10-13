@@ -95,6 +95,23 @@ describe('durable queue', () => {
     expect(await queue.claim('default', 1)).toHaveLength(1)
   })
 
+  it('dead-letters a job whose worker died on every attempt, instead of looping', async () => {
+    // Staging, 2026-10-12: a job that got its container killed for memory
+    // came back on each restart and killed it again.
+    const { queue, clock } = makeQueue()
+    const { id } = await queue.enqueue({ type: 'qc.technical', payload: {}, maxAttempts: 2 })
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      expect(await queue.claim('default', 1)).toHaveLength(1)
+      clock.advance(61_000)
+      await queue.recoverStalled()
+    }
+    const job = await queue.get(id)
+    expect(job?.status).toBe('dead')
+    expect(await queue.claim('default', 1)).toHaveLength(0)
+    const stats = await queue.stats()
+    expect(stats.dead_letter).toBe(1)
+  })
+
   it('extends a lease for a long provider poll', async () => {
     const { queue, clock } = makeQueue()
     const { id } = await queue.enqueue({ type: 'x', payload: {} })
@@ -152,6 +169,34 @@ describe('queue worker', () => {
     await queue.enqueue({ type: 'unknown.type', payload: {} })
     await worker.runOnce()
     expect((await queue.stats()).dead).toBe(1)
+  })
+
+  it('keeps the lease of a handler that outlives it, so a sweep never starts a second copy', async () => {
+    // Two-worker crash drill, 2026-10-12: a 33-second QC on a 15-second lease
+    // was swept as abandoned while still running and ran twice.
+    const queue = new DurableQueue(db, { leaseSeconds: 1 })
+    const worker = new QueueWorker(queue, { concurrency: 1 })
+    let runs = 0
+    worker.register('slow', async () => {
+      runs++
+      await new Promise((resolve) => setTimeout(resolve, 2_500))
+    })
+    const { id } = await queue.enqueue({ type: 'slow', payload: {} })
+
+    const running = worker.runOnce(1)
+    const swept: number[] = []
+    // Sweeps at about 1.5 s and 2.2 s: both past the original 1-second lease.
+    for (const waitMs of [1_500, 700]) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+      swept.push(await queue.recoverStalled())
+    }
+    await running
+
+    expect(swept).toEqual([0, 0])
+    expect(runs).toBe(1)
+    const job = await queue.get(id)
+    expect(job?.status).toBe('completed')
+    expect(job?.attempts).toBe(1)
   })
 
   it('reschedules a deferred job rather than completing it', async () => {

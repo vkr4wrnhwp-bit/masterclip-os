@@ -39,6 +39,8 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [saved, setSaved] = React.useState<string | null>(null)
+  // The clip the draft video models can make from this moment, when shorter.
+  const [clipNote, setClipNote] = React.useState<string | null>(null)
   const media = (assets.data?.assets ?? []) as Media[]
   const audios = media.filter(a => a.kind === 'audio')
   const visuals = media.filter(a => a.kind === 'reference_image' || a.kind === 'reference_video')
@@ -84,7 +86,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
 
   const submit = async () => {
     if (!valid || !selected) return
-    setBusy(true); setError(null); setSaved(null)
+    setBusy(true); setError(null); setSaved(null); setClipNote(null)
     try {
       const result = await api.quickCreate(projectId, {
         title: title.trim(), creativeDirection: direction.trim(),
@@ -94,6 +96,9 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
       })
       setEditing(result.shotId)
       setSaved(result.shotId)
+      setClipNote(result.clipSeconds < result.songMomentSeconds - 0.05
+        ? `The song moment is ${result.songMomentSeconds.toFixed(1)} seconds. Video models make clips up to ${result.clipSeconds} seconds, so this shot is ${result.clipSeconds} seconds long. Add more shots on the Music Video Timeline to cover the rest.`
+        : null)
       setAttested(false)
       shots.reload()
       onSaved()
@@ -171,6 +176,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         {error && <Callout tone="danger">{error}</Callout>}
         <div className="button-row"><button type="button" className="primary" disabled={!valid || busy} onClick={() => void submit()}>{busy ? 'Saving…' : editing ? 'Save new draft version' : 'Save Quick Create draft'}</button></div>
         {saved && <Callout tone="ok">Draft saved. No render or audio mix has occurred. <button type="button" onClick={() => navigate(`/shot/${saved}`)}>Open professional Shot Builder</button></Callout>}
+        {saved && clipNote && <p className="muted" role="status">{clipNote}</p>}
       </>}</AsyncBlock>
     </Card>
     <Card title="Saved creative treatments">

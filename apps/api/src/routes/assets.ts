@@ -46,6 +46,106 @@ export function sniffMime(head: Uint8Array): string | null {
   return null
 }
 
+/**
+ * Stores one file for a project with its rights, the way every way in does: a
+ * file from this computer (POST /api/projects/:id/assets) and a song from the
+ * artist's Street Banker Vault (POST /api/projects/:id/vault-import). The type
+ * is sniffed from the bytes; the same bytes twice return the one asset.
+ */
+export async function storeProjectFile(
+  runtime: Runtime,
+  input: {
+    projectId: string
+    auth: { userId: string; orgId: string }
+    fileBuffer: Buffer
+    filename: string
+    fields: Record<string, string>
+    metadata?: Record<string, unknown>
+  },
+) {
+  const { projectId, auth, fileBuffer, filename, fields } = input
+  const sniffed = sniffMime(new Uint8Array(fileBuffer))
+  const allowed = sniffed ? ALLOWED.get(sniffed) : undefined
+  if (!allowed) {
+    throw new AppError({
+      kind: 'validation',
+      code: 'assets.unsupported_type',
+      message: `unsupported or unrecognised file type${sniffed ? ` (${sniffed})` : ''} — allowed: ${[...ALLOWED.keys()].join(', ')}`,
+    })
+  }
+
+  const rights = z
+    .object({
+      owner: z.string().default(''),
+      source: z.string().default(''),
+      license: z.string().default(''),
+      consent: z.enum(['not_applicable', 'unverified', 'authorized', 'revoked']).default('unverified'),
+      allowedUse: z.string().default(''),
+      expiresAt: z.string().nullable().default(null),
+      notes: z.string().default(''),
+      authorized: z.boolean().default(false),
+    })
+    .parse({
+      owner: fields.rights_owner,
+      source: fields.rights_source,
+      license: fields.rights_license,
+      consent: fields.rights_consent,
+      allowedUse: fields.rights_allowed_use,
+      expiresAt: fields.rights_expires_at || null,
+      notes: fields.rights_notes,
+      authorized: fields.rights_authorized === 'true',
+    })
+
+  const tempDir = await mkdtemp(join(tmpdir(), 'masterclip-upload-'))
+  try {
+    const tempPath = join(tempDir, filename)
+    await writeFile(tempPath, fileBuffer)
+    const sha = await sha256File(tempPath)
+
+    const duplicate = await runtime.assets.findByHash(projectId, sha)
+    if (duplicate) {
+      return { asset: duplicate, deduplicated: true, url: await runtime.storage.signedUrl(duplicate.storageKey, 3600) }
+    }
+
+    const info = allowed.kind === 'reference_image' ? null : await probe(tempPath).catch(() => null)
+    const assetId = newId('ast', runtime.clock.now())
+    const key = objectKey({ projectId, kind: allowed.kind, id: assetId, filename })
+    const stored = await runtime.storage.putFile(key, tempPath, { contentType: allowed.mime, sha256: sha })
+
+    const asset = await runtime.assets.create({
+      projectId,
+      kind: allowed.kind,
+      storageKey: stored.key,
+      filename,
+      mime: allowed.mime,
+      bytes: stored.bytes,
+      sha256: stored.sha256,
+      width: info?.video?.width ?? null,
+      height: info?.video?.height ?? null,
+      durationSeconds: info?.durationSeconds ?? null,
+      fps: info?.video?.fps ?? null,
+      hasAudio: info ? Boolean(info.audio) : null,
+      metadata: { uploaded: true, declaredType: fields.content_type ?? null, sniffedType: sniffed, ...(input.metadata ?? {}) },
+      rights,
+      createdBy: auth.userId,
+    })
+
+    await runtime.audit.record({
+      orgId: auth.orgId,
+      projectId,
+      actor: auth.userId,
+      action: 'asset.uploaded',
+      targetType: 'asset',
+      targetId: asset.id,
+      data: { filename, bytes: stored.bytes, rightsAuthorized: rights.authorized },
+    })
+
+    return { asset, deduplicated: false, url: await runtime.storage.signedUrl(asset.storageKey, 3600) }
+  } finally {
+    await rm(tempDir, { recursive: true, force: true })
+  }
+}
+
 export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
   /**
    * Signed asset delivery.
@@ -90,6 +190,9 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
     if (asset.kind !== 'audio') {
       throw new AppError({ kind: 'validation', code: 'waveform.asset_kind', message: 'waveform requires an audio asset' })
     }
+    // A revoked recording's waveform is its shape in time; refuse it as a
+    // signed link to the file would be refused.
+    await assertMediaReadable(runtime, asset.id)
 
     const cached = waveCache.get(asset.sha256)
     if (cached) return { ...cached, assetId }
@@ -199,86 +302,7 @@ export async function registerAssetRoutes(app: FastifyInstance, runtime: Runtime
       throw new AppError({ kind: 'validation', code: 'assets.no_file', message: 'no file was uploaded' })
     }
 
-    const sniffed = sniffMime(new Uint8Array(fileBuffer))
-    const allowed = sniffed ? ALLOWED.get(sniffed) : undefined
-    if (!allowed) {
-      throw new AppError({
-        kind: 'validation',
-        code: 'assets.unsupported_type',
-        message: `unsupported or unrecognised file type${sniffed ? ` (${sniffed})` : ''} — allowed: ${[...ALLOWED.keys()].join(', ')}`,
-      })
-    }
-
-    const rights = z
-      .object({
-        owner: z.string().default(''),
-        source: z.string().default(''),
-        license: z.string().default(''),
-        consent: z.enum(['not_applicable', 'unverified', 'authorized', 'revoked']).default('unverified'),
-        allowedUse: z.string().default(''),
-        expiresAt: z.string().nullable().default(null),
-        notes: z.string().default(''),
-        authorized: z.boolean().default(false),
-      })
-      .parse({
-        owner: fields.rights_owner,
-        source: fields.rights_source,
-        license: fields.rights_license,
-        consent: fields.rights_consent,
-        allowedUse: fields.rights_allowed_use,
-        expiresAt: fields.rights_expires_at || null,
-        notes: fields.rights_notes,
-        authorized: fields.rights_authorized === 'true',
-      })
-
-    const tempDir = await mkdtemp(join(tmpdir(), 'masterclip-upload-'))
-    try {
-      const tempPath = join(tempDir, filename)
-      await writeFile(tempPath, fileBuffer)
-      const sha = await sha256File(tempPath)
-
-      const duplicate = await runtime.assets.findByHash(projectId, sha)
-      if (duplicate) {
-        return { asset: duplicate, deduplicated: true, url: await runtime.storage.signedUrl(duplicate.storageKey, 3600) }
-      }
-
-      const info = allowed.kind === 'reference_image' ? null : await probe(tempPath).catch(() => null)
-      const assetId = newId('ast', runtime.clock.now())
-      const key = objectKey({ projectId, kind: allowed.kind, id: assetId, filename })
-      const stored = await runtime.storage.putFile(key, tempPath, { contentType: allowed.mime, sha256: sha })
-
-      const asset = await runtime.assets.create({
-        projectId,
-        kind: allowed.kind,
-        storageKey: stored.key,
-        filename,
-        mime: allowed.mime,
-        bytes: stored.bytes,
-        sha256: stored.sha256,
-        width: info?.video?.width ?? null,
-        height: info?.video?.height ?? null,
-        durationSeconds: info?.durationSeconds ?? null,
-        fps: info?.video?.fps ?? null,
-        hasAudio: info ? Boolean(info.audio) : null,
-        metadata: { uploaded: true, declaredType: fields.content_type ?? null, sniffedType: sniffed },
-        rights,
-        createdBy: auth.userId,
-      })
-
-      await runtime.audit.record({
-        orgId: auth.orgId,
-        projectId,
-        actor: auth.userId,
-        action: 'asset.uploaded',
-        targetType: 'asset',
-        targetId: asset.id,
-        data: { filename, bytes: stored.bytes, rightsAuthorized: rights.authorized },
-      })
-
-      return { asset, deduplicated: false, url: await runtime.storage.signedUrl(asset.storageKey, 3600) }
-    } finally {
-      await rm(tempDir, { recursive: true, force: true })
-    }
+    return storeProjectFile(runtime, { projectId, auth, fileBuffer, filename, fields })
   })
 
   app.put('/api/assets/:assetId/rights', async (request) => {

@@ -363,7 +363,7 @@ export const api = {
     title: string; creativeDirection: string; audioAssetId: string;
     visualAssetId: string | null; startSeconds: number; endSeconds: number;
     aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string; captions?: { start_seconds: number; end_seconds: number; text: string }[]
-  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false }>(`/api/projects/${projectId}/quick-create`, body),
+  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false; songMomentSeconds: number; clipSeconds: number }>(`/api/projects/${projectId}/quick-create`, body),
 
   uploadAsset: (projectId: string, form: FormData) =>
     request<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/assets`, {
@@ -372,4 +372,21 @@ export const api = {
     }),
   assets: (projectId: string, kind?: string) =>
     get<{ assets: Array<Record<string, unknown> & { url: string }> }>(`/api/projects/${projectId}/assets${kind ? `?kind=${kind}` : ''}`),
+
+  /** The artist's Street Banker Vault songs (only when Motion was opened from Street Banker). */
+  vaultAudio: () =>
+    get<{ files: VaultSong[] }>('/api/vault/audio'),
+  /** One Vault song into a film, with the rights the artist confirms, as an upload would carry them. */
+  vaultImport: (projectId: string, body: { fileId: string; rights: { owner: string; consent: 'authorized' | 'unverified'; authorized: boolean } }) =>
+    post<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/vault-import`, body),
+}
+
+export interface VaultSong {
+  id: string
+  label: string
+  extension: string
+  size: number | null
+  date: string
+  /** Motion takes WAV and MP3. */
+  usable: boolean
 }

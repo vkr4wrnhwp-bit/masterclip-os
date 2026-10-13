@@ -423,6 +423,25 @@ describe('proxy trust', () => {
   })
 })
 
+describe('unexpected failures', () => {
+  it('keeps the failure text out of a production response and hands back a reference', async () => {
+    const first = storageRoot
+    await app.close()
+    await rm(first, { recursive: true, force: true })
+    await boot({ NODE_ENV: 'production', SESSION_SECRET: 's'.repeat(48), ASSET_SIGNING_SECRET: 'a'.repeat(48) })
+    await createUser()
+    // Every query now fails with the database driver's own message.
+    await db.close()
+
+    const response = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: EMAIL, password: PASSWORD } })
+    expect(response.statusCode).toBe(500)
+    const error = response.json().error
+    expect(error.kind).toBe('internal')
+    expect(error.message).toMatch(/^Something went wrong on our side \(reference [0-9a-f]{8}\)\.$/)
+    expect(error.details).toBeUndefined()
+  })
+})
+
 describe('asset links are stable enough to cache', () => {
   it('hands out the identical URL for the same asset across reloads', async () => {
     const { session, csrf } = await signup()

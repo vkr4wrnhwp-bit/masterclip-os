@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError, forbidden, newId } from '@masterclip/shared'
-import { emptyShot, validateShot, type MusicCue } from '@masterclip/shot-schema'
+import { deriveRequirements, emptyShot, validateShot, type CanonicalShot, type MusicCue } from '@masterclip/shot-schema'
 import type { Asset } from '@masterclip/domain'
+import { routeShot } from '@masterclip/model-router'
 import type { Runtime } from '@masterclip/runtime'
 import { requireProject } from '../server.js'
 
@@ -56,6 +57,33 @@ export async function assertMusicCueAsset(runtime: Runtime, projectId: string, c
   if (asset.durationSeconds !== null && cue.end_seconds > asset.durationSeconds + 0.1) {
     throw new AppError({ kind: 'validation', code: 'quick_create.outside_audio', message: 'song moment exceeds the stored audio duration' })
   }
+}
+
+/**
+ * The longest clip, up to the song moment, that a configured model can render
+ * for this shot. A song moment can run a minute; every draft video model stops
+ * at 8 to 10 seconds, so a 15-second moment made a 15-second shot that the
+ * Shot Builder could only answer with "No model satisfies the DRAFT_MOTION
+ * profile" (staging, 2026-10-12). The moment stays as chosen (it is the music
+ * cue); the shot is sized to what can be made, and the Timeline covers the rest
+ * with more shots. The same routing check the Shot Builder uses decides.
+ */
+export async function renderableSeconds(runtime: Runtime, shot: CanonicalShot): Promise<number> {
+  const wanted = shot.duration_seconds
+  const configured = new Set(runtime.registry.list().filter((p) => p.isConfigured()).map((p) => p.providerId))
+  const models = (await runtime.registry.models()).filter((m) => m.enabled && configured.has(m.providerId))
+  const options = new Set<number>([wanted])
+  for (const model of models) {
+    const d = model.capabilities.duration
+    for (const seconds of d.allowedSeconds?.length ? d.allowedSeconds : [d.maxSeconds]) {
+      if (seconds >= 0.5 && seconds < wanted) options.add(seconds)
+    }
+  }
+  for (const seconds of [...options].sort((a, b) => b - a)) {
+    const candidate = { ...shot, duration_seconds: seconds }
+    if (routeShot({ shot: candidate, requirements: deriveRequirements(candidate), models }).chosen) return seconds
+  }
+  return wanted
 }
 
 export async function registerQuickCreateRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
@@ -114,13 +142,24 @@ export async function registerQuickCreateRoutes(app: FastifyInstance, runtime: R
       notes: old?.notes || 'Quick Create draft: source audio is NOT mixed into generated video; prepare/review a render separately.',
     }
 
-    const checked = validateShot(spec)
+    let checked = validateShot(spec)
     if (!checked.ok || !checked.shot) {
       throw new AppError({
         kind: 'validation', code: 'quick_create.invalid_shot',
         message: 'Quick Create shot failed canonical validation',
         details: { issues: checked.issues },
       })
+    }
+    const clipSeconds = await renderableSeconds(runtime, checked.shot)
+    if (clipSeconds !== checked.shot.duration_seconds) {
+      checked = validateShot({ ...checked.shot, duration_seconds: clipSeconds })
+      if (!checked.ok || !checked.shot) {
+        throw new AppError({
+          kind: 'validation', code: 'quick_create.invalid_shot',
+          message: 'Quick Create shot failed canonical validation',
+          details: { issues: checked.issues },
+        })
+      }
     }
     const saved = existingShot
       ? {
@@ -156,6 +195,8 @@ export async function registerQuickCreateRoutes(app: FastifyInstance, runtime: R
       status: 'draft' as const,
       audioEmbedded: false,
       rendered: false,
+      songMomentSeconds: Number(span.toFixed(2)),
+      clipSeconds: checked.shot.duration_seconds,
       warnings: checked.issues.filter((issue) => issue.severity === 'warning'),
     }
   })

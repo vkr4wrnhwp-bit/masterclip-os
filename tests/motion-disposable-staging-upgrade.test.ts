@@ -31,7 +31,7 @@ describe('MOTION disposable staging migration preflight', () => {
       const upgrade = await runMigrations(db)
       expect(upgrade.applied).toEqual([
         '0004_media_finish_leases', '0005_motion_music_timelines',
-        '0006_motion_timeline_exports', '0007_motion_music_sections',
+        '0006_motion_timeline_exports', '0007_motion_music_sections', '0008_session_street_banker_email',
       ])
       const original = await db.get<{ name: string }>(
         'SELECT name FROM orgs WHERE id = ?', [orgId])

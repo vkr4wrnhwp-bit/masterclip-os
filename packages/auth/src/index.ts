@@ -22,6 +22,12 @@ export interface AuthUser {
 export interface AuthContext {
   user: AuthUser
   sessionId: string
+  /**
+   * The email Street Banker's signed hand-off vouched for when it opened this
+   * session, or null for a Motion password session. Only a vouched session
+   * may reach the artist's Street Banker Vault.
+   */
+  streetBankerEmail: string | null
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -112,7 +118,7 @@ export class AuthService {
       created = true
     }
     if (!row || row.disabled === 1) throw forbidden('account disabled')
-    return { ...(await this.startSession(row)), created }
+    return { ...(await this.startSession(row, email)), created }
   }
 
   /**
@@ -242,7 +248,7 @@ export class AuthService {
     return { fromOrgId, projectIds }
   }
 
-  private async startSession(row: Record<string, unknown>): Promise<{ token: string; user: AuthUser; expiresAt: string }> {
+  private async startSession(row: Record<string, unknown>, streetBankerEmail: string | null = null): Promise<{ token: string; user: AuthUser; expiresAt: string }> {
     const token = randomToken(32)
     const expiresAt = new Date(this.clock.now() + SESSION_TTL_MS).toISOString()
     await insertRow(this.db, 'sessions', {
@@ -252,6 +258,7 @@ export class AuthService {
       created_at: this.clock.isoNow(),
       expires_at: expiresAt,
       revoked_at: null,
+      street_banker_email: streetBankerEmail,
     })
     return { token, user: mapUser(row), expiresAt }
   }
@@ -259,7 +266,7 @@ export class AuthService {
   async resolve(token: string | undefined): Promise<AuthContext> {
     if (!token) throw unauthorized('missing session')
     const row = await this.db.get(
-      `SELECT s.id AS session_id, s.expires_at, s.revoked_at, u.*
+      `SELECT s.id AS session_id, s.expires_at, s.revoked_at, s.street_banker_email, u.*
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = ?`,
       [sha256Hex(token)],
@@ -268,7 +275,7 @@ export class AuthService {
     if (row.revoked_at) throw unauthorized('session revoked')
     if (Date.parse(toStr(row.expires_at)) < this.clock.now()) throw unauthorized('session expired')
     if (row.disabled === 1) throw forbidden('account disabled')
-    return { user: mapUser(row), sessionId: toStr(row.session_id) }
+    return { user: mapUser(row), sessionId: toStr(row.session_id), streetBankerEmail: toStrOrNull(row.street_banker_email) }
   }
 
   async logout(token: string): Promise<void> {

@@ -84,6 +84,22 @@ export async function assertMediaReadable(
   return { asset: root, containsAudio }
 }
 
+/**
+ * A frame, reference image or reference video given to a provider must belong
+ * to the project that is rendering, and must be readable under the same rules
+ * as a signed link: not revoked or expired, and every source recording cleared.
+ */
+export async function assertRenderInput(rt: Runtime, projectId: string, assetId: string): Promise<void> {
+  const asset = await rt.assets.get(assetId)
+  if (asset.projectId !== projectId) {
+    throw new AppError({
+      kind: 'forbidden', code: 'render.input_other_project',
+      message: 'a frame or reference in this shot belongs to another project',
+    })
+  }
+  await assertMediaReadable(rt, assetId)
+}
+
 /** Do not mint an S3 presigned link after rights are revoked. New S3 links
  * involving audio are deliberately short-lived; already issued provider URLs
  * cannot be revoked by MOTION until expiry without changing the delivery path.

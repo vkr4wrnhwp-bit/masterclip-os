@@ -39,7 +39,7 @@ describe('MOTION isolated staging backup and restore drill', () => {
       const upgraded = await runMigrations(restored)
       expect(upgraded.applied).toEqual([
         '0004_media_finish_leases','0005_motion_music_timelines',
-        '0006_motion_timeline_exports','0007_motion_music_sections',
+        '0006_motion_timeline_exports','0007_motion_music_sections', '0008_session_street_banker_email',
       ])
       const repeat = await runMigrations(restored)
       expect(repeat.applied).toEqual([])
