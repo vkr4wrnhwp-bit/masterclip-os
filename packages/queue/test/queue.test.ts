@@ -95,6 +95,23 @@ describe('durable queue', () => {
     expect(await queue.claim('default', 1)).toHaveLength(1)
   })
 
+  it('dead-letters a job whose worker died on every attempt, instead of looping', async () => {
+    // Staging, 2026-10-12: a job that got its container killed for memory
+    // came back on each restart and killed it again.
+    const { queue, clock } = makeQueue()
+    const { id } = await queue.enqueue({ type: 'qc.technical', payload: {}, maxAttempts: 2 })
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      expect(await queue.claim('default', 1)).toHaveLength(1)
+      clock.advance(61_000)
+      await queue.recoverStalled()
+    }
+    const job = await queue.get(id)
+    expect(job?.status).toBe('dead')
+    expect(await queue.claim('default', 1)).toHaveLength(0)
+    const stats = await queue.stats()
+    expect(stats.dead_letter).toBe(1)
+  })
+
   it('extends a lease for a long provider poll', async () => {
     const { queue, clock } = makeQueue()
     const { id } = await queue.enqueue({ type: 'x', payload: {} })
