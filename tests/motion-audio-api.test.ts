@@ -120,6 +120,38 @@ describe('MOTION native audio permissions', () => {
     })
   })
 
+  it('sizes the shot to a clip a model can render, and keeps the whole song moment', async () => {
+    // Staging, 2026-10-12: the 15-second default moment made a 15-second shot,
+    // and every draft model stops at 8 to 10 seconds, so the Shot Builder
+    // answered "No model satisfies the DRAFT_MOTION profile".
+    const path = join(root, 'long.wav')
+    await ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=220:duration=20', '-c:a', 'pcm_s16le', path])
+    const sha = await sha256File(path)
+    const stored = await rt.storage.putFile(`${projectId}/audio/fixture/long.wav`, path, { contentType: 'audio/wav', sha256: sha })
+    const long = await rt.assets.create({
+      projectId, kind: 'audio', storageKey: stored.key, filename: 'long.wav',
+      mime: 'audio/wav', bytes: stored.bytes, sha256: stored.sha256, durationSeconds: 20, createdBy: userId,
+      rights: { owner: 'The Artist', authorized: true, consent: 'authorized', allowedUse: 'promotional video' },
+    })
+    const created = await app.inject({
+      method: 'POST', url: `/api/projects/${projectId}/quick-create`,
+      cookies: { [SESSION_COOKIE]: session, [CSRF_COOKIE]: csrf },
+      headers: { [CSRF_HEADER]: csrf },
+      payload: { title: 'Hook', creativeDirection: 'One practical lamp lights the singer in a grounded room.',
+        audioAssetId: long.id, startSeconds: 0, endSeconds: 15, look: 'cinematic', promotionalUseAttested: true },
+    })
+    expect(created.statusCode).toBe(200)
+    const body = created.json()
+    expect(body.songMomentSeconds).toBe(15)
+    expect(body.clipSeconds).toBeLessThan(15)
+    expect(body.clipSeconds).toBeGreaterThanOrEqual(8)
+    const version = await rt.projects.currentVersion(body.shotId)
+    expect(version.spec.duration_seconds).toBe(body.clipSeconds)
+    expect(version.spec.music_cue).toMatchObject({ start_seconds: 0, end_seconds: 15 })
+    const routing = await app.inject({ method: 'GET', url: `/api/shots/${body.shotId}/routing`, cookies: { [SESSION_COOKIE]: session } })
+    expect(routing.json().chosen).not.toBeNull()
+  }, 90_000)
+
   it('protects canonical scene handoffs across projects and after audio revocation', async () => {
     const endpoint = `/api/projects/${projectId}/scene-plan/handoff`
     const payload = {

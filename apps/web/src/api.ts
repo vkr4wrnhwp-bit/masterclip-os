@@ -363,7 +363,7 @@ export const api = {
     title: string; creativeDirection: string; audioAssetId: string;
     visualAssetId: string | null; startSeconds: number; endSeconds: number;
     aspectRatio: string; look: string; promotionalUseAttested: true; shotId?: string; captions?: { start_seconds: number; end_seconds: number; text: string }[]
-  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false }>(`/api/projects/${projectId}/quick-create`, body),
+  }) => post<{ shotId: string; versionId: string; status: 'draft'; audioEmbedded: false; rendered: false; songMomentSeconds: number; clipSeconds: number }>(`/api/projects/${projectId}/quick-create`, body),
 
   uploadAsset: (projectId: string, form: FormData) =>
     request<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/assets`, {
