@@ -682,6 +682,79 @@ describe('render pipeline', () => {
     expect(await runtime.renders.listOutputs({ shotId })).toHaveLength(1)
   })
 
+  // Crash windows. Each test sets up exactly what a worker killed at that point
+  // leaves behind, then lets the recovered queue job run again (2026-10-12).
+
+  it('sends a render whose worker stopped before anything reached the provider', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash before send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    // Killed while quoting or authorizing: status moved, no attempt recorded.
+    await runtime.renders.updateJob(jobId, { status: 'authorizing' })
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(1)
+  })
+
+  it('fails, rather than sends again, a render whose worker stopped while sending it', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash mid send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    const job = await runtime.renders.getJob(jobId)
+    // Killed while provider.submit() was in flight: the provider may have it.
+    await runtime.renders.updateJob(jobId, { status: 'authorizing' })
+    await runtime.renders.recordAttempt({
+      jobId, attempt: 1, providerId: job.providerId, modelId: job.modelId,
+      status: 'submitting', estimatedMicros: job.estimatedMicros, billable: false,
+    })
+
+    await drain(render)
+    const after = await runtime.renders.getJob(jobId)
+    expect(after.status).toBe('failed')
+    expect(after.externalJobId).toBeFalsy()
+    expect(after.error).toMatchObject({ code: 'render.submit_interrupted' })
+    const charges = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM cost_ledger WHERE job_id = ? AND entry_type = 'charge'`, [jobId])
+    expect(toNum(charges?.n)).toBe(1)
+    const open = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM render_attempts WHERE job_id = ? AND status = 'submitting'`, [jobId])
+    expect(toNum(open?.n)).toBe(0)
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(0)
+  })
+
+  it('collects a render the provider took just before its worker stopped', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash after send', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await render.submitRender(jobId)
+    // Killed after the job was marked submitted, before the first poll was queued.
+    await db.run(`DELETE FROM queue_jobs WHERE job_type = ?`, [JOB_TYPES.pollRender])
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ jobId })).toHaveLength(1)
+  })
+
+  it('finishes a render whose worker stopped right after storing its output', async () => {
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'crash after store', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await render.submitRender(jobId)
+    while (!(await render.pollRender(jobId)).done) { /* the mock answers at once */ }
+    await render.ingestOutputs(jobId)
+    // Killed after the output row was written, before QC and proxies were
+    // queued and before the job was closed.
+    const stored = (await runtime.renders.listOutputs({ jobId }))[0]!
+    await db.run(`DELETE FROM queue_jobs WHERE dedupe_key IN (?, ?)`, [`qc:${stored.id}`, `proxies:${stored.id}`])
+    await runtime.renders.updateJob(jobId, { status: 'downloading' })
+
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    const outputs = await runtime.renders.listOutputs({ jobId })
+    expect(outputs).toHaveLength(1)
+    expect(outputs[0]?.proxyAssetId).toBeTruthy()
+    expect((await runtime.renders.qcFor(stored.id)).some((row) => row.layer === 'combined')).toBe(true)
+  })
+
   it('records provenance from the delivery back to the shot version', async () => {
     const render = new RenderService(runtime)
     await render.planBatch({ projectId, shotId, batchName: 'lineage', candidates: candidates(1), createdBy: 'tester', orgId })
