@@ -206,11 +206,16 @@ export const api = {
   providers: () =>
     get<{
       mode: string
-      liveSpendCapUsd: number
+      /** False when the whole-service figures below are withheld because the caller is a customer. */
+      operatorView?: boolean
+      /** The whole-service monthly ceiling; null when there is none. Operator only. */
+      liveSpendCapUsd?: number | null
       /** False when no cap was configured and the figure above is the fallback. */
-      liveSpendCapConfigured: boolean
-      /** This calendar month (UTC), every customer together. */
-      liveSpentUsd: string
+      liveSpendCapConfigured?: boolean
+      /** Where the ceiling came from: set by the operator, the built-in default, or none. */
+      liveSpendCapSource?: 'env' | 'default' | 'none'
+      /** This calendar month (UTC), every customer together. Operator only. */
+      liveSpentUsd?: string
       /** The most one customer may spend in a month; null when no per-customer cap is set. */
       customerSpendCapUsd: number | null
       customerSpendCapConfigured: boolean

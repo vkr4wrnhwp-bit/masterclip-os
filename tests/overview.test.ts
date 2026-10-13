@@ -418,6 +418,35 @@ describe('deriveSpend and the customer cap', () => {
     expect(none.customerLine).toBe('No per-customer cap set.')
   })
 
+  it('says there is no whole-service limit when the operator set only the per-customer cap', () => {
+    const card = deriveSpend({ mode: 'live', liveSpendCapUsd: null, liveSpendCapConfigured: false, liveSpendCapSource: 'none', liveSpentUsd: '$44.2100', ...facts })
+    expect(card.line).toBe('No whole-service limit set.')
+    expect(card.line).not.toBe('Cap not set.')
+    expect(card.detail).toBeNull()
+    expect(card.customerLine).toBe('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    expect(readCap({ capUsd: null, capConfigured: false, capSource: 'none' }).state).toBe('none')
+    // The built-in default is still "not set, and here is the limit".
+    expect(readCap({ capUsd: 2, capConfigured: false, capSource: 'default' }).state).toBe('unconfigured')
+  })
+
+  it('shows a customer only their own cap and month, never the whole service', () => {
+    const card = deriveSpend({
+      mode: 'live',
+      operatorView: false,
+      ...facts,
+    })
+    expect(card).toEqual({
+      modeLabel: 'Live',
+      capSet: true,
+      line: 'Your spend this month: $3.21 of the $10.00 per-customer cap.',
+      detail: null,
+    })
+    // Even if an old or odd answer still carried the figures, the card does not print them.
+    const leaky = deriveSpend({ mode: 'live', operatorView: false, liveSpendCapUsd: 25, liveSpendCapConfigured: true, liveSpentUsd: '$44.2100', ...facts })
+    expect(JSON.stringify(leaky)).not.toMatch(/44\.21|25\.00|all customers/)
+    expect(deriveSpend({ mode: 'live', operatorView: false, customerSpendCapConfigured: false, customerSpendCapUsd: null }).line).toBe('No per-customer cap set.')
+  })
+
   it('leaves the card exactly as it was when the API sent nothing about the customer cap', () => {
     const card = deriveSpend({ mode: 'live', liveSpendCapUsd: 25, liveSpendCapConfigured: true, liveSpentUsd: '$0.0000' })
     expect('customerLine' in card).toBe(false)

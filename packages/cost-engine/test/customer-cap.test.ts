@@ -117,7 +117,7 @@ describe('the per-customer monthly cap', () => {
     expect(refused.allowed).toBe(false)
     expect(codes(refused)).toContain('spend.customer_cap')
     expect(refused.denials.find((d) => d.code === 'spend.customer_cap')?.message).toBe(
-      "You've used this month's $10 of MOTION renders. More renders need credits.",
+      "You've used this month's $10 of MOTION renders. It resets on the 1st.",
     )
     // The cap speaks for itself: no second, technical denial for the same thing.
     expect(codes(refused)).not.toContain('budget.org_monthly')
@@ -135,7 +135,7 @@ describe('the per-customer monthly cap', () => {
     const refused = await render(controller, A, 0.4)
     expect(refused.allowed).toBe(false)
     expect(refused.denials.find((d) => d.code === 'spend.customer_cap')?.message).toBe(
-      "This render would take you past this month's $10 of MOTION renders ($9.80 used so far). More renders need credits.",
+      "This render would take you past this month's $10 of MOTION renders ($9.80 used so far). It resets on the 1st.",
     )
     // A render that still fits is let through.
     expect((await render(controller, A, 0.2)).allowed).toBe(true)
@@ -143,7 +143,7 @@ describe('the per-customer monthly cap', () => {
 
   it('shows a cap that is not a whole number of dollars the way a person says it', () => {
     expect(customerCapMessage(usdToMicros(7.5), usdToMicros(7.5))).toBe(
-      "You've used this month's $7.50 of MOTION renders. More renders need credits.",
+      "You've used this month's $7.50 of MOTION renders. It resets on the 1st.",
     )
   })
 
@@ -322,6 +322,69 @@ describe('the whole-service ceiling counts only this month', () => {
   })
 })
 
+describe('the whole-service ceiling is optional', () => {
+  it('does not count the submitting job against itself, so a render that planned fine is not blocked at submit', async () => {
+    const controller = new CostController(db, config({ LIVE_SPEND_CAP_USD: '7', CUSTOMER_SPEND_CAP_USD: '' }), clock)
+    // At submit the job is already `authorizing`, which is in flight.
+    const jobId = await jobFor(HOUSE, 4.5, 'authorizing')
+    // Another account planning the same size render sees that job as in flight: 4.5 + 4.5 > 7.
+    expect(codes(await render(controller, B, 4.5))).toContain('spend.live_cap')
+    // The job itself, at submit: nothing else in flight, 4.5 against 7, fine.
+    expect((await render(controller, HOUSE, 4.5, { jobId })).allowed).toBe(true)
+    // Without leaving itself out it would have been 4.5 + 4.5 > 7 and blocked at submit.
+    expect(codes(await render(controller, HOUSE, 4.5))).toContain('spend.live_cap')
+    // It still counts every other job in flight.
+    await jobFor(B, 3, 'submitted')
+    expect(codes(await render(controller, HOUSE, 4.5, { jobId }))).toContain('spend.live_cap')
+  })
+
+  it('is off when only CUSTOMER_SPEND_CAP_USD is set: no matter how much the service has spent', async () => {
+    const controller = new CostController(db, config({ LIVE_SPEND_CAP_USD: '', CUSTOMER_SPEND_CAP_USD: '10' }), clock)
+    await charge(HOUSE, 400, Date.UTC(2026, 9, 2, 12, 0, 0))
+    await charge(B, 9)
+    const result = await render(controller, A, 0.4)
+    expect(result.allowed).toBe(true)
+    expect(codes(result)).not.toContain('spend.live_cap')
+    expect(result.remaining.liveCapMicros).toBeNull()
+    // The customer cap still holds each customer.
+    await charge(A, 9.9)
+    expect(codes(await render(controller, A, 0.4))).toEqual(['spend.customer_cap'])
+  })
+
+  it('keeps the built-in $2 monthly ceiling when neither cap is set', async () => {
+    const controller = new CostController(db, config({ LIVE_SPEND_CAP_USD: '', CUSTOMER_SPEND_CAP_USD: '' }), clock)
+    await charge(A, 1.9)
+    expect(codes(await render(controller, B, 0.4))).toEqual(['spend.live_cap'])
+    clock.set(Date.UTC(2026, 10, 1, 0, 0, 0))
+    expect((await render(controller, B, 0.4)).allowed).toBe(true)
+    clock.set(Date.UTC(2026, 9, 13, 12, 0, 0))
+  })
+
+  it('stops live renders entirely at a ceiling of zero', async () => {
+    const controller = new CostController(db, config({ LIVE_SPEND_CAP_USD: '0' }), clock)
+    expect(codes(await render(controller, HOUSE, 0.4))).toEqual(['spend.live_cap'])
+  })
+
+  it('tells a customer only that renders are paused, and never what the service has spent', async () => {
+    const controller = new CostController(db, config({ LIVE_SPEND_CAP_USD: '5', CUSTOMER_SPEND_CAP_USD: '10' }), clock)
+    await charge(B, 3.5)
+    // A's own month is empty, and the service is at 3.5 of 5: the warning must not say so.
+    const warned = await render(controller, A, 0.4)
+    expect(warned.allowed).toBe(true)
+    expect(warned.warnings.join(' ')).not.toMatch(/live spend|\$3\.|\$5/)
+
+    await charge(B, 1.4)
+    const refused = await render(controller, A, 0.4)
+    expect(codes(refused)).toEqual(['spend.live_cap'])
+    expect(refused.denials[0]?.message).toBe('MOTION renders are paused for now. Try again later.')
+
+    // The operator (house organization) still gets the full sentence.
+    const operator = await render(controller, HOUSE, 0.4)
+    expect(operator.denials[0]?.message).toMatch(/this month by all customers/)
+    expect(operator.denials[0]?.message).toMatch(/LIVE_SPEND_CAP_USD/)
+  })
+})
+
 describe('what the screens read', () => {
   it('reports a customer’s standing: the cap, whether it applies, and their own spend this month', async () => {
     const controller = new CostController(db, config(), clock)
@@ -362,5 +425,16 @@ describe('what the screens read', () => {
     expect(await controller.customerCapReached(B.org)).toBeNull()
     await charge(HOUSE, 500)
     expect(await controller.customerCapReached(HOUSE.org)).toBeNull()
+  })
+
+  it('leaves out the render the work is for, which was already paid for and is still in flight', async () => {
+    const controller = new CostController(db, config(), clock)
+    await charge(A, 9.99)
+    const own = await jobFor(A, 0.5, 'downloading')
+    expect(await controller.customerCapReached(A.org)).not.toBeNull()
+    expect(await controller.customerCapReached(A.org, { excludeJobId: own })).toBeNull()
+    // Other work in flight still counts.
+    await jobFor(A, 0.5, 'processing')
+    expect(await controller.customerCapReached(A.org, { excludeJobId: own })).not.toBeNull()
   })
 })

@@ -36,6 +36,31 @@ async function customerCapFacts(runtime: Runtime, orgId: string) {
   }
 }
 
+/**
+ * Whether this caller may see the whole service's figures: the ceiling and what
+ * every customer together has spent this month. Those add up other customers'
+ * spend, and with a few customers they would reveal it, so only the operator
+ * (an OWNER_EMAILS address, or any account in the house organization) gets them.
+ * Everyone else sees only their own cap and their own month.
+ */
+async function seesServiceFigures(runtime: Runtime, auth: { email: string; orgId: string }): Promise<boolean> {
+  const owners = (process.env.OWNER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+  return owners.includes(auth.email.toLowerCase()) || (await runtime.cost.isHouseOrg(auth.orgId))
+}
+
+/** The whole-service figures, for the operator only. `null` means there is no whole-service ceiling. */
+async function serviceFigures(runtime: Runtime) {
+  return {
+    liveSpendCapUsd: runtime.config.LIVE_SPEND_CAP_USD,
+    // Whether the figure above is the operator's decision, our fallback, or
+    // absent: `liveSpendCapSource` is `env`, `default` or `none`.
+    liveSpendCapConfigured: runtime.config.liveSpendCapConfigured,
+    liveSpendCapSource: runtime.config.liveSpendCapSource,
+    // This calendar month (UTC), every customer together.
+    liveSpentUsd: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+  }
+}
+
 /** Auth, providers, cost reporting, and provider webhooks. */
 export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, rateLimit: RateLimitHandle): Promise<void> {
   /** Street Banker hand-off tokens already turned into a session, until they expire. */
@@ -201,20 +226,17 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
     // every artist with an account: they are part of the platform's own keys.
     const operator = (process.env.OWNER_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
       .includes(me.email.toLowerCase())
+    const operatorView = await seesServiceFigures(runtime, me)
     const health = await runtime.db.query('SELECT * FROM provider_health')
     const healthByProvider = new Map(health.map((row) => [toStr(row.provider_id), row]))
 
     return {
       // MASTERCLIP_MODE is the safety posture, surfaced everywhere it matters.
       mode: runtime.config.MASTERCLIP_MODE,
-      liveSpendCapUsd: runtime.config.LIVE_SPEND_CAP_USD,
-      // Whether the figure above is the operator's decision or our fallback.
-      // Without it the two are the same number and a screen cannot tell a
-      // deployment that set a two-dollar cap from one that set no cap at all.
-      liveSpendCapConfigured: runtime.config.liveSpendCapConfigured,
-      // This calendar month (UTC), every customer together: the figure the
-      // whole-service ceiling above is measured against, not a lifetime total.
-      liveSpentUsd: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+      // True when the whole-service figures below are included. A customer is
+      // sent only their own cap and month.
+      operatorView,
+      ...(operatorView ? await serviceFigures(runtime) : {}),
       // The signed-in customer's own cap and spend this month. The cap is the
       // most one customer may spend; the ceiling above is the whole service.
       ...(await customerCapFacts(runtime, me.orgId)),
@@ -269,7 +291,8 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
   // ---------------------------------------------------------------- cost ----
   app.get('/api/projects/:projectId/costs', async (request) => {
     const { projectId } = request.params as { projectId: string }
-    await requireProject(runtime, request, projectId)
+    const { auth: caller } = await requireProject(runtime, request, projectId)
+    const operatorView = await seesServiceFigures(runtime, caller)
     const [metrics, byProvider, rejections, avoided, project] = await Promise.all([
       runtime.metrics.projectMetrics(projectId),
       runtime.ledger.byProvider(projectId, { includeSandbox: true }),
@@ -297,12 +320,17 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
       qcAvoided: { ...avoided, usd: formatUsd(avoided.estimatedAvoidedMicros) },
       budget,
       liveCap: {
-        capUsd: runtime.config.LIVE_SPEND_CAP_USD,
-        // Same fact as on /api/providers: the cost lab reads this figure too,
-        // and it should be able to say whose figure it is.
-        capConfigured: runtime.config.liveSpendCapConfigured,
-        // This calendar month (UTC), every customer together.
-        spent: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+        operatorView,
+        // The whole-service figures, same as on /api/providers, for the
+        // operator only: the cost lab reads them too, and says whose they are.
+        ...(operatorView
+          ? {
+              capUsd: runtime.config.LIVE_SPEND_CAP_USD,
+              capConfigured: runtime.config.liveSpendCapConfigured,
+              capSource: runtime.config.liveSpendCapSource,
+              spent: formatUsd(await runtime.ledger.liveSpendThisMonth(), 4),
+            }
+          : {}),
         // This film's organization: the customer whose cap applies to it.
         ...(await customerCapFacts(runtime, project.orgId)),
       },

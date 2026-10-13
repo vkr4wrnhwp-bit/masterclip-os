@@ -96,9 +96,17 @@ function plainDollars(micros: MicroUsd): string {
  */
 export function customerCapMessage(capMicros: MicroUsd, usedMicros: MicroUsd): string {
   const cap = plainDollars(capMicros)
-  if (usedMicros >= capMicros) return `You've used this month's ${cap} of MOTION renders. More renders need credits.`
-  return `This render would take you past this month's ${cap} of MOTION renders (${plainDollars(usedMicros)} used so far). More renders need credits.`
+  if (usedMicros >= capMicros) return `You've used this month's ${cap} of MOTION renders. It resets on the 1st.`
+  return `This render would take you past this month's ${cap} of MOTION renders (${plainDollars(usedMicros)} used so far). It resets on the 1st.`
 }
+
+/**
+ * What a customer is told when the whole-service ceiling stops them. The
+ * ceiling counts every customer's spend, so its figures are not theirs to see:
+ * with few customers they would reveal what the others spent. The operator
+ * (the house organization) still gets the full sentence.
+ */
+export const SERVICE_PAUSED_MESSAGE = 'MOTION renders are paused for now. Try again later.'
 
 /**
  * The gate every billable submission passes through.
@@ -167,14 +175,20 @@ export class CostController {
   /**
    * For live spend that is not a provider generation, such as visual QC, and so
    * never passes through `authorize()`: whether this customer has already used
-   * the whole of this month's cap. Null means they may spend.
+   * the whole of this month's cap. Null means they may spend. `excludeJobId` is
+   * the render the work is for: it was already paid for and is still in flight,
+   * so counting it would refuse QC of a render the customer already bought.
    */
-  async customerCapReached(orgId: string, nowMs: number = this.clock.now()): Promise<{ capMicros: MicroUsd; usedMicros: MicroUsd } | null> {
+  async customerCapReached(
+    orgId: string,
+    opts: { nowMs?: number; excludeJobId?: string } = {},
+  ): Promise<{ capMicros: MicroUsd; usedMicros: MicroUsd } | null> {
     const capMicros = await this.customerCapMicros(orgId)
     if (capMicros === null) return null
+    const nowMs = opts.nowMs ?? this.clock.now()
     const usedMicros =
       (await this.ledger.spend('org', orgId, { since: windowBounds(nowMs).monthStart })) +
-      (await this.ledger.committedInFlight({ orgId }))
+      (await this.ledger.committedInFlight({ orgId, ...(opts.excludeJobId ? { excludeJobId: opts.excludeJobId } : {}) }))
     return usedMicros >= capMicros ? { capMicros, usedMicros } : null
   }
 
@@ -319,8 +333,11 @@ export class CostController {
       }
     }
 
-    // --- the whole-service live-spend ceiling --------------------------------
-    if (!sandbox) {
+    // --- the whole-service live-spend ceiling (optional) ----------------------
+    // Only when LIVE_SPEND_CAP_USD is set (or neither cap is, which keeps the
+    // built-in default); with just CUSTOMER_SPEND_CAP_USD there is no ceiling.
+    const ceiling = this.config.liveSpendCapMicros
+    if (!sandbox && ceiling !== null) {
       // This calendar month's settled charges from every customer together, plus
       // this batch's running total, plus anything already with a provider and not
       // yet settled. Leaving that last term out let each of N concurrent
@@ -328,15 +345,25 @@ export class CostController {
       // moved. The charges are this month's only (monthStart, UTC): counted over
       // all time, the ceiling would stop a live service for good once its
       // lifetime spend passed it. In-flight work is current by definition.
-      const liveSpend = (await this.ledger.totalLiveSpend({ since: monthStart })) + committed + (await this.ledger.committedInFlight())
-      const cap = this.config.liveSpendCapMicros
+      // The job being authorized (at submit it is already `authorizing`, so in
+      // flight) is left out, or it would be counted against itself and a render
+      // that planned fine would be blocked at submit.
+      const liveSpend =
+        (await this.ledger.totalLiveSpend({ since: monthStart })) +
+        committed +
+        (await this.ledger.committedInFlight(input.jobId ? { excludeJobId: input.jobId } : {}))
+      const cap = ceiling
       remaining.liveCapMicros = cap - liveSpend
+      // The figures belong to the operator: they add up every customer's spend.
+      const operator = await this.isHouseOrg(input.orgId)
       if (liveSpend + estimated > cap) {
         denials.push({
           code: 'spend.live_cap',
-          message: `live-spend cap reached: ${formatUsd(liveSpend)} spent this month by all customers + ${formatUsd(estimated)} estimated exceeds the ${formatUsd(cap, 2)} monthly authorization. Raise LIVE_SPEND_CAP_USD only with explicit approval.`,
+          message: operator
+            ? `live-spend cap reached: ${formatUsd(liveSpend)} spent this month by all customers + ${formatUsd(estimated)} estimated exceeds the ${formatUsd(cap, 2)} monthly authorization. Raise LIVE_SPEND_CAP_USD only with explicit approval.`
+            : SERVICE_PAUSED_MESSAGE,
         })
-      } else if (liveSpend + estimated > cap * 0.75) {
+      } else if (operator && liveSpend + estimated > cap * 0.75) {
         warnings.push(`this request brings this month's live spend to ${formatUsd(liveSpend + estimated)} of the ${formatUsd(cap, 2)} cap`)
       }
     }

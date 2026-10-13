@@ -18,36 +18,34 @@ const num = (dflt: number) =>
     .pipe(z.number().finite())
 
 /**
- * A number the environment may or may not have set, with no fallback folded in.
+ * A dollar amount the environment may or may not set, with no fallback folded in.
  *
  * `num` above applies its default inside the schema, which is right for a port
  * or a poll interval and wrong for a value whose absence is itself worth
  * reporting: once the default is applied here, nothing downstream can tell a
  * deployment that chose the default from one that never configured anything.
  * The caller applies the fallback instead, and records that it did.
- */
-const optionalNum = () =>
-  z
-    .string()
-    .optional()
-    .transform((v) => (v === undefined || v === '' ? undefined : Number(v)))
-    .pipe(z.number().finite().optional())
-
-/**
- * A dollar amount the environment may or may not set, for a limit rather than a
- * tuning knob: junk ("ten", "$10"), a negative figure and Infinity are refused
- * at startup with a sentence saying what is wanted, instead of becoming NaN or
- * a limit that nobody can ever reach. Unset and blank both mean "not set", and
- * a blank must not quietly become zero dollars, which would shut every customer
- * out, so whitespace is trimmed before the blank check.
+ *
+ * It is for limits, so it is strict: only plain decimal dollars ("10", "7.5",
+ * "7.50") are accepted. Junk ("ten", "$10"), "0x10", "1e3", Infinity and
+ * negative figures stop startup with a sentence saying what is wanted, instead
+ * of becoming a number nobody meant. Unset and blank both mean "not set", and a
+ * blank must not quietly become zero dollars, which would shut everyone out, so
+ * whitespace is trimmed before the blank check. Zero is allowed and means none.
  */
 const PLAIN_DOLLARS = 'must be a plain number of dollars, like 10'
+const PLAIN_DECIMAL = /^\d+(\.\d{1,2})?$/
 const optionalDollars = () =>
   z
     .string()
     .optional()
-    .transform((v) => (v === undefined || v.trim() === '' ? undefined : Number(v)))
-    .pipe(z.number({ invalid_type_error: PLAIN_DOLLARS }).finite(PLAIN_DOLLARS).nonnegative('must not be negative').optional())
+    .transform((v, ctx): number | undefined => {
+      const text = (v ?? '').trim()
+      if (text === '') return undefined
+      if (PLAIN_DECIMAL.test(text)) return Number(text)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: /^-\d/.test(text) ? 'must not be negative' : PLAIN_DOLLARS })
+      return z.NEVER
+    })
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -61,20 +59,20 @@ const EnvSchema = z.object({
    */
   MASTERCLIP_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
   /**
-   * The whole-service live-spend ceiling, in dollars: the most real money every
-   * customer together may cost in one calendar month (UTC). It is the safety
-   * net under CUSTOMER_SPEND_CAP_USD, not a share-out between customers, and it
-   * starts over on the 1st of each month so a live service does not stop for
-   * good once its lifetime spend passes it.
+   * An optional emergency brake for the whole service, in dollars: the most real
+   * money every customer together may cost per calendar month (UTC). It starts
+   * over on the 1st. The owner manages CUSTOMER_SPEND_CAP_USD; leave this unset
+   * unless a combined monthly total is wanted.
    *
-   * No schema default on purpose. It used to be `num(2)`, which meant a
-   * deployment that never configured a cap was indistinguishable from one that
-   * deliberately chose two dollars, and every screen reported the second. The
-   * fallback now lives in `loadConfig`, which records whether it had to use it
-   * as `liveSpendCapConfigured`. `AppConfig.LIVE_SPEND_CAP_USD` is still always
-   * a number, so nothing that enforces the cap changes.
+   * Unset (absent or blank) with CUSTOMER_SPEND_CAP_USD set means no
+   * whole-service ceiling at all. Unset with neither set keeps the built-in
+   * DEFAULT_LIVE_SPEND_CAP_USD ceiling, so a service never runs with no limit of
+   * any kind by accident. Zero means no live renders at all.
+   *
+   * No schema default on purpose: the fallback lives in `loadConfig`, which
+   * records where the ceiling came from as `liveSpendCapSource`.
    */
-  LIVE_SPEND_CAP_USD: optionalNum(),
+  LIVE_SPEND_CAP_USD: optionalDollars(),
   /**
    * The most one customer (one organization) may spend on live renders in one
    * calendar month (UTC), in dollars. When it is set it is that organization's
@@ -82,9 +80,10 @@ const EnvSchema = z.object({
    * smaller of the two applies. When it is unset, nothing changes: the stored
    * organization budget (500 dollars by default) is the only monthly cap.
    *
-   * The house organization, where OWNER_EMAILS accounts live, is exempt and is
-   * bound only by LIVE_SPEND_CAP_USD. Credits will lift this cap later; until
-   * then it is the one place that decides what a customer may spend.
+   * Every account in the house organization, where OWNER_EMAILS accounts live,
+   * is exempt; it is bound only by its stored organization budget and by
+   * LIVE_SPEND_CAP_USD when that is set. This is the one setting that decides
+   * what a customer may spend.
    *
    * A value that is not a plain non-negative number stops the service at
    * startup. Zero is allowed and means no customer may run a live render.
@@ -221,30 +220,35 @@ function assertProductionSecrets(env: RawEnv): void {
 }
 
 /**
- * The whole-service monthly live-spend ceiling a deployment gets when it never
- * set one.
+ * The whole-service monthly live-spend ceiling a deployment gets when it set
+ * neither LIVE_SPEND_CAP_USD nor CUSTOMER_SPEND_CAP_USD.
  *
  * It is a real, enforced limit rather than a placeholder: the cost controller
- * refuses any live submission that would carry spend past it, configured or
- * not. What is new is that the runtime remembers the figure was ours, so a
- * screen can say the cap is not set and still name the limit that applies.
+ * refuses any live submission that would carry spend past it. It exists so a
+ * service never runs with no limit of any kind by accident. Setting
+ * CUSTOMER_SPEND_CAP_USD is what removes it.
  */
 export const DEFAULT_LIVE_SPEND_CAP_USD = 2
 
-export interface AppConfig extends RawEnv {
+/** Where the whole-service ceiling came from: the environment, the built-in default, or nowhere (none). */
+export type LiveSpendCapSource = 'env' | 'default' | 'none'
+
+export interface AppConfig extends Omit<RawEnv, 'LIVE_SPEND_CAP_USD'> {
   /**
-   * Always a usable number: the configured cap, or DEFAULT_LIVE_SPEND_CAP_USD.
-   * Narrowed from the schema's `number | undefined` deliberately, so every
-   * existing reader of `config.LIVE_SPEND_CAP_USD` keeps the number it had.
+   * The whole-service monthly ceiling in dollars, or null when there is none
+   * (LIVE_SPEND_CAP_USD unset while CUSTOMER_SPEND_CAP_USD is set).
    */
-  LIVE_SPEND_CAP_USD: number
+  LIVE_SPEND_CAP_USD: number | null
   /**
    * True only when LIVE_SPEND_CAP_USD came from the environment. Reporting
    * only, and the only thing that separates "we chose two dollars" from "we
    * chose nothing and two dollars is what protects you".
    */
   liveSpendCapConfigured: boolean
-  liveSpendCapMicros: MicroUsd
+  /** `env`: set by the operator. `default`: neither cap set, built-in ceiling. `none`: no ceiling. */
+  liveSpendCapSource: LiveSpendCapSource
+  /** The ceiling in micro-dollars, or null when there is no whole-service ceiling. */
+  liveSpendCapMicros: MicroUsd | null
   /** True only when CUSTOMER_SPEND_CAP_USD came from the environment. */
   customerSpendCapConfigured: boolean
   /** The per-customer monthly cap in micro-dollars, or null when none is set. */
@@ -281,16 +285,25 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
   ] as const) {
     registerSecret(env[key])
   }
-  // The cap is the one value whose absence is reported rather than papered
-  // over, so the fallback is applied here and the fact kept alongside it. Every
-  // consumer below this line still sees a plain number.
+  // The ceiling's absence is reported rather than papered over, so the
+  // fallback is applied here and where the ceiling came from is kept alongside
+  // it. Set: the operator's figure. Unset while the per-customer cap is set: no
+  // ceiling. Unset with neither set: the built-in default, so a service never
+  // runs with no limit of any kind by accident.
   const liveSpendCapConfigured = env.LIVE_SPEND_CAP_USD !== undefined
-  const liveSpendCapUsd = env.LIVE_SPEND_CAP_USD ?? DEFAULT_LIVE_SPEND_CAP_USD
+  const liveSpendCapSource: LiveSpendCapSource = liveSpendCapConfigured
+    ? 'env'
+    : env.CUSTOMER_SPEND_CAP_USD !== undefined
+      ? 'none'
+      : 'default'
+  const liveSpendCapUsd =
+    liveSpendCapSource === 'env' ? (env.LIVE_SPEND_CAP_USD as number) : liveSpendCapSource === 'default' ? DEFAULT_LIVE_SPEND_CAP_USD : null
   cached = {
     ...env,
     LIVE_SPEND_CAP_USD: liveSpendCapUsd,
     liveSpendCapConfigured,
-    liveSpendCapMicros: usdToMicros(liveSpendCapUsd),
+    liveSpendCapSource,
+    liveSpendCapMicros: liveSpendCapUsd === null ? null : usdToMicros(liveSpendCapUsd),
     customerSpendCapConfigured: env.CUSTOMER_SPEND_CAP_USD !== undefined,
     customerSpendCapMicros: env.CUSTOMER_SPEND_CAP_USD === undefined ? null : usdToMicros(env.CUSTOMER_SPEND_CAP_USD),
     isSandbox: env.MASTERCLIP_MODE === 'sandbox',

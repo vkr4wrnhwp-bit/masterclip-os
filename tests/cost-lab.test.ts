@@ -138,6 +138,25 @@ describe('the live-spend banner', () => {
     expect(bannerFor({ capUsd: 25, capConfigured: true, spent: '$4.1000' })).not.toContain('per-customer cap')
   })
 
+  it('says there is no whole-service limit, in the operator’s words, when only the customer cap is set', () => {
+    const markup = bannerFor({ capUsd: null, capConfigured: false, capSource: 'none', spent: '$44.2100' })
+    expect(markup).toContain('No whole-service limit set')
+    expect(markup).toContain('Only the per-customer monthly cap limits live spend.')
+    expect(markup).toContain('Set LIVE_SPEND_CAP_USD if you want a monthly emergency brake for the whole service.')
+    expect(markup).toContain('$44.2100 has been spent on real provider calls this month, by all customers.')
+    expect(markup).not.toContain('No live-spend cap configured')
+  })
+
+  it('shows a customer only their own month, and none of the whole service’s figures', () => {
+    const facts = { customerSpendCapUsd: 10, customerSpendCapConfigured: true, customerCapApplies: true, customerSpentThisMonthUsd: '$3.21' }
+    const markup = bannerFor({ operatorView: false, ...facts })
+    expect(markup).toContain('Your renders this month')
+    expect(markup).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    expect(markup).not.toContain('all customers')
+    expect(markup).not.toContain('No live-spend cap configured')
+    expect(markup).not.toContain('LIVE_SPEND_CAP_USD')
+  })
+
   it('tells each of the four states apart by its heading, not only by its colour', () => {
     const headings = [
       bannerFor({ capUsd: 25, capConfigured: true, spent: '$0.0000' }),

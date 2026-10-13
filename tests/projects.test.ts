@@ -339,6 +339,32 @@ describe('the film list screen', () => {
     expect(screen(states)).toContain('No per-customer cap set.')
   })
 
+  it('shows a customer none of the whole service’s figures on the rail', () => {
+    const states = loaded([project()])
+    states[1] = done({
+      mode: 'live',
+      operatorView: false,
+      customerSpendCapUsd: 10,
+      customerSpendCapConfigured: true,
+      customerCapApplies: true,
+      customerSpentThisMonthUsd: '$3.21',
+      providers: [],
+    })
+    const markup = screen(states)
+    expect(markup).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    expect(markup).not.toContain('all customers')
+    expect(markup).not.toContain('Cap not set')
+    expect(markup).not.toContain('safety limit')
+  })
+
+  it('tells the operator there is no whole-service limit when none is set', () => {
+    const states = loaded([project()])
+    states[1] = done({ mode: 'live', operatorView: true, liveSpendCapUsd: null, liveSpendCapConfigured: false, liveSpendCapSource: 'none', liveSpentUsd: '$44.2100', providers: [] })
+    const markup = screen(states)
+    expect(markup).toContain('No whole-service limit set.')
+    expect(markup).not.toContain('Cap not set')
+  })
+
   it('offers one primary action and a way past the rail', () => {
     const markup = screen(loaded([project()]))
     expect(markup).toContain('Skip to main content')

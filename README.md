@@ -57,25 +57,30 @@ ones, so QC's failure detection is demonstrable rather than assumed.
 Going live is a deliberate act:
 
 ```bash
-MASTERCLIP_MODE=live LIVE_SPEND_CAP_USD=2 FAL_KEY=... pnpm dev
+MASTERCLIP_MODE=live CUSTOMER_SPEND_CAP_USD=10 FAL_KEY=... pnpm dev
 ```
 
-`LIVE_SPEND_CAP_USD` is a hard whole-service ceiling: the most real money every
-org and project together may spend in one calendar month (UTC). It starts over on
-the 1st, and it is checked separately from budgets, precisely so a bug in routing
-cannot spend at scale. The banner at the top of every screen says which mode you
-are in.
+`CUSTOMER_SPEND_CAP_USD` (a plain number of dollars such as `10`) is the one
+setting to manage: the most one customer may spend on live renders per calendar
+month (UTC). Each Street Banker account is its own organization, so each has its
+own allowance. A customer who reaches it is told in plain words ("You've used this
+month's $10 of MOTION renders. It resets on the 1st.") and refused under the code
+`spend.customer_cap`. If the organization also has a stored monthly budget, the
+smaller of the two applies. Every account in the house organization (the one
+holding the `OWNER_EMAILS` accounts) is exempt and is bound by its stored monthly
+budget ($500 by default). Left unset, nothing changes for customers: the stored
+organization monthly budget is the only monthly limit per customer.
 
-`CUSTOMER_SPEND_CAP_USD` (optional, a plain number of dollars such as `10`) is the
-most one customer may spend on live renders in one calendar month (UTC). Each
-Street Banker account is its own organization, so each has its own allowance. A
-customer who reaches it is told in plain words ("You've used this month's $10 of
-MOTION renders. More renders need credits.") and refused under the code
-`spend.customer_cap`, which is where credits will plug in later. If the
-organization also has a stored monthly budget, the smaller of the two applies. The
-owner's account (`OWNER_EMAILS`, the house organization) is exempt and is held only
-to `LIVE_SPEND_CAP_USD`. Left unset, nothing changes: the stored organization
-monthly budget ($500 by default) is the only monthly limit per customer.
+`LIVE_SPEND_CAP_USD` is optional: a monthly emergency brake for the whole service,
+the most real money every org and project together may spend per calendar month
+(UTC), all customers combined. It starts over on the 1st and is checked separately
+from budgets, so a bug in routing cannot spend at scale. Leave it unset unless you
+want one: with `CUSTOMER_SPEND_CAP_USD` set and this unset there is no
+whole-service limit. If neither is set, a built-in $2 monthly limit applies, so a
+service never runs with no limit of any kind by accident. Customers are never shown
+the whole service's spend; when this brake stops them they are told "MOTION renders
+are paused for now. Try again later." The banner at the top of every screen says
+which mode you are in.
 
 ---
 
@@ -204,8 +209,8 @@ Three things about a deployment that are not obvious:
   a proxy you control writes `X-Forwarded-For`; otherwise the key is forgeable.
 - **Sandbox is still the default.** A deployment refuses every billable
   submission until `MASTERCLIP_MODE=live` is set deliberately, and is bound by
-  `LIVE_SPEND_CAP_USD` (the whole service, per calendar month) and, when set,
-  `CUSTOMER_SPEND_CAP_USD` (one customer, per calendar month) after that.
+  `CUSTOMER_SPEND_CAP_USD` (one customer, per calendar month) and, when set,
+  `LIVE_SPEND_CAP_USD` (the whole service, per calendar month) after that.
 
 ---
 

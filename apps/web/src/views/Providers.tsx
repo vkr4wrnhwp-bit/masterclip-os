@@ -20,6 +20,8 @@ function liveModeLine(spent: string, reading: ReturnType<typeof readCap>): strin
       return `Live mode is on, but the cap is configured at ${capFigure(reading.capUsd)}, which authorizes nothing. Every real provider call is refused until it is raised.`
     case 'unread':
       return `Real provider calls are permitted. The cap could not be read here, so this page is not saying what it is or whether one was set. ${refuses}`
+    case 'none':
+      return `Real provider calls are permitted. No whole-service limit is set, so each customer is held to their own monthly cap. ${spent} has been spent this month, by all customers.`
     case 'unconfigured':
       return reading.fallbackUsd === null
         ? `Real provider calls are permitted, and no cap was configured for this deployment, so they run against the built-in safety limit. ${spent} has been spent this month, by all customers. ${refuses} Set LIVE_SPEND_CAP_USD to choose your own figure.`
@@ -57,13 +59,20 @@ export function ProvidersView() {
         {(data) => (
           <>
             <Callout tone={data.mode === 'live' ? 'danger' : 'ok'} title={`Mode: ${data.mode}`}>
-              {data.mode === 'live'
+              {data.mode === 'live' && data.operatorView === false
+                ? // A customer is told what they may spend, not what the whole
+                  // service has: those figures add up other customers' spend.
+                  ['Real provider calls are permitted.', customerCapLine(data)].filter(Boolean).join(' ')
+                : data.mode === 'live'
                 ? // Same four states as the cost lab and the rail, from the same
                   // reader. This line used to print the figure flat, so a
                   // deployment that had configured nothing was told two dollars
                   // had been authorized for it.
                   [
-                    liveModeLine(data.liveSpentUsd, readCap({ capUsd: data.liveSpendCapUsd, capConfigured: data.liveSpendCapConfigured })),
+                    liveModeLine(
+                    data.liveSpentUsd ?? '',
+                    readCap({ capUsd: data.liveSpendCapUsd, capConfigured: data.liveSpendCapConfigured, capSource: data.liveSpendCapSource }),
+                  ),
                     customerCapLine(data),
                   ]
                     .filter(Boolean)

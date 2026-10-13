@@ -492,14 +492,21 @@ export type CapReading =
   | { state: 'forbidden'; capUsd: number }
   /** Nobody chose one. `fallbackUsd` is the limit still in force, if we know it. */
   | { state: 'unconfigured'; fallbackUsd: number | null }
+  /**
+   * The operator set no whole-service limit on purpose: only the per-customer
+   * monthly cap is in force. Not an absence of a decision, so not a warning.
+   */
+  | { state: 'none' }
 
 export type CapState = CapReading['state']
 
 export interface CapFacts {
   /** `liveSpendCapUsd` from /api/providers, or `liveCap.capUsd` from the costs route. */
-  capUsd?: number
+  capUsd?: number | null
   /** `liveSpendCapConfigured`, or `liveCap.capConfigured`. */
   capConfigured?: boolean
+  /** `liveSpendCapSource`, or `liveCap.capSource`: `none` means no whole-service limit exists. */
+  capSource?: 'env' | 'default' | 'none'
 }
 
 /**
@@ -534,6 +541,7 @@ export function capFigure(usd: number): string {
  */
 export function readCap(facts: CapFacts | null): CapReading {
   if (facts === null) return { state: 'unread' }
+  if (facts.capSource === 'none') return { state: 'none' }
   const figure = typeof facts.capUsd === 'number' && Number.isFinite(facts.capUsd) ? facts.capUsd : null
   if (facts.capConfigured === true) {
     if (figure === null) return { state: 'unread' }
@@ -602,8 +610,15 @@ export interface SpendReading {
 }
 
 export interface SpendInput extends CustomerCapFacts {
+  /**
+   * False when the API withheld the whole-service figures because the caller is
+   * a customer, not the operator. Absent is read as true (an older API).
+   */
+  operatorView?: boolean
+  /** From `/api/providers`: where the whole-service limit came from, or `none` for no limit. */
+  liveSpendCapSource?: 'env' | 'default' | 'none'
   mode?: string
-  liveSpendCapUsd?: number
+  liveSpendCapUsd?: number | null
   /**
    * From `/api/providers`. False means `liveSpendCapUsd` is the runtime's own
    * fallback rather than a figure anybody chose. Absent is read as false: an
@@ -637,8 +652,18 @@ export function deriveSpend(input: SpendInput | null, loading = false): SpendRea
     }
   }
   const modeLabel = input.mode === 'live' ? 'Live' : input.mode === 'sandbox' ? 'Sandbox' : 'Mode unknown'
-  const reading = readCap({ capUsd: input.liveSpendCapUsd, capConfigured: input.liveSpendCapConfigured })
   const customerLine = customerCapLine(input)
+  if (input.operatorView === false) {
+    // A customer sees their own cap and month, and nothing about the whole
+    // service: its figures add up other customers' spend.
+    return {
+      modeLabel,
+      capSet: customerLine !== null && input.customerSpendCapConfigured === true,
+      line: customerLine ?? 'Your monthly spend is not shown here.',
+      detail: null,
+    }
+  }
+  const reading = readCap({ capUsd: input.liveSpendCapUsd, capConfigured: input.liveSpendCapConfigured, capSource: input.liveSpendCapSource })
   const withCustomer = (card: SpendReading): SpendReading => (customerLine === null ? card : { ...card, customerLine })
 
   return withCustomer(deriveCapCard(modeLabel, reading, input))
@@ -667,6 +692,10 @@ function deriveCapCard(modeLabel: string, reading: CapReading, input: SpendInput
         line: 'Cap could not be read.',
         detail: 'The cap could not be read, so this is not a claim that none is set.',
       }
+    case 'none':
+      // The operator chose no whole-service limit; the per-customer cap is the
+      // one that applies. Said plainly, so it is not read as a missing setting.
+      return { modeLabel, capSet: false, line: 'No whole-service limit set.', detail: null }
     case 'unconfigured':
       return {
         modeLabel,

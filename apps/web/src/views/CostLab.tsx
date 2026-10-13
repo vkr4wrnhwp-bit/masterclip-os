@@ -22,7 +22,9 @@ export function CostLab({ projectId }: { projectId: string }) {
           // used to be asserted as `{ capUsd: number; spent: string }` and then
           // dereferenced, so a response without a liveCap took the page down
           // with a TypeError rather than saying it could not read the cap.
-          const liveCap = (data.liveCap ?? null) as ({ capUsd?: number; capConfigured?: boolean; spent?: string } & CapFacts & CustomerCapFacts) | null
+          const liveCap = (data.liveCap ?? null) as
+            | ({ capUsd?: number | null; capConfigured?: boolean; spent?: string; operatorView?: boolean } & CapFacts & CustomerCapFacts)
+            | null
           const avoided = data.qcAvoided as { autoRejected: number; usd: string }
 
           return (
@@ -176,7 +178,16 @@ export function CostLab({ projectId }: { projectId: string }) {
  * deployment had configured, which presented the runtime's own fallback as an
  * authorization somebody granted.
  */
-function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts & CustomerCapFacts) | null }) {
+function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string; operatorView?: boolean } & CapFacts & CustomerCapFacts) | null }) {
+  // A customer is shown their own cap and month only: the whole service's
+  // figures add up other customers' spend, so the API does not send them.
+  if (liveCap?.operatorView === false) {
+    return (
+      <Callout tone="info" title="Your renders this month">
+        {customerCapLine(liveCap) ?? 'Your monthly spend is not shown here.'} Sandbox spend is tracked separately and never counts.
+      </Callout>
+    )
+  }
   const reading = readCap(liveCap)
   // The spend is reported wherever it is known, including when the cap is not,
   // because it is a measurement rather than a claim about policy. It is this
@@ -197,6 +208,17 @@ function LiveCapCallout({ liveCap }: { liveCap: ({ spent?: string } & CapFacts &
           ? `$${reading.capUsd.toFixed(2)} is authorized for real provider calls, configured for this deployment. How much of it has been spent this month could not be read.`
           : `${spent} of $${reading.capUsd.toFixed(2)} authorized has been spent on real provider calls this month, by all customers. That figure was configured for this deployment.`}{' '}
         Sandbox spend is tracked separately and never counts against this cap.{customerSentence}
+      </Callout>
+    )
+  }
+
+  if (reading.state === 'none') {
+    return (
+      <Callout tone="info" title="No whole-service limit set">
+        Only the per-customer monthly cap limits live spend. Set LIVE_SPEND_CAP_USD if you want a monthly emergency brake for the whole
+        service.
+        {spent === null ? '' : ` ${spent} has been spent on real provider calls this month, by all customers.`}
+        {customerSentence} Sandbox spend is tracked separately and never counts.
       </Callout>
     )
   }

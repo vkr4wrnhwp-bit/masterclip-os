@@ -15,15 +15,20 @@ async function main(): Promise<void> {
   runtime.logger.info('api.started', {
     url: `http://${config.API_HOST}:${config.API_PORT}`,
     mode: config.MASTERCLIP_MODE,
+    // The whole-service ceiling is optional. `env`: LIVE_SPEND_CAP_USD is set.
+    // `default`: neither cap is set, so the built-in ceiling applies. `none`:
+    // only CUSTOMER_SPEND_CAP_USD is set and there is no whole-service ceiling.
+    live_spend_ceiling: config.liveSpendCapSource === 'none' ? 'off' : 'on',
+    live_spend_cap_source: config.liveSpendCapSource,
     live_spend_cap_usd: config.LIVE_SPEND_CAP_USD,
+    live_spend_cap_period: 'per calendar month (UTC), all customers',
     // Without this the boot log cannot tell a deployment that chose this cap
     // from one that never set a cap at all, which is the same gap the screens
     // had. It is the one line somebody reads when a render was refused.
     live_spend_cap_configured: config.liveSpendCapConfigured,
-    // The live cap above is the whole service's ceiling for the calendar month.
-    // This one is the most a single customer may spend in a month; null means no
-    // per-customer cap is set (and the stored organization budget is the only
-    // monthly limit).
+    // The most a single customer may spend per calendar month (UTC); null
+    // means no per-customer cap is set (and the stored organization budget is the
+    // only monthly limit). This is the setting the owner manages.
     customer_spend_cap_usd: config.CUSTOMER_SPEND_CAP_USD ?? null,
     db: runtime.db.dialect,
     storage: runtime.storage.name,
