@@ -387,7 +387,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
                     <input type="radio" name="mo-vault-song" value={f.id} checked={vaultPick === f.id} disabled={!f.usable || busy}
                       onChange={() => {
                         setVaultPick(f.id)
-                        if (!name.trim()) setName((f.label || '').slice(0, 80))
+                        if (!name.trim()) setName((f.label || '').replace(/\.(wav|wave|mp3|m4a|aac|ogg|flac|aiff?)$/i, '').trim().slice(0, 80))
                       }} />
                     <span>
                       <b>{f.label || 'Untitled song'}</b>
