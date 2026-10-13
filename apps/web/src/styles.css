@@ -1194,3 +1194,21 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mc-scene-handoff-card { padding:10px; }
   .mc-scene-handoff-card .field-row .field { min-width:100%; }
 }
+
+/* "From your Vault" in Start Film (2026-10-12): the song can come from the
+   artist's Street Banker Vault or from this device. 44px targets, one column. */
+.mo-dialog .mo-audio-source { display: flex; gap: 6px; margin-top: 18px; padding: 4px; border: 1px solid var(--mo-line); border-radius: 999px; }
+.mo-dialog .mo-audio-source button { flex: 1; border: 0; border-radius: 999px; min-height: 44px; padding: 8px 12px; color: var(--mo-muted); }
+.mo-dialog .mo-audio-source button[aria-checked="true"] { background: var(--mo-paper); color: var(--mo-ink); }
+.mo-dialog .mo-audio-source button:disabled { opacity: 0.45; cursor: default; }
+.mo-dialog .mo-vault-list { margin: 14px 0 0; padding: 0; border: 0; display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.mo-dialog .mo-vault-list legend { font-size: 14px; margin-bottom: 8px; padding: 0; }
+.mo-dialog .mo-vault-list p { margin: 0; }
+.mo-dialog label.mo-vault-song { display: flex; align-items: center; gap: 12px; margin: 0; min-height: 52px; padding: 8px 12px; border: 1px solid var(--mo-line); border-radius: 6px; cursor: pointer; }
+.mo-dialog label.mo-vault-song:has(input:checked) { border-color: var(--mo-cyan); }
+.mo-dialog label.mo-vault-song.is-off { opacity: 0.55; cursor: default; }
+.mo-dialog label.mo-vault-song input { width: 20px; height: 20px; min-height: 0; margin: 0; flex: none; }
+.mo-dialog label.mo-vault-song span { display: grid; min-width: 0; }
+.mo-dialog label.mo-vault-song b { overflow-wrap: anywhere; font-weight: 600; }
+.mo-dialog label.mo-vault-song small { color: var(--mo-muted); font-size: 12px; }
+.mo-dialog .mo-vault-note { font-size: 13px; margin: 8px 0 0; }

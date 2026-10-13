@@ -48,6 +48,36 @@ export function workspaceKey(who: Pick<HandoffIdentity, 'uid' | 'email'>): strin
 const fromB64Url =(value: string): Buffer => Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
 const toB64Url = (value: Buffer): string => value.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 
+/**
+ * The proof Motion brings to Street Banker's /suites/token to reach the
+ * artist's Vault (vault_doors_api.check_proof). Same itsdangerous wire format
+ * as the hand-off, its own salt, good for 120 seconds. Signed with the key the
+ * hand-off is checked with, which Street Banker holds for "motion".
+ */
+export const SUITE_PROOF_SALT = 'street-banker-suite-proof-v1'
+
+export function signSuiteProof(
+  input: { email: string; uid?: string; suite: string; scope: 'read' | 'deliver'; nonce: string },
+  secret: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): string {
+  const payload = {
+    v: 1,
+    uid: input.uid ?? '',
+    email: input.email.trim().toLowerCase(),
+    suite: input.suite,
+    scope: input.scope,
+    nonce: input.nonce,
+    iat: nowSeconds,
+  }
+  const body = toB64Url(Buffer.from(JSON.stringify(payload), 'utf8'))
+  const bytes: number[] = []
+  for (let n = nowSeconds; n > 0; n = Math.floor(n / 256)) bytes.unshift(n % 256)
+  const signed = `${body}.${toB64Url(Buffer.from(bytes))}`
+  const key = createHash('sha1').update(`${SUITE_PROOF_SALT}signer${secret}`).digest()
+  return `${signed}.${toB64Url(createHmac('sha1', key).update(signed).digest())}`
+}
+
 export function verifyHandoff(
   token: string | undefined,
   secret: string,

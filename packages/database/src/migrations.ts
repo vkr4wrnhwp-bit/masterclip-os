@@ -703,5 +703,15 @@ CREATE TABLE IF NOT EXISTS motion_music_sections (
 );
 `,
   },
+  {
+    id: '0008_session_street_banker_email',
+    sql: `
+-- The email Street Banker's signed hand-off vouched for when it opened this
+-- session; NULL for a session opened with a Motion password. Only a vouched
+-- session may reach the artist's Street Banker Vault, so an account someone
+-- made here with another person's email cannot read that person's files.
+ALTER TABLE sessions ADD COLUMN street_banker_email TEXT;
+`,
+  },
 
 ]

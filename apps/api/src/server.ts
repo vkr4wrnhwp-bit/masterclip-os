@@ -16,6 +16,7 @@ import { registerCreativeTreatments } from './routes/creative-treatments.js'
 import { registerRenderRoutes } from './routes/render.js'
 import { registerOpsRoutes } from './routes/ops.js'
 import { registerAssetRoutes } from './routes/assets.js'
+import { registerVaultRoutes } from './routes/vault.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
 import { registerCsrf } from './security/csrf.js'
 
@@ -23,7 +24,7 @@ export const SESSION_COOKIE = 'masterclip_session'
 
 declare module 'fastify' {
   interface FastifyRequest {
-    auth?: { userId: string; orgId: string; email: string; displayName: string; orgRole: string }
+    auth?: { userId: string; orgId: string; email: string; displayName: string; orgRole: string; streetBankerEmail: string | null }
   }
 }
 
@@ -125,6 +126,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerMusicStructureRoutes(app, runtime)
   await registerCreativeTreatments(app, runtime)
   await registerAssetRoutes(app, runtime)
+  await registerVaultRoutes(app, runtime)
   await registerRenderRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
@@ -145,6 +147,7 @@ export async function requireAuth(runtime: Runtime, request: FastifyRequest): Pr
     email: context.user.email,
     displayName: context.user.displayName,
     orgRole: context.user.orgRole,
+    streetBankerEmail: context.streetBankerEmail,
   }
   return request.auth
 }

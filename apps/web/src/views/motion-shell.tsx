@@ -1,6 +1,6 @@
 import React from 'react'
 import { MotionLogo } from '../motion-logo.jsx'
-import { api, type Project, type Shot, type User } from '../api.js'
+import { api, type Project, type Shot, type User, type VaultSong } from '../api.js'
 import { navigate, streetBankerUrl } from '../App.jsx'
 import { railItems, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
 
@@ -190,6 +190,27 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
   const [createdFilmId, setCreatedFilmId] = React.useState<string | null>(null)
   const [rightsOwner, setRightsOwner] = React.useState('')
   const [authorized, setAuthorized] = React.useState(false)
+  // "From your Vault" (owner, 2026-10-12): Motion is opened from Street Banker,
+  // so the song can come straight from the artist's Vault. Off (and the device
+  // picker shown) when Motion was not opened from Street Banker.
+  const [source, setSource] = React.useState<'vault' | 'file'>('vault')
+  const [vault, setVault] = React.useState<{ state: 'loading' | 'ready' | 'off'; files: VaultSong[]; note: string }>({ state: 'loading', files: [], note: '' })
+  const [vaultPick, setVaultPick] = React.useState('')
+  React.useEffect(() => {
+    if (mode.id !== 'audio') return
+    let live = true
+    api.vaultAudio().then(
+      (r) => { if (live) setVault({ state: 'ready', files: r.files, note: '' }) },
+      (e) => {
+        if (!live) return
+        setVault({ state: 'off', files: [], note: (e as Error).message })
+        setSource('file')
+      },
+    )
+    return () => { live = false }
+  }, [mode.id])
+  const picked = vault.files.find((f) => f.id === vaultPick && f.usable) ?? null
+  const haveAudio = source === 'vault' ? picked !== null : audioFile !== null
   const [busy, setBusy] = React.useState(false)
   const [progress, setProgress] = React.useState('')
   const submittingRef = React.useRef(false)
@@ -271,15 +292,22 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
     try {
       const filmId = createdFilmId ?? (await api.createProject(name.trim(), brief)).project.id
       setCreatedFilmId(filmId)
-      if (mode.id === 'audio' && audioFile) {
-        setProgress('Uploading recording…')
-        const form = new FormData()
-        form.append('file', audioFile)
-        form.append('rights_owner', rightsOwner.trim())
-        form.append('rights_consent', authorized ? 'authorized' : 'unverified')
-        form.append('rights_authorized', authorized ? 'true' : 'false')
+      if (mode.id === 'audio' && haveAudio) {
+        setProgress(source === 'vault' ? 'Bringing the song from your Vault…' : 'Uploading recording…')
         try {
-          await api.uploadAsset(filmId, form)
+          if (source === 'vault' && picked) {
+            await api.vaultImport(filmId, {
+              fileId: picked.id,
+              rights: { owner: rightsOwner.trim(), consent: authorized ? 'authorized' : 'unverified', authorized },
+            })
+          } else if (audioFile) {
+            const form = new FormData()
+            form.append('file', audioFile)
+            form.append('rights_owner', rightsOwner.trim())
+            form.append('rights_consent', authorized ? 'authorized' : 'unverified')
+            form.append('rights_authorized', authorized ? 'true' : 'false')
+            await api.uploadAsset(filmId, form)
+          }
         } catch (uploadError) {
           setError('Film created, but audio upload failed: ' + (uploadError as Error).message + '. Retry to upload to the same film.')
           setBusy(false)
@@ -338,11 +366,44 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
 
         {mode.id === 'audio' && (
           <div className="mo-start-audio">
-            <label>
-              Choose an audio recording
-              <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp3"
-                onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
-            </label>
+            <div className="mo-audio-source" role="radiogroup" aria-label="Where the song comes from">
+              <button type="button" role="radio" aria-checked={source === 'vault'} disabled={vault.state === 'off' || busy}
+                onClick={() => setSource('vault')}>From your Vault</button>
+              <button type="button" role="radio" aria-checked={source === 'file'} disabled={busy}
+                onClick={() => setSource('file')}>From this device</button>
+            </div>
+            {source === 'vault' ? (
+              <fieldset className="mo-vault-list">
+                <legend>Pick a song from your Street Banker Vault</legend>
+                {vault.state === 'loading' && <p role="status">Loading your Vault…</p>}
+                {vault.state === 'ready' && vault.files.length === 0 && (
+                  <p>
+                    No songs in your Vault yet.{' '}
+                    <a href={`${streetBankerUrl()}/vault#vault-drop`} target="_blank" rel="noopener noreferrer">Add one to your Vault</a>, then come back.
+                  </p>
+                )}
+                {vault.files.map((f) => (
+                  <label key={f.id} className={'mo-vault-song' + (f.usable ? '' : ' is-off')}>
+                    <input type="radio" name="mo-vault-song" value={f.id} checked={vaultPick === f.id} disabled={!f.usable || busy}
+                      onChange={() => {
+                        setVaultPick(f.id)
+                        if (!name.trim()) setName((f.label || '').slice(0, 80))
+                      }} />
+                    <span>
+                      <b>{f.label || 'Untitled song'}</b>
+                      <small>{f.usable ? f.extension.toUpperCase() : 'Needs a WAV or MP3 copy'}</small>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : (
+              <label>
+                Choose an audio recording
+                <input type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp3"
+                  onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)} required />
+              </label>
+            )}
+            {vault.state === 'off' && vault.note && <p className="mo-vault-note">{vault.note}</p>}
             <label>
               Rights owner
               <input value={rightsOwner} onChange={event => setRightsOwner(event.target.value)}
@@ -368,7 +429,7 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
           <button type="button" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!audioFile || !rightsOwner.trim() || !authorized))}>
+          <button className="mo-start" type="submit" disabled={busy || name.trim().length === 0 || (mode.id === 'audio' && (!haveAudio || !rightsOwner.trim() || !authorized))}>
             {busy ? (progress || 'Processing…') : 'Create the film'} <span aria-hidden="true">&rarr;</span>
           </button>
         </div>
