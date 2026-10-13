@@ -442,7 +442,10 @@ export class RenderService {
         type: JOB_TYPES.pollRender,
         payload: { jobId },
         delayMs: this.rt.config.PROVIDER_POLL_INTERVAL_MS,
-        dedupeKey: `poll:${jobId}`,
+        // One poll chain per attempt: a retry's poll must not be dropped as a
+        // duplicate of the first attempt's finished one, or a retried job sits at
+        // "submitted" for good with nothing asking the provider again.
+        dedupeKey: `poll:${jobId}:${attemptNumber}`,
         maxAttempts: 200,
       })
     } catch (err) {

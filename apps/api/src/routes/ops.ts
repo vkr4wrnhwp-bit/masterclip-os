@@ -379,7 +379,9 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
         queue: 'render',
         type: 'render.poll',
         payload: { jobId: job.id },
-        dedupeKey: `poll-hook:${job.id}:${event.status.state}`,
+        // Per attempt, as the timer poll is: a retry's webhook with the same
+        // state as the first attempt's must still trigger a poll.
+        dedupeKey: `poll-hook:${job.id}:${job.attempts}:${event.status.state}`,
       })
     }
     await runtime.db.run('UPDATE webhook_events SET processed_at = ? WHERE provider_id = ? AND dedupe_key = ?', [

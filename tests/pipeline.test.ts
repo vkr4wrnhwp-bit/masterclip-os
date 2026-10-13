@@ -649,6 +649,39 @@ describe('render pipeline', () => {
     expect(await runtime.renders.listOutputs({ shotId })).toHaveLength(2)
   })
 
+  it('polls a retried render again, so a retry after a provider failure finishes', async () => {
+    // Seen on the staging server, 2026-10-12: a render the provider failed
+    // was retried, resubmitted, and then sat at "submitted" for good. The
+    // retry's poll was queued under the same dedupe key as the first
+    // attempt's finished poll, so the queue dropped it and nothing ever
+    // asked the provider again.
+    const { createMockProvider } = await import('@masterclip/provider-mock')
+    const mock = (failureRate: number) => createMockProvider({
+      logger: silentLogger, sandbox: true, publicBaseUrl: '', now: () => Date.now(),
+      workDir: join(storageRoot, `mock-${failureRate}`), latencyMs: 0, defectRate: 0, failureRate,
+    })
+    runtime.registry.register(mock(1))
+    const render = new RenderService(runtime)
+    const plan = await render.planBatch({ projectId, shotId, batchName: 'retry', candidates: candidates(1), createdBy: 'tester', orgId })
+    const jobId = plan.jobIds[0]!
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('failed')
+
+    // What POST /api/jobs/:jobId/retry does, against a provider that now succeeds.
+    runtime.registry.register(mock(0))
+    const failed = await runtime.renders.getJob(jobId)
+    await runtime.renders.updateJob(jobId, { status: 'queued', error: null })
+    await runtime.queue.enqueue({
+      queue: QUEUES.render,
+      type: JOB_TYPES.submitRender,
+      payload: { jobId },
+      dedupeKey: `submit:${jobId}:retry:${failed.attempts + 1}`,
+    })
+    await drain(render)
+    expect((await runtime.renders.getJob(jobId)).status).toBe('completed')
+    expect(await runtime.renders.listOutputs({ shotId })).toHaveLength(1)
+  })
+
   it('records provenance from the delivery back to the shot version', async () => {
     const render = new RenderService(runtime)
     await render.planBatch({ projectId, shotId, batchName: 'lineage', candidates: candidates(1), createdBy: 'tester', orgId })
