@@ -206,10 +206,23 @@ export const api = {
   providers: () =>
     get<{
       mode: string
-      liveSpendCapUsd: number
+      /** False when the whole-service figures below are withheld because the caller is a customer. */
+      operatorView?: boolean
+      /** The whole-service monthly ceiling; null when there is none. Operator only. */
+      liveSpendCapUsd?: number | null
       /** False when no cap was configured and the figure above is the fallback. */
-      liveSpendCapConfigured: boolean
-      liveSpentUsd: string
+      liveSpendCapConfigured?: boolean
+      /** Where the ceiling came from: set by the operator, the built-in default, or none. */
+      liveSpendCapSource?: 'env' | 'default' | 'none'
+      /** This calendar month (UTC), every customer together. Operator only. */
+      liveSpentUsd?: string
+      /** The most one customer may spend in a month; null when no per-customer cap is set. */
+      customerSpendCapUsd: number | null
+      customerSpendCapConfigured: boolean
+      /** False for the house account, which the per-customer cap does not hold. */
+      customerCapApplies: boolean
+      /** The signed-in customer's own live spend this month, e.g. "$3.21". */
+      customerSpentThisMonthUsd: string
       providers: Array<{ providerId: string; displayName: string; configured: boolean; keyFingerprint: string; health: Record<string, unknown> | null }>
     }>('/api/providers'),
   providerHealth: () => get<{ health: Array<{ providerId: string; status: string; latencyMs: number | null; message: string }> }>('/api/providers/health'),
@@ -238,7 +251,7 @@ export const api = {
     }>(`/api/shots/${shotId}/matrix`, body),
 
   render: (shotId: string, body: Record<string, unknown>) =>
-    post<{ jobIds: string[]; skipped: Array<{ reason: string }>; estimatedUsd: string; warnings: string[]; queued: number }>(
+    post<{ jobIds: string[]; skipped: Array<{ reason: string; code?: string }>; estimatedUsd: string; warnings: string[]; queued: number }>(
       `/api/shots/${shotId}/render`,
       body,
     ),

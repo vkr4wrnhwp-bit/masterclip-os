@@ -130,6 +130,8 @@ export function MotionRail({
               still a cap, and saying only "Cap not set." would read as "spend
               what you like". */}
           {spend.detail !== null && <p className="mo-budget-note">{spend.detail}</p>}
+          {/* The customer's own monthly cap and spend, when the API said. */}
+          {spend.customerLine !== undefined && <p className="mo-budget-note">{spend.customerLine}</p>}
         </section>
 
         <div className="mo-account">

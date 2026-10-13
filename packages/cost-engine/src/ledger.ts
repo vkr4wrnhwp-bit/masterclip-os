@@ -1,5 +1,6 @@
 import { type Db, insertRow, toNum, toStr } from '@masterclip/database'
 import { newId, systemClock, type Clock, type MicroUsd } from '@masterclip/shared'
+import { windowBounds } from './budget.js'
 
 export type LedgerEntryType = 'estimate' | 'charge' | 'refund' | 'adjustment' | 'qc' | 'agent'
 
@@ -97,7 +98,6 @@ export class CostLedger {
     return toNum(row?.total, 0)
   }
 
-  /** Live (non-sandbox) spend across every org. Backs the hard live-spend cap. */
   /**
    * Money already handed to a provider but not yet settled.
    *
@@ -119,20 +119,61 @@ export class CostLedger {
    * leaves this sum, whether it was charged, failed or cancelled. Nothing has to
    * remember to write a release entry, and a missed transition makes the cap
    * *stricter* rather than looser.
+   *
+   * With no argument this is every customer's jobs, which is what the
+   * whole-service ceiling needs. `orgId` narrows it to one customer's jobs (a
+   * job belongs to its project's organization) for the per-customer cap, and
+   * `excludeJobId` leaves one job out: a job being authorized at submit time is
+   * already `authorizing`, so without this it would be counted against itself.
    */
-  async committedInFlight(): Promise<MicroUsd> {
+  async committedInFlight(scope: { orgId?: string; excludeJobId?: string } = {}): Promise<MicroUsd> {
+    const clauses = [`j.sandbox = 0`, `j.status IN ('authorizing', 'submitted', 'processing', 'downloading')`]
+    const params: string[] = []
+    if (scope.orgId !== undefined) {
+      clauses.push('p.org_id = ?')
+      params.push(scope.orgId)
+    }
+    if (scope.excludeJobId) {
+      clauses.push('j.id <> ?')
+      params.push(scope.excludeJobId)
+    }
     const row = await this.db.get<{ total: number | null }>(
-      `SELECT SUM(estimated_micros) AS total FROM render_jobs
-       WHERE sandbox = 0 AND status IN ('authorizing', 'submitted', 'processing', 'downloading')`,
+      `SELECT SUM(j.estimated_micros) AS total FROM render_jobs j
+       ${scope.orgId !== undefined ? 'JOIN projects p ON p.id = j.project_id' : ''}
+       WHERE ${clauses.join(' AND ')}`,
+      params,
     )
     return toNum(row?.total, 0)
   }
 
-  async totalLiveSpend(): Promise<MicroUsd> {
+  /**
+   * Live (non-sandbox) spend across every org, all customers together. With
+   * `since` it counts only entries from that moment on; with none it is the
+   * lifetime total, which no cap is measured against any more (see
+   * `liveSpendThisMonth`).
+   */
+  async totalLiveSpend(window: { since?: string } = {}): Promise<MicroUsd> {
+    const clauses = [`sandbox = 0`, `entry_type IN ('charge','refund','adjustment','qc','agent')`]
+    const params: string[] = []
+    if (window.since) {
+      clauses.push('created_at >= ?')
+      params.push(window.since)
+    }
     const row = await this.db.get<{ total: number | null }>(
-      `SELECT SUM(micros) AS total FROM cost_ledger WHERE sandbox = 0 AND entry_type IN ('charge','refund','adjustment','qc','agent')`,
+      `SELECT SUM(micros) AS total FROM cost_ledger WHERE ${clauses.join(' AND ')}`,
+      params,
     )
     return toNum(row?.total, 0)
+  }
+
+  /**
+   * Live spend by every customer together since the 1st of the current calendar
+   * month (UTC). This is the figure the whole-service ceiling,
+   * LIVE_SPEND_CAP_USD, is measured against: counting it over all time meant a
+   * live service stopped for good the day its lifetime spend passed the number.
+   */
+  async liveSpendThisMonth(nowMs: number = this.clock.now()): Promise<MicroUsd> {
+    return this.totalLiveSpend({ since: windowBounds(nowMs).monthStart })
   }
 
   async byProvider(projectId: string, window: SpendWindow = {}): Promise<Array<{ providerId: string; modelId: string; micros: MicroUsd; entries: number }>> {

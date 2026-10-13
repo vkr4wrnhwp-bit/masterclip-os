@@ -50,8 +50,20 @@
   jobs wait in a queue while prices move and other jobs spend the budget.
 - `MASTERCLIP_MODE=sandbox` (the default) refuses every billable submission
   outright, independent of budgets.
-- `LIVE_SPEND_CAP_USD` is a global ceiling across every org and project, checked
-  last and separately, precisely so a routing bug cannot spend at scale.
+- `CUSTOMER_SPEND_CAP_USD`, when set, limits one customer (one org) to that many
+  dollars of live renders per calendar month (UTC), under the denial code
+  `spend.customer_cap`. It is checked beside the org monthly budget, the smaller
+  of the two applies, and the house org (the owner's) is exempt.
+- `LIVE_SPEND_CAP_USD` is an optional monthly emergency brake across every org and
+  project, per calendar month (UTC), all customers combined, checked last and
+  separately so a routing bug cannot spend at scale. Unset with the customer cap
+  set, there is no whole-service limit; unset with neither set, a built-in $2
+  monthly limit applies. Its figures add up every customer's spend, so only the
+  operator sees them: a customer it stops is told "MOTION renders are paused for
+  now. Try again later."
+- Charges are written once per generation (per attempt), not once per job, so a
+  retried or cancelled-and-retried job is counted every time it is paid for, and a
+  job is claimed with a compare-and-set before submit so it cannot be sent twice.
 - Premium-tier renders and estimates above the project threshold require an
   explicit human approval flag; an agent cannot supply it —
   `assertCanApprovePremium` restricts that to the cost controller agent, and even

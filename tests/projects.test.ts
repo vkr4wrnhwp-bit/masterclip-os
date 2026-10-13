@@ -313,7 +313,56 @@ describe('the film list screen', () => {
   it('carries the spend posture, including a cap nobody set', () => {
     const markup = screen(loaded([project()]))
     expect(markup).toContain('Cap not set.')
-    expect(markup).toContain('Live renders stop at the $2.00 safety limit until one is set.')
+    expect(markup).toContain('Live renders stop at the $2.00 safety limit (this month, all customers) until one is set.')
+    // The API said nothing about a per-customer cap, so the rail says nothing.
+    expect(markup).not.toContain('per-customer cap')
+  })
+
+  it('shows the customer their own cap and spend this month on the rail', () => {
+    const states = loaded([project()])
+    states[1] = done({
+      mode: 'live',
+      liveSpendCapUsd: 25,
+      liveSpendCapConfigured: true,
+      liveSpentUsd: '$4.1000',
+      customerSpendCapUsd: 10,
+      customerSpendCapConfigured: true,
+      customerCapApplies: true,
+      customerSpentThisMonthUsd: '$3.21',
+      providers: [],
+    })
+    const markup = screen(states)
+    expect(markup).toContain('$4.1000 of $25.00 authorized this month, all customers.')
+    expect(markup).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+
+    states[1] = done({ mode: 'live', liveSpendCapUsd: 25, liveSpendCapConfigured: true, liveSpentUsd: '$0.0000', customerSpendCapUsd: null, customerSpendCapConfigured: false, customerCapApplies: false, customerSpentThisMonthUsd: '$0.00', providers: [] })
+    expect(screen(states)).toContain('No per-customer cap set.')
+  })
+
+  it('shows a customer none of the whole service’s figures on the rail', () => {
+    const states = loaded([project()])
+    states[1] = done({
+      mode: 'live',
+      operatorView: false,
+      customerSpendCapUsd: 10,
+      customerSpendCapConfigured: true,
+      customerCapApplies: true,
+      customerSpentThisMonthUsd: '$3.21',
+      providers: [],
+    })
+    const markup = screen(states)
+    expect(markup).toContain('Your spend this month: $3.21 of the $10.00 per-customer cap.')
+    expect(markup).not.toContain('all customers')
+    expect(markup).not.toContain('Cap not set')
+    expect(markup).not.toContain('safety limit')
+  })
+
+  it('tells the operator there is no whole-service limit when none is set', () => {
+    const states = loaded([project()])
+    states[1] = done({ mode: 'live', operatorView: true, liveSpendCapUsd: null, liveSpendCapConfigured: false, liveSpendCapSource: 'none', liveSpentUsd: '$44.2100', providers: [] })
+    const markup = screen(states)
+    expect(markup).toContain('No whole-service limit set.')
+    expect(markup).not.toContain('Cap not set')
   })
 
   it('offers one primary action and a way past the rail', () => {

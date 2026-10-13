@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppError, formatUsd, newId, sha256File, type MicroUsd } from '@masterclip/shared'
+import { customerCapMessage } from '@masterclip/cost-engine'
 import { JOB_TYPES, QUEUES } from '@masterclip/queue'
 import { toNum } from '@masterclip/database'
 import { objectKey, type StorageDriver } from '@masterclip/asset-storage'
@@ -42,7 +43,12 @@ export interface PlannedCandidate {
 
 export interface PlanResult {
   jobIds: string[]
-  skipped: Array<{ candidate: PlannedCandidate; reason: string }>
+  /**
+   * `reason` is the sentence to show. `code` is the cost controller's code for
+   * why, when it refused: `spend.customer_cap` means the customer has used this
+   * month's allowance, which is where the app will offer credits.
+   */
+  skipped: Array<{ candidate: PlannedCandidate; reason: string; code?: string }>
   estimatedMicros: MicroUsd
   warnings: string[]
 }
@@ -190,7 +196,10 @@ export class RenderService {
         warnings.push(...authorization.warnings.map((w) => `${candidate.providerId}/${candidate.modelId}: ${w}`))
 
         if (!authorization.allowed) {
-          skipped.push({ candidate, reason: authorization.denials.map((d) => d.message).join('; ') })
+          const code = authorization.denials.some((d) => d.code === 'spend.customer_cap')
+            ? 'spend.customer_cap'
+            : authorization.denials[0]?.code
+          skipped.push({ candidate, reason: authorization.denials.map((d) => d.message).join('; '), ...(code ? { code } : {}) })
           await this.rt.audit.record({
             orgId: input.orgId,
             projectId: input.projectId,
@@ -377,7 +386,12 @@ export class RenderService {
       return
     }
 
-    await this.rt.renders.updateJob(jobId, { status: 'authorizing' })
+    // Claim the job with a compare-and-set, so two workers (a queue retry and a
+    // user's retry, say) cannot both read it as waiting and both submit it.
+    if (!(await this.claimForSubmit(job))) {
+      this.rt.logger.debug('render.submit_skipped', { job_id: jobId, status: 'claimed by another worker' })
+      return
+    }
 
     const quote = await this.freshQuote(job, request, model.capabilities.tier)
     const authorization = await this.rt.cost.authorize({
@@ -385,6 +399,7 @@ export class RenderService {
       projectId: job.projectId,
       shotId: job.shotId,
       batchId: job.batchId,
+      jobId: job.id,
       request,
       quote,
       tier: model.capabilities.tier,
@@ -550,6 +565,34 @@ export class RenderService {
     return true
   }
 
+  /**
+   * Moves a waiting job to `authorizing`, once, for exactly one caller.
+   *
+   * A job that is `queued` or `blocked` is claimed only if it still is. A job
+   * already `authorizing` was left there by a worker that stopped (a live worker
+   * holds the queue lease, so only a redelivery after that reaches here); it is
+   * taken over only if nobody has touched it since it was read. Either way the
+   * loser changes nothing and stops.
+   */
+  private async claimForSubmit(job: RenderJob): Promise<boolean> {
+    let now = this.rt.clock.isoNow()
+    if (job.status === 'authorizing') {
+      // The marker must differ from what was read, or two takeovers in the same
+      // millisecond would both match.
+      if (now <= job.updatedAt) now = new Date(Date.parse(job.updatedAt) + 1).toISOString()
+      const taken = await this.rt.db.run(
+        `UPDATE render_jobs SET status = 'authorizing', updated_at = ? WHERE id = ? AND status = 'authorizing' AND updated_at = ?`,
+        [now, job.id, job.updatedAt],
+      )
+      return taken.changes > 0
+    }
+    const claimed = await this.rt.db.run(
+      `UPDATE render_jobs SET status = 'authorizing', updated_at = ? WHERE id = ? AND status IN ('queued', 'blocked')`,
+      [now, job.id],
+    )
+    return claimed.changes > 0
+  }
+
   /** Reuses a still-valid quote; otherwise asks the provider again. */
   private async freshQuote(job: RenderJob, request: CanonicalRenderRequest, _tier: ModelTier): Promise<PriceQuote> {
     if (job.quoteId) {
@@ -665,25 +708,60 @@ export class RenderService {
    * that the figure is ours rather than the provider's.
    */
   /**
-   * Refuses QC work once the global live-spend ceiling is gone.
+   * Refuses QC work once this customer's monthly cap, or the whole-service
+   * monthly ceiling, is gone.
    *
    * QC is not a provider generation, so it never passes through
    * `CostController.authorize()` — which is where every other spend meets the
-   * cap. That left one class of real spending permanently outside the only
-   * global limit in the system. This is the narrow equivalent: the same ledger
-   * total, the same ceiling, checked before the request rather than after.
+   * caps. That left one class of real spending permanently outside the only
+   * limits in the system. This is the narrow equivalent: the same ledger totals,
+   * the same limits, checked before the request rather than after. The customer
+   * is told in the same words, under the same code, as when a render is refused.
    */
-  private async assertQcSpendAllowed(outputId: string): Promise<void> {
+  private async assertQcSpendAllowed(outputId: string, orgId: string, jobId?: string): Promise<void> {
     if (this.rt.config.isSandbox) return
-    const spent = (await this.rt.ledger.totalLiveSpend()) + (await this.rt.ledger.committedInFlight())
+    // `jobId` is the render this QC is for. It was charged when it finished but
+    // stays in flight until ingest ends, so it is left out of both totals: the
+    // customer already paid for it, and counting it would refuse the checking
+    // of the very render that took them to the cap.
+    const exclude = jobId ? { excludeJobId: jobId } : {}
+    const reached = await this.rt.cost.customerCapReached(orgId, exclude)
+    if (reached) {
+      throw new AppError({
+        kind: 'budget_exceeded',
+        code: 'spend.customer_cap',
+        message: customerCapMessage(reached.capMicros, reached.usedMicros),
+        details: { outputId },
+      })
+    }
     const cap = this.rt.config.liveSpendCapMicros
+    if (cap === null) return
+    const spent = (await this.rt.ledger.liveSpendThisMonth()) + (await this.rt.ledger.committedInFlight(exclude))
     if (spent < cap) return
     throw new AppError({
       kind: 'budget_exceeded',
       code: 'qc.live_cap',
-      message: `visual QC needs to spend, but live spend of ${formatUsd(spent)} has reached the ${formatUsd(cap, 2)} cap`,
+      message: `visual QC needs to spend, but this month's live spend of ${formatUsd(spent)} has reached the ${formatUsd(cap, 2)} cap`,
       details: { outputId },
     })
+  }
+
+  /**
+   * Whether visual QC may use the paid vision model. With no Anthropic key QC is
+   * free and there is nothing to check. With one, a spend refusal (the customer's
+   * month is used up, or the service brake is on) does not fail the render the
+   * customer already paid for: QC falls back to the free heuristic checker.
+   */
+  private async qcMayUseClaude(outputId: string, orgId: string, jobId: string): Promise<boolean> {
+    if (!this.rt.agents.available) return false
+    try {
+      await this.assertQcSpendAllowed(outputId, orgId, jobId)
+      return true
+    } catch (err) {
+      if (!(err instanceof AppError && err.kind === 'budget_exceeded')) throw err
+      this.rt.logger.warn('qc.spend_refused_using_heuristic', { outputId, code: err.code })
+      return false
+    }
   }
 
   private async settleCharge(job: RenderJob, status: { actualMicros: MicroUsd | null; billableSeconds: number | null }): Promise<void> {
@@ -892,10 +970,15 @@ export class RenderService {
         // reference to the cap at all: the charge was appended to the ledger
         // after the fact, so QC kept spending long after LIVE_SPEND_CAP_USD was
         // exhausted. It is not a provider generation and does not go through
-        // authorize(), but it must still respect the one global ceiling.
-        await this.assertQcSpendAllowed(outputId)
+        // authorize(), but it must still respect the customer's monthly cap and
+        // the whole-service ceiling.
+        //
+        // A refusal does not fail the render the customer already paid for: it
+        // falls back to the free heuristic checker, as when there is no Anthropic
+        // key. With no key QC costs nothing, so there is nothing to refuse.
+        const useClaude = await this.qcMayUseClaude(outputId, project.orgId, output.jobId)
 
-        const client = this.visionClient(() => technical)
+        const client = this.visionClient(() => technical, useClaude)
         const characters = [...(await this.rt.bibles.listCharacters(output.projectId))]
           .filter((c) => version.spec.identity_locks.some((lock) => lock.character_key === c.characterKey))
           .map((c) => c.record)
@@ -969,8 +1052,11 @@ export class RenderService {
     }
   }
 
-  private visionClient(technicalProvider: () => ReturnType<typeof runTechnicalQc> extends Promise<infer T> ? T : never): VisionClient {
-    if (this.rt.agents.available) {
+  private visionClient(
+    technicalProvider: () => ReturnType<typeof runTechnicalQc> extends Promise<infer T> ? T : never,
+    allowClaude = true,
+  ): VisionClient {
+    if (allowClaude && this.rt.agents.available) {
       return new ClaudeVisionClient({
         client: this.rt.agents.client,
         fastModel: this.rt.config.ANTHROPIC_QC_MODEL,
@@ -1087,7 +1173,15 @@ export class RenderService {
 export type { StorageDriver }
 
 /**
- * Writes at most one `charge` row per render job.
+ * Writes at most one `charge` row per generation: per attempt, not per job.
+ *
+ * A retried job is a new paid generation under the same job id (the retry route
+ * allows it on a failed or cancelled job that already has a charge). Deduping
+ * on the job id alone silently dropped that second charge, so a cancel and
+ * retry loop paid the provider every cycle and the ledger counted it once. The
+ * charge now belongs to the job's latest attempt. A charge written before
+ * charges carried an attempt (no attempt id) still covers the attempt that was
+ * running when it was written.
  *
  * Three separate paths settle a job — the poll loop, an operator cancel, and
  * the poll timeout — and two of them can run concurrently: a provider webhook
@@ -1111,10 +1205,18 @@ export async function chargeJobOnce(
   seconds: number | null,
   note: string,
 ): Promise<MicroUsd | null> {
-  const existing = await rt.db.get<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM cost_ledger WHERE job_id = ? AND entry_type = 'charge'`,
+  const attempt = await rt.db.get<{ id: string; started_at: string }>(
+    `SELECT id, started_at FROM render_attempts WHERE job_id = ? ORDER BY attempt DESC LIMIT 1`,
     [job.id],
   )
+  const existing = attempt
+    ? await rt.db.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM cost_ledger
+          WHERE job_id = ? AND entry_type = 'charge'
+            AND (attempt_id = ? OR (attempt_id IS NULL AND created_at >= ?))`,
+        [job.id, attempt.id, attempt.started_at],
+      )
+    : await rt.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM cost_ledger WHERE job_id = ? AND entry_type = 'charge'`, [job.id])
   if (toNum(existing?.n, 0) > 0) return null
 
   const project = await rt.projects.get(job.projectId)
@@ -1125,6 +1227,7 @@ export async function chargeJobOnce(
     shotId: job.shotId,
     batchId: job.batchId,
     jobId: job.id,
+    ...(attempt ? { attemptId: attempt.id } : {}),
     providerId: job.providerId,
     modelId: job.modelId,
     entryType: 'charge',

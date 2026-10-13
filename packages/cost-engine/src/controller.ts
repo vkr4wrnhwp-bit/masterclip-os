@@ -1,6 +1,6 @@
 import type { Db } from '@masterclip/database'
-import { toNum } from '@masterclip/database'
-import { formatUsd, loadConfig, systemClock, type AppConfig, type Clock, type MicroUsd } from '@masterclip/shared'
+import { toNum, toStr } from '@masterclip/database'
+import { formatUsd, loadConfig, microsToUsd, systemClock, type AppConfig, type Clock, type MicroUsd } from '@masterclip/shared'
 import { isQuoteValid, type CanonicalRenderRequest, type ModelTier, type PriceQuote } from '@masterclip/provider-core'
 import { BudgetStore, windowBounds, type Budget } from './budget.js'
 import { CostLedger } from './ledger.js'
@@ -11,6 +11,12 @@ export interface AuthorizationRequest {
   sceneId?: string | null
   shotId: string
   batchId?: string | null
+  /**
+   * The render job being authorized, when there is one already (at submit time).
+   * Its own in-flight reservation is left out of the customer's running total,
+   * or the job would be counted against itself.
+   */
+  jobId?: string | null
   request: CanonicalRenderRequest
   quote: PriceQuote
   tier: ModelTier
@@ -41,6 +47,7 @@ export type DenialCode =
   | 'budget.attempts'
   | 'budget.premium_attempts'
   | 'spend.live_cap'
+  | 'spend.customer_cap'
   | 'mode.sandbox_required'
   | 'approval.required'
 
@@ -56,17 +63,63 @@ export interface Authorization {
     projectDailyMicros: MicroUsd | null
     projectMonthlyMicros: MicroUsd | null
     liveCapMicros: MicroUsd | null
+    /** Left of this customer's monthly cap; null when no customer cap applies. */
+    customerCapMicros: MicroUsd | null
   }
 }
+
+/** Where one customer stands against CUSTOMER_SPEND_CAP_USD this calendar month (UTC). */
+export interface CustomerStanding {
+  /** CUSTOMER_SPEND_CAP_USD is set for this deployment. */
+  configured: boolean
+  /** The cap, or null when none is set. */
+  capMicros: MicroUsd | null
+  /** The cap is set and this organization is held to it (the house organization is not). */
+  applies: boolean
+  /** This organization's live spend since the 1st of the month, settled charges only. */
+  spentMicros: MicroUsd
+}
+
+/**
+ * Whole dollars when they are whole ("$10"), cents otherwise ("$7.50"): the way
+ * a person says an allowance, rather than the four decimals a ledger prints.
+ */
+function plainDollars(micros: MicroUsd): string {
+  const usd = Math.max(0, microsToUsd(micros))
+  return Number.isInteger(usd) ? `$${usd}` : `$${usd.toFixed(2)}`
+}
+
+/**
+ * What a customer is told when the monthly cap stops a render, in words a
+ * musician reads without help. Shared with the visual-QC check, which refuses
+ * for the same reason, so both say the same thing under the same code.
+ */
+export function customerCapMessage(capMicros: MicroUsd, usedMicros: MicroUsd): string {
+  const cap = plainDollars(capMicros)
+  if (usedMicros >= capMicros) return `You've used this month's ${cap} of MOTION renders. It resets on the 1st.`
+  return `This render would take you past this month's ${cap} of MOTION renders (${plainDollars(usedMicros)} used so far). It resets on the 1st.`
+}
+
+/**
+ * What a customer is told when the whole-service ceiling stops them. The
+ * ceiling counts every customer's spend, so its figures are not theirs to see:
+ * with few customers they would reveal what the others spent. The operator
+ * (the house organization) still gets the full sentence.
+ */
+export const SERVICE_PAUSED_MESSAGE = 'MOTION renders are paused for now. Try again later.'
 
 /**
  * The gate every billable submission passes through.
  *
  * Nothing else in the system is allowed to call a provider's `submit()`
  * directly — the render worker asks here first, and a denial is final until
- * either the budget changes or a human approves. The live-spend cap is checked
- * last and separately because it is a global guard rail, not a project budget:
- * it exists so a bug in routing cannot spend real money at scale.
+ * either the budget changes or a human approves. Two limits sit above the
+ * project budgets. The per-customer monthly cap (CUSTOMER_SPEND_CAP_USD) is the
+ * most one customer may spend in a calendar month, and it is checked with the
+ * organization's monthly budget. The live-spend ceiling is checked last and
+ * separately because it is a whole-service guard rail, not a budget: it counts
+ * every customer's spend this calendar month, and exists so a bug in routing
+ * cannot spend real money at scale.
  */
 export class CostController {
   private readonly budgets: BudgetStore
@@ -87,6 +140,56 @@ export class CostController {
 
   get costLedger(): CostLedger {
     return this.ledger
+  }
+
+  /**
+   * True for the house organization: the one no Street Banker workspace lives
+   * in, where OWNER_EMAILS accounts land. It is the operator's own account, not
+   * a customer. Same rule as `AuthService.houseOrgId()`, asked of the database
+   * directly so the cost engine does not depend on the auth package.
+   */
+  async isHouseOrg(orgId: string): Promise<boolean> {
+    const row = await this.db.get<{ id: string }>('SELECT id FROM orgs WHERE street_banker_identity IS NULL ORDER BY created_at, id LIMIT 1')
+    return row !== undefined && toStr(row.id) === orgId
+  }
+
+  /**
+   * The monthly cap this organization is held to, in micro-dollars, or null
+   * when none applies: CUSTOMER_SPEND_CAP_USD is unset, or this is the house
+   * organization, which is bound only by the whole-service ceiling.
+   */
+  async customerCapMicros(orgId: string): Promise<MicroUsd | null> {
+    const cap = this.config.customerSpendCapMicros
+    if (cap === null) return null
+    return (await this.isHouseOrg(orgId)) ? null : cap
+  }
+
+  /** What to show a customer: the cap, whether it applies to them, and their spend this month. */
+  async customerStanding(orgId: string, nowMs: number = this.clock.now()): Promise<CustomerStanding> {
+    const capMicros = this.config.customerSpendCapMicros
+    const applies = capMicros !== null && !(await this.isHouseOrg(orgId))
+    const spentMicros = await this.ledger.spend('org', orgId, { since: windowBounds(nowMs).monthStart })
+    return { configured: capMicros !== null, capMicros, applies, spentMicros }
+  }
+
+  /**
+   * For live spend that is not a provider generation, such as visual QC, and so
+   * never passes through `authorize()`: whether this customer has already used
+   * the whole of this month's cap. Null means they may spend. `excludeJobId` is
+   * the render the work is for: it was already paid for and is still in flight,
+   * so counting it would refuse QC of a render the customer already bought.
+   */
+  async customerCapReached(
+    orgId: string,
+    opts: { nowMs?: number; excludeJobId?: string } = {},
+  ): Promise<{ capMicros: MicroUsd; usedMicros: MicroUsd } | null> {
+    const capMicros = await this.customerCapMicros(orgId)
+    if (capMicros === null) return null
+    const nowMs = opts.nowMs ?? this.clock.now()
+    const usedMicros =
+      (await this.ledger.spend('org', orgId, { since: windowBounds(nowMs).monthStart })) +
+      (await this.ledger.committedInFlight({ orgId, ...(opts.excludeJobId ? { excludeJobId: opts.excludeJobId } : {}) }))
+    return usedMicros >= capMicros ? { capMicros, usedMicros } : null
   }
 
   async authorize(input: AuthorizationRequest): Promise<Authorization> {
@@ -167,6 +270,7 @@ export class CostController {
       projectDailyMicros: projectBudget.dailyCapMicros === null ? null : projectBudget.dailyCapMicros - projectDay,
       projectMonthlyMicros: projectBudget.monthlyCapMicros === null ? null : projectBudget.monthlyCapMicros - projectMonth,
       liveCapMicros: null,
+      customerCapMicros: null,
     }
 
     this.checkCap(denials, warnings, 'budget.shot_cap', projectBudget.perShotCapMicros, shotSpend, estimated, projectBudget, 'shot')
@@ -174,7 +278,42 @@ export class CostController {
     this.checkCap(denials, warnings, 'budget.project_monthly', projectBudget.monthlyCapMicros, projectMonth, estimated, projectBudget, 'project monthly')
     this.checkCap(denials, warnings, 'budget.project_lifetime', projectBudget.lifetimeCapMicros, projectLifetime, estimated, projectBudget, 'project lifetime')
     this.checkCap(denials, warnings, 'budget.org_daily', orgBudget.dailyCapMicros, orgDay, estimated, orgBudget, 'organization daily')
-    this.checkCap(denials, warnings, 'budget.org_monthly', orgBudget.monthlyCapMicros, orgMonth, estimated, orgBudget, 'organization monthly')
+
+    // --- the organization's monthly cap, and the per-customer cap ------------
+    // Both limit the same thing, one organization's live spend this calendar
+    // month, so the smaller one is the cap. When CUSTOMER_SPEND_CAP_USD is the
+    // smaller (or the only) one it does the talking, in plain words and under
+    // its own code; when the stored organization budget is smaller it does, as
+    // it always has. The house organization has no customer cap, and sandbox
+    // renders cost nothing, so neither is held to it.
+    const customerCap = sandbox ? null : await this.customerCapMicros(input.orgId)
+    const customerCapSpeaks =
+      customerCap !== null && (orgBudget.monthlyCapMicros === null || customerCap <= orgBudget.monthlyCapMicros)
+    this.checkCap(
+      denials,
+      warnings,
+      'budget.org_monthly',
+      customerCapSpeaks ? null : orgBudget.monthlyCapMicros,
+      orgMonth,
+      estimated,
+      orgBudget,
+      'organization monthly',
+    )
+    if (customerCap !== null && customerCapSpeaks) {
+      // Spend with a provider that has not settled yet counts too, or a customer
+      // could start many renders at once and pass a cap no single one breaches.
+      const inFlight = await this.ledger.committedInFlight({ orgId: input.orgId, ...(input.jobId ? { excludeJobId: input.jobId } : {}) })
+      const used = orgMonth + inFlight
+      remaining.customerCapMicros = customerCap - used
+      if (used + estimated > customerCap) {
+        // Credits will lift this cap; they are not built yet, so this code is the hook the app keys on to offer them.
+        denials.push({ code: 'spend.customer_cap', message: customerCapMessage(customerCap, used) })
+      } else if (((used + estimated) / customerCap) * 100 >= orgBudget.warnThresholdPct) {
+        warnings.push(
+          `after this render you'll have used ${plainDollars(used + estimated)} of this month's ${plainDollars(customerCap)} of MOTION renders`,
+        )
+      }
+    }
 
     // --- attempt ceilings ----------------------------------------------------
     const attempts = input.attemptsSoFar ?? (await this.attemptsForShot(input.shotId))
@@ -194,22 +333,38 @@ export class CostController {
       }
     }
 
-    // --- the global live-spend guard rail ------------------------------------
-    if (!sandbox) {
-      // Settled charges, plus this batch's running total, plus anything already
-      // with a provider and not yet settled. Leaving that last term out let each
-      // of N concurrent submissions authorize against a balance that none of the
-      // others had yet moved.
-      const liveSpend = (await this.ledger.totalLiveSpend()) + committed + (await this.ledger.committedInFlight())
-      const cap = this.config.liveSpendCapMicros
+    // --- the whole-service live-spend ceiling (optional) ----------------------
+    // Only when LIVE_SPEND_CAP_USD is set (or neither cap is, which keeps the
+    // built-in default); with just CUSTOMER_SPEND_CAP_USD there is no ceiling.
+    const ceiling = this.config.liveSpendCapMicros
+    if (!sandbox && ceiling !== null) {
+      // This calendar month's settled charges from every customer together, plus
+      // this batch's running total, plus anything already with a provider and not
+      // yet settled. Leaving that last term out let each of N concurrent
+      // submissions authorize against a balance that none of the others had yet
+      // moved. The charges are this month's only (monthStart, UTC): counted over
+      // all time, the ceiling would stop a live service for good once its
+      // lifetime spend passed it. In-flight work is current by definition.
+      // The job being authorized (at submit it is already `authorizing`, so in
+      // flight) is left out, or it would be counted against itself and a render
+      // that planned fine would be blocked at submit.
+      const liveSpend =
+        (await this.ledger.totalLiveSpend({ since: monthStart })) +
+        committed +
+        (await this.ledger.committedInFlight(input.jobId ? { excludeJobId: input.jobId } : {}))
+      const cap = ceiling
       remaining.liveCapMicros = cap - liveSpend
+      // The figures belong to the operator: they add up every customer's spend.
+      const operator = await this.isHouseOrg(input.orgId)
       if (liveSpend + estimated > cap) {
         denials.push({
           code: 'spend.live_cap',
-          message: `live-spend cap reached: ${formatUsd(liveSpend)} spent + ${formatUsd(estimated)} estimated exceeds the ${formatUsd(cap, 2)} authorization. Raise LIVE_SPEND_CAP_USD only with explicit approval.`,
+          message: operator
+            ? `live-spend cap reached: ${formatUsd(liveSpend)} spent this month by all customers + ${formatUsd(estimated)} estimated exceeds the ${formatUsd(cap, 2)} monthly authorization. Raise LIVE_SPEND_CAP_USD only with explicit approval.`
+            : SERVICE_PAUSED_MESSAGE,
         })
-      } else if (liveSpend + estimated > cap * 0.75) {
-        warnings.push(`this request brings live spend to ${formatUsd(liveSpend + estimated)} of the ${formatUsd(cap, 2)} cap`)
+      } else if (operator && liveSpend + estimated > cap * 0.75) {
+        warnings.push(`this request brings this month's live spend to ${formatUsd(liveSpend + estimated)} of the ${formatUsd(cap, 2)} cap`)
       }
     }
 
