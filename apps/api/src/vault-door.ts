@@ -42,6 +42,19 @@ export const VAULT_AUDIO_MAX_BYTES = 200 * 1024 * 1024
 const TIMEOUT_MS = 6000
 const DOWNLOAD_TIMEOUT_MS = 120_000
 
+/**
+ * The key Motion signs its Street Banker proofs with and checks its sign-in
+ * hand-off against (security pass 2, 2026-10-15): Motion's own key,
+ * SUITE_SSO_SECRET_MOTION, when it is set, else the shared SUITE_SSO_SECRET,
+ * exactly as Street Banker's sb_suite_sso.py chooses it for "motion". With
+ * Motion's own key set, a token signed with the shared key is refused, so a
+ * leaked copy of another suite's key cannot sign anybody in here.
+ */
+export function motionSuiteSecret(): string {
+  const own = (process.env.SUITE_SSO_SECRET_MOTION ?? '').trim()
+  return own || (process.env.SUITE_SSO_SECRET ?? '').trim()
+}
+
 export class VaultDoor {
   private readonly tokens = new Map<string, { token: string; uid: string; until: number }>()
 
@@ -55,7 +68,7 @@ export class VaultDoor {
   ) {}
 
   static fromEnv(fetchImpl?: FetchLike): VaultDoor | null {
-    const secret = (process.env.SUITE_SSO_SECRET ?? '').trim()
+    const secret = motionSuiteSecret()
     if (!secret) return null
     const baseUrl = (process.env.STREET_BANKER_URL ?? 'https://app.streetbankermusic.com').replace(/\/+$/, '')
     return new VaultDoor({ baseUrl, secret, fetch: fetchImpl })

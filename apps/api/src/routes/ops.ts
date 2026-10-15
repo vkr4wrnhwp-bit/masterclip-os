@@ -8,6 +8,7 @@ import { HandoffRejected, SUITE_SSO_MAX_AGE_SECONDS, verifyHandoff, workspaceKey
 import type { Runtime } from '@masterclip/runtime'
 import { SESSION_COOKIE, requireAuth, requireProject } from '../server.js'
 import { clearCsrfCookie, issueCsrfCookie } from '../security/csrf.js'
+import { motionSuiteSecret } from '../vault-door.js'
 import type { RateLimitHandle } from '../security/rate-limit.js'
 
 const LoginBody = z.object({ email: z.string().min(3), password: z.string().min(1) })
@@ -94,7 +95,7 @@ export async function registerOpsRoutes(app: FastifyInstance, runtime: Runtime, 
   // email and opens the session. No password crosses between the services. A
   // token that fails is refused with the reason and a way back, never a loop.
   app.get('/auth/street-banker', async (request, reply) => {
-    const secret = (process.env.SUITE_SSO_SECRET ?? '').trim()
+    const secret = motionSuiteSecret()
     const home = (process.env.STREET_BANKER_URL ?? 'https://app.streetbankermusic.com').replace(/\/+$/, '')
     const refuse = (status: number, reason: string) =>
       reply.code(status).type('text/html').send(
