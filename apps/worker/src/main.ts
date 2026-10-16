@@ -30,6 +30,10 @@ async function main(): Promise<void> {
       await render.submitRender(jobId)
     })
 
+    worker.register<{ ref: string }>(JOB_TYPES.refundCredits, async ({ ref }) => {
+      await runtime.credits.refund(ref)
+    })
+
     worker.register<{ jobId: string }>(JOB_TYPES.pollRender, async ({ jobId }, ctx) => {
       await ctx.heartbeat()
       const result = await render.pollRender(jobId)

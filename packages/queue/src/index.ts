@@ -12,6 +12,7 @@ export const QUEUES = {
 /** Job types handled by apps/worker. */
 export const JOB_TYPES = {
   submitRender: 'render.submit',
+  refundCredits: 'credits.refund',
   pollRender: 'render.poll',
   ingestOutput: 'render.ingest',
   runTechnicalQc: 'qc.technical',

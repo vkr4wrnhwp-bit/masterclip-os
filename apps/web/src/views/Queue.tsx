@@ -2,6 +2,7 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, statusTone, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
+import { QueueCreditNotice } from './RenderCreditNotice.jsx'
 
 export function QueueView({ projectId }: { projectId: string }) {
   const queue = useAsync(() => api.queue(projectId), [projectId])
@@ -57,6 +58,7 @@ export function QueueView({ projectId }: { projectId: string }) {
           ))}
         </div>
       </div>
+      <p>Every generated video uses credits, including versions you decide not to keep. There is no included video allowance.</p>
 
       <AsyncBlock state={queue}>
         {(data) => {
@@ -74,11 +76,11 @@ export function QueueView({ projectId }: { projectId: string }) {
               </div>
 
               {blocked.length > 0 && (
-                <Callout tone="warn" title={`${blocked.length} render(s) blocked by the cost controller`}>
-                  These were authorized at plan time but denied at submission — budgets move while jobs wait. Raise the budget or approve the spend, then
-                  retry. Nothing was billed.
+                <Callout tone="warn" title={`${blocked.length} render(s) waiting`}>
+                  Check the reason below, then retry when it is resolved. Buying credits does not raise a safety cap.
                 </Callout>
               )}
+              <QueueCreditNotice jobs={blocked} />
 
               <Card title="Jobs">
                 {jobs.length === 0 ? (
@@ -109,10 +111,10 @@ export function QueueView({ projectId }: { projectId: string }) {
                             )}
                           </td>
                           <td>
-                            <div className="mono" style={{ fontSize: 12 }}>
+                            <div style={{ fontSize: 12 }}>
                               {job.provider}/{job.model}
                             </div>
-                            <a href={`#/shot/${job.shotId}/review`} style={{ fontSize: 11 }}>
+                            <a href={`#/shot/${job.shotId}/review`} style={{ fontSize: 12 }}>
                               review shot
                             </a>
                           </td>
@@ -120,7 +122,7 @@ export function QueueView({ projectId }: { projectId: string }) {
                           <td className="num">{job.actualUsd}</td>
                           <td className="num">{job.attempts}</td>
                           <td className="num">{formatAge(job.ageSeconds)}</td>
-                          <td className="faint" style={{ maxWidth: 320, fontSize: 11 }}>
+                          <td className="faint" style={{ maxWidth: 320, fontSize: 12 }}>
                             {job.error ? String((job.error as { message?: string }).message ?? JSON.stringify(job.error)).slice(0, 220) : '—'}
                           </td>
                           <td>

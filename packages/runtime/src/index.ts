@@ -15,6 +15,9 @@ import { createSelfHostedProvider } from '@masterclip/provider-selfhosted'
 import { CostController, CostLedger, MetricsService, QuoteStore } from '@masterclip/cost-engine'
 import { createAgentLayer, type AgentLayer } from '@masterclip/agents'
 import { createLogger, loadConfig, systemClock, type AppConfig, type Clock, type Logger } from '@masterclip/shared'
+import { MotionCredits } from './credits.js'
+
+export * from './credits.js'
 
 export * from './render.js'
 export * from './masters.js'
@@ -45,6 +48,7 @@ export interface Runtime {
   renders: RenderRepo
   audit: AuditLog
   cost: CostController
+  credits: MotionCredits
   ledger: CostLedger
   quotes: QuoteStore
   metrics: MetricsService
@@ -108,6 +112,7 @@ export async function createRuntime(opts: CreateRuntimeOptions = {}): Promise<Ru
     renders: new RenderRepo(db, clock),
     audit: new AuditLog(db, clock),
     cost: new CostController(db, config, clock),
+    credits: new MotionCredits(db, queue, config, clock),
     ledger: new CostLedger(db, clock),
     quotes: new QuoteStore(db, clock),
     metrics: new MetricsService(db, clock),

@@ -1251,3 +1251,26 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-dialog label.mo-vault-song b { overflow-wrap: anywhere; font-weight: 600; }
 .mo-dialog label.mo-vault-song small { color: var(--mo-muted); font-size: 12px; }
 .mo-dialog .mo-vault-note { font-size: 13px; margin: 8px 0 0; }
+.render-credit-notice {
+  margin-block: 12px;
+  padding: 16px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.render-credit-notice p {
+  margin: 0 0 12px;
+}
+
+.render-buy-credits {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font: inherit;
+}
