@@ -714,4 +714,15 @@ ALTER TABLE sessions ADD COLUMN street_banker_email TEXT;
 `,
   },
 
+  {
+    id: '0009_suite_wipe_receipts',
+    sql: `
+-- Hashed, account-independent receipts survive account deletion and restarts.
+CREATE TABLE IF NOT EXISTS suite_wipe_receipts (
+  nonce_hash TEXT PRIMARY KEY,
+  used_at TEXT NOT NULL
+);
+`,
+  },
 ]
+

@@ -340,3 +340,5 @@ function mapUser(row: Record<string, unknown>): AuthUser {
 }
 
 export * from './suite-sso.js'
+export * from './suite-wipe.js'
+
