@@ -17,6 +17,14 @@ export function MastersView({ projectId }: { projectId: string }) {
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState<{masterId:string;jobId:string}|null>(null)
+  // "Send to my Vault" shows only when the Vault door is set up and Street
+  // Banker opened this session; otherwise there is no button to press.
+  const [vaultOn, setVaultOn] = React.useState(false)
+  React.useEffect(() => {
+    let live = true
+    api.vaultStatus().then((r) => { if (live) setVaultOn(r.connected) }, () => { if (live) setVaultOn(false) })
+    return () => { live = false }
+  }, [])
   const finishingInProgress = (masters.data?.masters ?? []).some(master =>
     ((master.finishingJobs ?? []) as Array<{status: string}>).some(job =>
       job.status === 'pending' || job.status === 'active'))
@@ -151,6 +159,7 @@ export function MastersView({ projectId }: { projectId: string }) {
                   key={String(master.id)}
                   master={master}
                   busy={busy === String(master.id)}
+                  vaultOn={vaultOn}
                   onFinish={(specs) => finish(String(master.id), specs)}
                   onPackage={() => buildPackage(String(master.id))}
                   onSong={() => finishSong(String(master.id))}
@@ -166,9 +175,51 @@ export function MastersView({ projectId }: { projectId: string }) {
   )
 }
 
+/**
+ * "Send to my Vault" (owner, 2026-10-16: "make sure everything saves or
+ * uploads to the Vault"). Only a signed-off master, only when the Vault is
+ * connected. The Vault id is kept on the master, so it goes once.
+ */
+function SendToVault({ master, vaultOn }: { master: Record<string, unknown>; vaultOn: boolean }) {
+  const kept = (master.vault ?? null) as { fileId: string; label: string } | null
+  const signedOff = master.status !== 'archived' && String(master.approvedBy ?? '').trim() !== ''
+  const [state, setState] = React.useState<{ kind: 'idle' | 'sending' | 'saved' | 'already' | 'error'; text: string }>(
+    kept ? { kind: 'already', text: kept.label } : { kind: 'idle', text: '' },
+  )
+  if (!signedOff && !kept) return null
+  if (!vaultOn && state.kind !== 'already') return null
+
+  const send = async () => {
+    setState({ kind: 'sending', text: '' })
+    try {
+      const r = await api.sendMasterToVault(String(master.id))
+      setState({ kind: r.already || r.deduped ? 'already' : 'saved', text: r.label })
+    } catch (err) {
+      setState({ kind: 'error', text: (err as Error).message })
+    }
+  }
+
+  return (
+    <div className="mo-vault-send">
+      {vaultOn && state.kind !== 'already' && state.kind !== 'saved' && (
+        <button type="button" disabled={state.kind === 'sending'} onClick={() => void send()}>
+          {state.kind === 'sending' ? 'Sending…' : 'Send to my Vault'}
+        </button>
+      )}
+      <p role="status" aria-live="polite">
+        {state.kind === 'sending' && 'Sending…'}
+        {state.kind === 'saved' && `Saved to your Vault: ${state.text}`}
+        {state.kind === 'already' && 'Already in your Vault'}
+      </p>
+      {state.kind === 'error' && <p role="alert" className="mo-vault-send-error">{state.text}</p>}
+    </div>
+  )
+}
+
 function MasterCard({
   master,
   busy,
+  vaultOn,
   onFinish,
   onPackage,
   onSong,
@@ -177,6 +228,7 @@ function MasterCard({
 }: {
   master: Record<string, unknown>
   busy: boolean
+  vaultOn: boolean
   onFinish: (specs: unknown[]) => Promise<void>
   onPackage: () => Promise<void>
   onSong: () => Promise<void>
@@ -263,6 +315,8 @@ function MasterCard({
           Build delivery package
         </button>
       </div>
+
+      <SendToVault master={master} vaultOn={vaultOn} />
 
       {song && (
         <section className="mcq-master-audio" aria-label="Music video finishing">

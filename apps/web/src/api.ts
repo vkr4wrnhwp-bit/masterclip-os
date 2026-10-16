@@ -392,6 +392,12 @@ export const api = {
   /** One Vault song into a film, with the rights the artist confirms, as an upload would carry them. */
   vaultImport: (projectId: string, body: { fileId: string; rights: { owner: string; consent: 'authorized' | 'unverified'; authorized: boolean } }) =>
     post<{ asset: Record<string, unknown>; url: string; deduplicated: boolean }>(`/api/projects/${projectId}/vault-import`, body),
+  /** Whether "Send to my Vault" can work in this session (door set up, opened from Street Banker). */
+  vaultStatus: () =>
+    get<{ connected: boolean; note: string }>('/api/vault/status'),
+  /** A signed-off master's video into the artist's Street Banker Vault, once. */
+  sendMasterToVault: (masterId: string) =>
+    post<{ ok: true; id: string; label: string; deduped: boolean; already: boolean }>(`/api/masters/${encodeURIComponent(masterId)}/vault`),
 }
 
 export interface VaultSong {

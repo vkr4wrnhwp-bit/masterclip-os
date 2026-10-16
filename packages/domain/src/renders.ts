@@ -556,6 +556,15 @@ export class RenderRepo {
     await updateRow(this.db, 'masters', masterId, { master_asset_id: assetId, status })
   }
 
+  /** Remembers the Vault file a master was sent as; only the vault columns change. */
+  async setMasterVault(masterId: string, vault: { fileId: string; label: string; sentAt: string }): Promise<void> {
+    await updateRow(this.db, 'masters', masterId, {
+      vault_file_id: vault.fileId,
+      vault_label: vault.label,
+      vault_sent_at: vault.sentAt,
+    })
+  }
+
   async addDeliverable(input: { masterId: string; format: string; assetId: string; spec: Record<string, unknown> }, transaction?: Db): Promise<MasterDeliverable> {
     const deliverable: MasterDeliverable = {
       id: newId('del', this.clock.now()),
@@ -698,5 +707,8 @@ function mapMaster(row: Record<string, unknown>): Master {
     approvedAt: toStr(row.approved_at),
     metadata: parseJsonColumn(row.metadata, {}),
     createdAt: toStr(row.created_at),
+    vault: toStrOrNull(row.vault_file_id)
+      ? { fileId: toStr(row.vault_file_id), label: toStr(row.vault_label), sentAt: toStr(row.vault_sent_at) }
+      : null,
   }
 }
