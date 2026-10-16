@@ -129,6 +129,9 @@ const EnvSchema = z.object({
   /** Shared secret for our own outbound->inbound webhook URL signing. */
   WEBHOOK_SECRET: z.string().default(''),
   SECRETS_ENCRYPTION_KEY: z.string().default(''),
+  SUITE_SSO_SECRET: z.string().default(''),
+  SUITE_SSO_SECRET_MOTION: z.string().default(''),
+  STREET_BANKER_URL: z.string().default('https://app.streetbankermusic.com'),
 
   // --- providers -----------------------------------------------------------
   MUAPI_API_KEY: z.string().default(''),

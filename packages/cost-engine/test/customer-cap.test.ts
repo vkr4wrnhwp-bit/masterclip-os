@@ -117,7 +117,7 @@ describe('the per-customer monthly cap', () => {
     expect(refused.allowed).toBe(false)
     expect(codes(refused)).toContain('spend.customer_cap')
     expect(refused.denials.find((d) => d.code === 'spend.customer_cap')?.message).toBe(
-      "You've used this month's $10 of MOTION renders. It resets on the 1st.",
+      "You've reached this month's $10 safety cap for paid MOTION renders. It resets on the 1st. Buying credits does not raise this cap.",
     )
     // The cap speaks for itself: no second, technical denial for the same thing.
     expect(codes(refused)).not.toContain('budget.org_monthly')
@@ -135,7 +135,7 @@ describe('the per-customer monthly cap', () => {
     const refused = await render(controller, A, 0.4)
     expect(refused.allowed).toBe(false)
     expect(refused.denials.find((d) => d.code === 'spend.customer_cap')?.message).toBe(
-      "This render would take you past this month's $10 of MOTION renders ($9.80 used so far). It resets on the 1st.",
+      "This render would exceed your $10 monthly safety cap for paid MOTION renders ($9.80 used so far). It resets on the 1st. Buying credits does not raise this cap.",
     )
     // A render that still fits is let through.
     expect((await render(controller, A, 0.2)).allowed).toBe(true)
@@ -143,7 +143,7 @@ describe('the per-customer monthly cap', () => {
 
   it('shows a cap that is not a whole number of dollars the way a person says it', () => {
     expect(customerCapMessage(usdToMicros(7.5), usdToMicros(7.5))).toBe(
-      "You've used this month's $7.50 of MOTION renders. It resets on the 1st.",
+      "You've reached this month's $7.50 safety cap for paid MOTION renders. It resets on the 1st. Buying credits does not raise this cap.",
     )
   })
 
@@ -159,7 +159,7 @@ describe('the per-customer monthly cap', () => {
     await charge(A, 7.5)
     const result = await render(controller, A, 0.6)
     expect(result.allowed).toBe(true)
-    expect(result.warnings).toContain("after this render you'll have used $8.10 of this month's $10 of MOTION renders")
+    expect(result.warnings).toContain("After this render, $8.10 of your $10 monthly safety cap for paid MOTION renders will be used.")
     expect(result.remaining.customerCapMicros).toBe(usdToMicros(2.5))
   })
 
