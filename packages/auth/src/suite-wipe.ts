@@ -20,7 +20,7 @@ export function verifySuiteWipe(token: unknown, secret: string, now = Math.floor
   if (!stamp.length || stamp.length > 6) throw new WipeRejected('unrecognised token')
   let issued = 0
   for (const byte of stamp) issued = issued * 256 + byte
-  if (now - issued > 60 || issued > now) throw new WipeRejected('expired')
+  if (now - issued > 60 || issued - now > 30) throw new WipeRejected('expired')
   let p: Record<string, unknown>
   try {
     const body = signed.slice(0, stampDot), compressed = body.startsWith('.')

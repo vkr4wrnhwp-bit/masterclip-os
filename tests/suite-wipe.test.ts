@@ -39,6 +39,26 @@ function token(overrides: Record<string, unknown> = {}, age = 0, keySecret = sec
 }
 const wipe = (value: unknown) => app.inject({ method: 'POST', url: '/api/street-banker/wipe', payload: { token: value } })
 
+it('accepts a token stamped 10 seconds ahead of the server clock', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(1792118979 * 1000)
+  try {
+    expect((await wipe(token({}, -10))).statusCode).toBe(200)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+it('refuses a token stamped 31 seconds ahead of the server clock as expired', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(1792118979 * 1000)
+  try {
+    const result = await wipe(token({}, -31))
+    expect(result.statusCode).toBe(401)
+    expect(result.json()).toEqual({ ok: false, error: 'expired' })
+  } finally {
+    clock.mockRestore()
+  }
+})
+
 it('reads the real Python itsdangerous wire format', () => {
   // Minted with URLSafeTimedSerializer, not the JavaScript test helper.
   const signed = '.eJwVi0EOgCAMBP_SM5p45eRXiNbYCC2Rohjj3y23mZ3sCxf4ycFBvIKHmzKCg1JJ0TSJkrANlXoNRpgCxc4ztpByxFGxqAUWXvonP7oLDxs1rSfC9wPh1B_u.atGQww.QLJNqpZEEVWLysoLhI1E7O5TwCI'
