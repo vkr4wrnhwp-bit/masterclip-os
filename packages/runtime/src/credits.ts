@@ -58,8 +58,8 @@ export class MotionCredits {
       const need = body.need, held = (body.balance as { total?: unknown } | null)?.total
       if (!Number.isSafeInteger(need) || !Number.isSafeInteger(held) || Number(need) < 1 || Number(held) < 0) throw unavailable()
       throw new AppError({ kind: 'budget_exceeded', code: 'credits.short',
-        message: `This render needs ${need} credits. You have ${held} credits.`,
-        details: { creditsNeeded: need, creditsHeld: held, buyUrl: `${base}/billing#credits` },
+        message: `This render needs ${need} ${need === 1 ? 'credit' : 'credits'}. You have ${held} ${held === 1 ? 'credit' : 'credits'}.`,
+        details: { creditsNeeded: need, creditsHeld: held, buyUrl: `${base}/billing#credits`, refusedAt: this.clock.isoNow() },
       })
     }
     if (!response.ok || body?.ok !== true) throw unavailable()
@@ -70,7 +70,7 @@ export class MotionCredits {
 
   /** A ref is a render plus its paid attempt; retrying a failed generation is new work. */
   async spend(job: RenderJob, tier: ModelTier, seconds: number, orgId: string): Promise<void> {
-    if (job.sandbox) return
+    if (job.providerId === 'mock' || this.config.isSandbox) return
     // Providers submit whole seconds; never silently truncate a fractional duration.
     if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 100) {
       throw new AppError({ kind: 'validation', code: 'credits.duration', message: 'Choose a video length from 1 to 100 whole seconds.' })

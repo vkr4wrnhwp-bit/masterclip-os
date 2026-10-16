@@ -2,7 +2,7 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, statusTone, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
-import { RenderCreditNotice } from './RenderCreditNotice.jsx'
+import { QueueCreditNotice } from './RenderCreditNotice.jsx'
 
 export function QueueView({ projectId }: { projectId: string }) {
   const queue = useAsync(() => api.queue(projectId), [projectId])
@@ -80,7 +80,7 @@ export function QueueView({ projectId }: { projectId: string }) {
                   Check the reason below, then retry when it is resolved. Buying credits does not raise a safety cap.
                 </Callout>
               )}
-              {blocked.map(job => <RenderCreditNotice key={job.id} error={job.error} />)}
+              <QueueCreditNotice jobs={blocked} />
 
               <Card title="Jobs">
                 {jobs.length === 0 ? (

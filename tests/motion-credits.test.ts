@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { RenderCreditNotice } from '../apps/web/src/views/RenderCreditNotice.js'
+import { QueueCreditNotice, RenderCreditNotice } from '../apps/web/src/views/RenderCreditNotice.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -143,6 +143,43 @@ it('spends every rendered second before the provider starts', async () => {
   expect(calls[0]).toMatchObject({ op: 'spend', email: 'artist@example.test', suite: 'motion', action: 'motion.standard', units: 4 })
   expect(door.mock.invocationCallOrder[0]).toBeLessThan(submit.mock.invocationCallOrder[0]!)
   expect(submit).toHaveBeenCalledTimes(1)
+})
+
+it('spends before provider submission when a sandbox plan is submitted in live mode', async () => {
+  runtime.config.isSandbox = true
+  runtime.config.MASTERCLIP_MODE = 'sandbox'
+  const render = new RenderService(runtime), id = await plannedJob(render)
+  expect((await runtime.renders.getJob(id)).sandbox).toBe(true)
+  runtime.config.isSandbox = false
+  runtime.config.MASTERCLIP_MODE = 'live'
+  await render.submitRender(id)
+  expect(calls).toHaveLength(1)
+  expect(calls[0]).toMatchObject({ op: 'spend', units: 4 })
+  expect(door.mock.invocationCallOrder[0]).toBeLessThan(submit.mock.invocationCallOrder[0]!)
+  expect(submit).toHaveBeenCalledTimes(1)
+})
+
+it.each([101, 4.5])('blocks a saved %s-second request without spending or submitting', async seconds => {
+  const render = new RenderService(runtime), id = await plannedJob(render)
+  const job = await runtime.renders.getJob(id)
+  // Keep this fixture within its safety budget so the duration gate is the refusal under test.
+  const budget = await runtime.cost.budgetStore.ensureDefaults('project', projectId)
+  await runtime.cost.budgetStore.set({ ...budget, perShotCapMicros: 10_000_000 })
+  await db.run('UPDATE render_jobs SET request = ? WHERE id = ?', [JSON.stringify({ ...job.request, durationSeconds: seconds, maxCostMicros: 10_000_000, approvedMicros: 10_000_000 }), id])
+  const message = 'Choose a video length from 1 to 100 whole seconds.'
+  await expect(render.submitRender(id)).rejects.toMatchObject({ code: 'credits.duration', message })
+  expect(await runtime.renders.getJob(id)).toMatchObject({ status: 'blocked', attempts: 0, error: { code: 'credits.duration', message } })
+  expect(door).not.toHaveBeenCalled()
+  expect(submit).not.toHaveBeenCalled()
+})
+
+it.each([[1, 1], [1, 2], [2, 1]])('uses singular credit wording for need %s and balance %s', async (need, held) => {
+  door.mockResolvedValue(new Response(JSON.stringify({ ok: false, need, balance: { total: held } }), { status: 402 }))
+  const render = new RenderService(runtime), id = await plannedJob(render)
+  await expect(render.submitRender(id)).rejects.toMatchObject({
+    message: `This render needs ${need} ${need === 1 ? 'credit' : 'credits'}. You have ${held} ${held === 1 ? 'credit' : 'credits'}.`,
+  })
+  expect(submit).not.toHaveBeenCalled()
 })
 
 it.each(['draft', 'standard', 'premium'] as const)('uses the real %s model tier and normalized seconds', async tier => {
@@ -297,6 +334,17 @@ it('shows a plain, new-window Buy credits link only for a short wallet', () => {
   expect(renderToStaticMarkup(React.createElement(RenderCreditNotice, { error: { ...error, buyUrl: 'javascript:alert(1)' } }))).toBe('')
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8')
   expect(css).toMatch(/\.render-buy-credits\s*\{[^}]*min-height: 44px/s)
+})
+
+it('shows one notice for the newest short-wallet refusal in a batch of four', () => {
+  const jobs = [1, 4, 2, 3].map(n => ({ status: 'blocked', createdAt: `2026-10-16T01:00:0${5 - n}Z`,
+    error: { code: 'credits.short', message: `Refusal ${n}`, refusedAt: `2026-10-16T02:00:0${n}Z`, buyUrl: 'https://banker.test/billing#credits' } }))
+  const html = renderToStaticMarkup(React.createElement(QueueCreditNotice, { jobs }))
+  expect(html.match(/Buy credits/g)).toHaveLength(1)
+  expect(html).toContain('Refusal 4')
+  expect(html).not.toMatch(/Refusal [123]/)
+  expect(renderToStaticMarkup(React.createElement(QueueCreditNotice, { jobs: jobs.map(j => ({ ...j, status: 'completed' })) }))).toBe('')
+  expect(renderToStaticMarkup(React.createElement(QueueCreditNotice, { jobs: jobs.map(j => ({ ...j, error: { code: 'credits.unavailable' } })) }))).toBe('')
 })
 
 it('the durable worker processes a queued refund once', async () => {
