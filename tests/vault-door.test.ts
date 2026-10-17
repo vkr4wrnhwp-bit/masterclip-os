@@ -197,3 +197,24 @@ describe('From your Vault routes', () => {
     expect(state.calls.some((c) => c.url.includes('/content'))).toBe(false)
   })
 })
+
+describe('motionSuiteSecret (security pass 2)', () => {
+  const saved = { own: process.env.SUITE_SSO_SECRET_MOTION, shared: process.env.SUITE_SSO_SECRET }
+  afterEach(() => {
+    if (saved.own === undefined) delete process.env.SUITE_SSO_SECRET_MOTION
+    else process.env.SUITE_SSO_SECRET_MOTION = saved.own
+    if (saved.shared === undefined) delete process.env.SUITE_SSO_SECRET
+    else process.env.SUITE_SSO_SECRET = saved.shared
+  })
+
+  it("uses Motion's own key when it is set, else the shared one", async () => {
+    const { motionSuiteSecret } = await import('../apps/api/src/vault-door.js')
+    process.env.SUITE_SSO_SECRET = 'shared-key'
+    delete process.env.SUITE_SSO_SECRET_MOTION
+    expect(motionSuiteSecret()).toBe('shared-key')
+    process.env.SUITE_SSO_SECRET_MOTION = '  motion-own-key  '
+    expect(motionSuiteSecret()).toBe('motion-own-key')
+    delete process.env.SUITE_SSO_SECRET
+    expect(motionSuiteSecret()).toBe('motion-own-key')
+  })
+})

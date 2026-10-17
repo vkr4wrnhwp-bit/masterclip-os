@@ -741,4 +741,15 @@ ALTER TABLE masters ADD COLUMN vault_label TEXT;
 ALTER TABLE masters ADD COLUMN vault_sent_at TEXT;
 `,
   },
+  {
+    id: '0011_suite_wipe_receipts',
+    sql: `
+-- Hashed, account-independent receipts survive account deletion and restarts.
+CREATE TABLE IF NOT EXISTS suite_wipe_receipts (
+  nonce_hash TEXT PRIMARY KEY,
+  used_at TEXT NOT NULL
+);
+`,
+  },
 ]
+

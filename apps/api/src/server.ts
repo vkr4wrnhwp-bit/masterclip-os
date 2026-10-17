@@ -20,6 +20,7 @@ import { registerAssetRoutes } from './routes/assets.js'
 import { registerVaultRoutes } from './routes/vault.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
 import { registerCsrf } from './security/csrf.js'
+import { registerAccountWipe } from './routes/account-wipe.js'
 
 export const SESSION_COOKIE = 'masterclip_session'
 
@@ -132,6 +133,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   })
 
   await registerOpsRoutes(app, runtime, rateLimit)
+  await registerAccountWipe(app, runtime)
   await registerProjectRoutes(app, runtime)
   await registerQuickCreateRoutes(app, runtime)
   await registerQuickVariants(app, runtime)
@@ -191,3 +193,4 @@ export async function requireProject(
 export function sendError(reply: FastifyReply, error: AppError): void {
   void reply.status(httpStatusFor(error.kind)).send(error.toJSON())
 }
+
