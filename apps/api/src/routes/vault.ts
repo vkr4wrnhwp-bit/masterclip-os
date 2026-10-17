@@ -3,8 +3,9 @@ import { z } from 'zod/v4'
 import { AppError } from '@masterclip/shared'
 import { sanitizeFilename } from '@masterclip/asset-storage'
 import type { Runtime } from '@masterclip/runtime'
+import type { Master } from '@masterclip/domain'
 import { requireAuth, requireProject } from '../server.js'
-import { VaultDoor } from '../vault-door.js'
+import { DELIVER_TOO_BIG, VAULT_VIDEO_MAX_BYTES, VaultDoor } from '../vault-door.js'
 import { storeProjectFile } from './assets.js'
 
 /**
@@ -89,4 +90,111 @@ export async function registerVaultRoutes(
     })
     return { ...result, vaultFile: { id: listed.id, label: listed.label } }
   })
+
+  /**
+   * Whether "Send to my Vault" can work for this session: the door is set up
+   * (SUITE_SSO_SECRET) and Street Banker's hand-off opened the session. The
+   * Masters page hides the button when it cannot.
+   */
+  app.get('/api/vault/status', async (request) => {
+    const auth = await requireAuth(runtime, request)
+    if (!door) return { connected: false, note: 'Your Vault is not connected to MOTION yet.' }
+    if (!auth.streetBankerEmail) return { connected: false, note: 'Open MOTION from Street Banker to reach your Vault.' }
+    return { connected: true, note: '' }
+  })
+
+  /** One send per master at a time, so a double press never uploads twice. */
+  const sending = new Map<string, Promise<MasterVaultResult>>()
+
+  /**
+   * "Send to my Vault" (owner, 2026-10-16: "make sure everything saves or
+   * uploads to the Vault"). Files a signed-off master's video in the artist's
+   * Street Banker Vault through the delivery door. Nothing is auto-promoted to
+   * a master (docs/architecture.md); only a master a person signed off, in a
+   * project this account directs, goes. The Vault id is kept on the master, so
+   * the second press says "Already in your Vault" and sends nothing. A refusal
+   * or a Street Banker that does not answer leaves the master as it was.
+   */
+  app.post('/api/masters/:masterId/vault', async (request) => {
+    const { masterId } = request.params as { masterId: string }
+    const master = await runtime.renders.getMaster(masterId)
+    const { auth } = await requireProject(runtime, request, master.projectId, 'director')
+    const { email, door: d } = await vouched(request)
+
+    if (master.vault) {
+      return { ok: true, id: master.vault.fileId, label: master.vault.label, deduped: true, already: true }
+    }
+    const sendKey = `${masterId} ${email}`
+    const running = sending.get(sendKey)
+    if (running) return running
+
+    const work = (async (): Promise<MasterVaultResult> => {
+      await requireSignedOff(runtime, master)
+      const asset = await runtime.assets.get(master.masterAssetId ?? master.sourceAssetId)
+      if (asset.projectId !== master.projectId) {
+        throw new AppError({ kind: 'forbidden', code: 'vault.other_project', message: 'This master’s video belongs to another film.' })
+      }
+      const extension = videoExtension(asset.filename, asset.mime)
+      if (!extension) {
+        throw new AppError({ kind: 'validation', code: 'vault.not_video', message: 'Your Vault takes MP4 or MOV video from MOTION. This master is neither, so it was not sent.' })
+      }
+      // Refused on the record's size before a byte is read or a token is asked for.
+      if (Number(asset.bytes) > VAULT_VIDEO_MAX_BYTES) {
+        throw new AppError({ kind: 'validation', code: 'vault.too_big', message: DELIVER_TOO_BIG })
+      }
+      const project = await runtime.projects.get(master.projectId)
+      const label = `${project.name.trim() || 'MOTION film'} – ${master.name.trim() || 'Master'}`
+      const bytes = await runtime.storage.getBuffer(asset.storageKey)
+      const filename = sanitizeFilename(`${label}.${extension}`)
+      const delivered = await d.deliver(email, bytes, filename, 'video', label)
+      const sentAt = runtime.clock.isoNow()
+      await runtime.renders.setMasterVault(master.id, { fileId: delivered.id, label: delivered.label, sentAt })
+      await runtime.audit.record({
+        orgId: auth.orgId,
+        projectId: master.projectId,
+        actor: auth.userId,
+        action: 'master.sent_to_vault',
+        targetType: 'master',
+        targetId: master.id,
+        data: { vaultFileId: delivered.id, label: delivered.label, deduped: delivered.deduped, assetId: asset.id },
+      })
+      return { ok: true, id: delivered.id, label: delivered.label, deduped: delivered.deduped, already: delivered.deduped }
+    })()
+    sending.set(sendKey, work)
+    try {
+      return await work
+    } finally {
+      sending.delete(sendKey)
+    }
+  })
+}
+
+interface MasterVaultResult {
+  ok: true
+  id: string
+  label: string
+  /** The Vault already held this video (sent before, or added by hand). */
+  deduped: boolean
+  already: boolean
+}
+
+/**
+ * Signed off: promoted by a person, not archived, and the output behind it
+ * still carries that person's approval (a later reset or reject takes it back).
+ */
+async function requireSignedOff(runtime: Runtime, master: Master): Promise<void> {
+  const refuse = () => {
+    throw new AppError({ kind: 'validation', code: 'vault.not_signed_off', message: 'Only a signed-off master goes to your Vault. Approve it first.' })
+  }
+  if (master.status === 'archived' || !master.approvedBy.trim() || !master.approvedAt.trim()) refuse()
+  const review = await runtime.renders.latestReview(master.outputId)
+  if (!review || (review.decision !== 'approve' && review.decision !== 'promote')) refuse()
+}
+
+function videoExtension(filename: string, mime: string): 'mp4' | 'mov' | null {
+  const ext = (filename.match(/\.([A-Za-z0-9]+)$/)?.[1] ?? '').toLowerCase()
+  if (ext === 'mp4' || ext === 'mov') return ext
+  if (mime === 'video/mp4') return 'mp4'
+  if (mime === 'video/quicktime') return 'mov'
+  return null
 }

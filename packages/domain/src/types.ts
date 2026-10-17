@@ -226,6 +226,8 @@ export interface Master {
   approvedAt: string
   metadata: Record<string, unknown>
   createdAt: string
+  /** The Street Banker Vault file this master was sent as; null until it is sent. */
+  vault?: { fileId: string; label: string; sentAt: string } | null
 }
 
 export interface MasterDeliverable {

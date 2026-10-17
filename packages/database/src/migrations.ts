@@ -729,4 +729,16 @@ CREATE TABLE IF NOT EXISTS render_credit_spends (
 CREATE INDEX IF NOT EXISTS idx_render_credit_job ON render_credit_spends(job_id);
 `,
   },
+  {
+    id: '0010_master_vault_delivery',
+    sql: `
+-- "Send to my Vault" (owner, 2026-10-16: "make sure everything saves or
+-- uploads to the Vault"). The Street Banker Vault file a signed-off master was
+-- filed as, so a second press says "Already in your Vault" and sends nothing.
+-- NULL until the master has been sent.
+ALTER TABLE masters ADD COLUMN vault_file_id TEXT;
+ALTER TABLE masters ADD COLUMN vault_label TEXT;
+ALTER TABLE masters ADD COLUMN vault_sent_at TEXT;
+`,
+  },
 ]
