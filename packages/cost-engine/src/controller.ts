@@ -82,7 +82,7 @@ export interface CustomerStanding {
 
 /**
  * Whole dollars when they are whole ("$10"), cents otherwise ("$7.50"): the way
- * a person says an allowance, rather than the four decimals a ledger prints.
+ * a person reads a safety cap, rather than the four decimals a ledger prints.
  */
 function plainDollars(micros: MicroUsd): string {
   const usd = Math.max(0, microsToUsd(micros))
@@ -96,8 +96,8 @@ function plainDollars(micros: MicroUsd): string {
  */
 export function customerCapMessage(capMicros: MicroUsd, usedMicros: MicroUsd): string {
   const cap = plainDollars(capMicros)
-  if (usedMicros >= capMicros) return `You've used this month's ${cap} of MOTION renders. It resets on the 1st.`
-  return `This render would take you past this month's ${cap} of MOTION renders (${plainDollars(usedMicros)} used so far). It resets on the 1st.`
+  if (usedMicros >= capMicros) return `You've reached this month's ${cap} safety cap for paid MOTION renders. It resets on the 1st. Buying credits does not raise this cap.`
+  return `This render would exceed your ${cap} monthly safety cap for paid MOTION renders (${plainDollars(usedMicros)} used so far). It resets on the 1st. Buying credits does not raise this cap.`
 }
 
 /**
@@ -306,11 +306,11 @@ export class CostController {
       const used = orgMonth + inFlight
       remaining.customerCapMicros = customerCap - used
       if (used + estimated > customerCap) {
-        // Credits will lift this cap; they are not built yet, so this code is the hook the app keys on to offer them.
+        // Credits pay for every live generation; they never bypass this safety cap.
         denials.push({ code: 'spend.customer_cap', message: customerCapMessage(customerCap, used) })
       } else if (((used + estimated) / customerCap) * 100 >= orgBudget.warnThresholdPct) {
         warnings.push(
-          `after this render you'll have used ${plainDollars(used + estimated)} of this month's ${plainDollars(customerCap)} of MOTION renders`,
+          `After this render, ${plainDollars(used + estimated)} of your ${plainDollars(customerCap)} monthly safety cap for paid MOTION renders will be used.`,
         )
       }
     }

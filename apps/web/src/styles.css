@@ -1136,6 +1136,15 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mcq-video-delivery video { width: 100%; max-height: 300px; background: #050608; border-radius: var(--radius); }
 .mcq-video-delivery a { font-size: 12px; overflow-wrap: anywhere; }
 
+/* "Send to my Vault" on a signed-off master (2026-10-16). 44px target, 12px
+   floor, MOTION's own tokens; wraps at 375px with no sideways scroll. */
+.mo-vault-send { display: grid; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--mo-line); min-width: 0; }
+.mo-vault-send button { min-height: 44px; justify-self: start; max-width: 100%; padding: 10px 16px; font-size: 14px; font-weight: 600; color: var(--mo-paper); border-color: var(--mo-cyan); border-radius: 6px; }
+.mo-vault-send button:hover:not(:disabled) { background: rgba(18, 200, 255, 0.08); border-color: var(--mo-cyan); }
+.mo-vault-send p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--mo-paper); overflow-wrap: anywhere; }
+.mo-vault-send .mo-vault-send-error { color: var(--danger); }
+@media (max-width: 420px) { .mo-vault-send button { justify-self: stretch; } }
+
 /* Native comparison sits alongside the existing same-shot Review Grid. */
 .mcq-comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
 .mcq-comparison-side { min-width: 0; padding: 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); }
@@ -1251,3 +1260,26 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-dialog label.mo-vault-song b { overflow-wrap: anywhere; font-weight: 600; }
 .mo-dialog label.mo-vault-song small { color: var(--mo-muted); font-size: 12px; }
 .mo-dialog .mo-vault-note { font-size: 13px; margin: 8px 0 0; }
+.render-credit-notice {
+  margin-block: 12px;
+  padding: 16px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.render-credit-notice p {
+  margin: 0 0 12px;
+}
+
+.render-buy-credits {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font: inherit;
+}

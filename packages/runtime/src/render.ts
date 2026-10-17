@@ -45,8 +45,8 @@ export interface PlanResult {
   jobIds: string[]
   /**
    * `reason` is the sentence to show. `code` is the cost controller's code for
-   * why, when it refused: `spend.customer_cap` means the customer has used this
-   * month's allowance, which is where the app will offer credits.
+   * why, when it refused: `spend.customer_cap` is a safety cap on paid work,
+   * never an included video allowance. Buying credits does not lift the cap.
    */
   skipped: Array<{ candidate: PlannedCandidate; reason: string; code?: string }>
   estimatedMicros: MicroUsd
@@ -222,7 +222,7 @@ export class RenderService {
           modelId: candidate.modelId,
           routingProfile: spec.routing_profile,
           compiledPrompt: compiled.prompt,
-          request: { ...request, requestId: '' } as unknown as Record<string, unknown>,
+          request: { ...request, requestId: '', approvedMicros: input.humanApproved ? quote.estimatedMicros : null } as unknown as Record<string, unknown>,
           estimatedMicros: quote.estimatedMicros,
           quoteId,
           seed: candidate.seed,
@@ -403,6 +403,7 @@ export class RenderService {
       request,
       quote,
       tier: model.capabilities.tier,
+      humanApproved: typeof job.request.approvedMicros === 'number' && job.request.approvedMicros >= quote.estimatedMicros,
     })
 
     if (!authorization.allowed) {
@@ -429,6 +430,17 @@ export class RenderService {
     }
 
     const attemptNumber = job.attempts + 1
+    try {
+      await this.rt.credits.spend(job, model.capabilities.tier, request.durationSeconds, project.orgId)
+    } catch (cause) {
+      const error = cause instanceof AppError ? cause : new AppError({ kind: 'internal', code: 'credits.unavailable',
+        message: "We can't check your credits right now. Your render has not started. Try again later." })
+      await this.rt.renders.updateJob(jobId, { status: 'blocked', error: {
+        code: error.code, message: error.message, ...error.details,
+      } })
+      // Park the render for the artist. A timed retry must not start spending later without them.
+      throw new AppError({ kind: 'budget_exceeded', code: error.code, message: error.message, details: error.details })
+    }
     const attemptId = await this.rt.renders.recordAttempt({
       jobId,
       attempt: attemptNumber,
@@ -440,8 +452,10 @@ export class RenderService {
     })
 
     const startedAt = this.rt.clock.now()
+    let providerAccepted = false
     try {
       const submitted = await provider.submit(request)
+      providerAccepted = true
       await this.rt.renders.updateJob(jobId, {
         status: 'submitted',
         externalJobId: submitted.externalJobId,
@@ -486,6 +500,10 @@ export class RenderService {
 
       await this.queueFirstPoll(jobId, attemptNumber)
     } catch (err) {
+      // A local bookkeeping failure after submit is not a provider failure.
+      // Recovery resumes its poll; it must not refund a video already being made.
+      if (providerAccepted) throw err
+      await this.rt.credits.requestRefund(job.id, attemptNumber)
       await this.rt.renders.completeAttempt(attemptId, {
         status: 'failed',
         latencyMs: this.rt.clock.now() - startedAt,
@@ -545,8 +563,8 @@ export class RenderService {
    * artist decides whether to render again. Returns true when it settled one.
    */
   private async settleInterruptedSubmit(job: RenderJob): Promise<boolean> {
-    const sent = await this.rt.db.query<{ id: string }>(
-      `SELECT id FROM render_attempts WHERE job_id = ? AND status = 'submitting'`,
+    const sent = await this.rt.db.query<{ id: string; attempt: number }>(
+      `SELECT id, attempt FROM render_attempts WHERE job_id = ? AND status = 'submitting'`,
       [job.id],
     )
     if (sent.length === 0) return false
@@ -557,6 +575,7 @@ export class RenderService {
     }
     await this.rt.renders.updateJob(job.id, {
       status: 'failed',
+      attempts: Math.max(job.attempts, ...sent.map(a => Number(a.attempt))),
       failedAt: this.rt.clock.isoNow(),
       error: { code: 'render.submit_interrupted', message },
     })
@@ -636,6 +655,7 @@ export class RenderService {
         const last = await this.rt.registry.get(job.providerId).getStatus(job.externalJobId)
         finalCost = last.actualMicros
         finalSeconds = last.billableSeconds
+        if (last.state === 'failed' || last.state === 'cancelled') await this.rt.credits.requestRefund(job.id, job.attempts)
       } catch (err) {
         this.rt.logger.warn('render.timeout_status_failed', { jobId, err: String(err) })
       }
@@ -666,6 +686,7 @@ export class RenderService {
     }
 
     if (status.state === 'failed' || status.state === 'cancelled') {
+      await this.rt.credits.requestRefund(job.id, job.attempts)
       await this.rt.renders.updateJob(jobId, {
         status: status.state === 'cancelled' ? 'cancelled' : 'failed',
         failedAt: this.rt.clock.isoNow(),
