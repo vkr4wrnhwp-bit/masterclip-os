@@ -20,7 +20,7 @@ import type { OutputView, Project, QueueJobView, Shot } from '../api.js'
 
 /* -------------------------------------------------------------- the modes -- */
 
-export type StartModeId = 'audio' | 'idea' | 'template'
+export type StartModeId = 'audio' | 'idea' | 'template' | 'picture'
 
 export interface StartMode {
   id: StartModeId
@@ -43,13 +43,20 @@ export interface StartMode {
 }
 
 /**
- * Three ways in.
+ * Four ways in.
  *
- * All three create the film the same way, through `api.createProject`, because
+ * All four create the film the same way, through `api.createProject`, because
  * that is the only project-creating call the API has. What differs is what you
  * do on the project page afterwards, and `next` says so rather than implying
  * the app does it for you. The prototype offered a file picker and a format
  * menu here; neither has anything behind it, so neither is built.
+ *
+ * The fourth card, "Upload a picture or reference", is the only one that can
+ * skip the dialog: when a film already exists it goes straight to that film's
+ * References tab, because the picture uploader has always lived there and the
+ * owner could not find it (2026-10-18: "motion doesn't have an image uploader").
+ * With no film yet it opens the dialog like the others and lands on References
+ * once the film exists.
  */
 export const START_MODES: readonly StartMode[] = [
   {
@@ -79,7 +86,25 @@ export const START_MODES: readonly StartMode[] = [
     fieldLabel: 'Brief',
     next: 'The film is created first. Its Import tab takes the shot-list template, so you start from a working format instead of a blank list.',
   },
+  {
+    id: 'picture',
+    title: 'Upload a picture or reference',
+    description: ['Add a photo, artwork, clip or sound', 'the film should take its look from.'],
+    actionLabel: 'Start a film with a picture or reference',
+    dialogTitle: 'Start with a reference.',
+    fieldLabel: 'Brief',
+    next: 'The film is created first. Its References tab opens with the file button ready, so you can add the picture, video or audio the look comes from.',
+  },
 ]
+
+/**
+ * Where the picture card goes when a film already exists: that film's
+ * References tab, with the file button focused so the next key press or tap
+ * opens the picker. The Project screen reads `focus=upload`.
+ */
+export function referencesUploadPath(filmId: string): string {
+  return `/project/${filmId}?tab=assets&focus=upload`
+}
 
 /** The chosen mode, falling back to the first one rather than to nothing. */
 export function modeById(id: string): StartMode {

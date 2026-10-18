@@ -512,7 +512,7 @@ describe('the first-run screen', () => {
     expect(markup).not.toContain('<span class="mo-nav-item is-unavailable" aria-disabled="true">Projects</span>')
   })
 
-  it('still shows the rail, the hero, the three modes and the six stages', () => {
+  it('still shows the rail, the hero, the four modes and the six stages', () => {
     expect(markup).toContain('Start a new film.')
     expect(markup).toContain('Create something extraordinary.')
     for (const mode of START_MODES) expect(markup).toContain(mode.title)

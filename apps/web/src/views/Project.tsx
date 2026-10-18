@@ -6,7 +6,7 @@ import { QuickCreate } from './QuickCreate.jsx'
 import { VariationCompare } from './VariationCompare.jsx'
 import { MusicTimeline } from './MusicTimeline.jsx'
 
-export function ProjectView({ projectId, initialTab }: { projectId: string; initialTab?: string }) {
+export function ProjectView({ projectId, initialTab, focusUpload = false }: { projectId: string; initialTab?: string; focusUpload?: boolean }) {
   const project = useAsync(() => api.project(projectId), [projectId])
   const shots = useAsync(() => api.shots(projectId), [projectId])
   type ProjectTab = 'shots' | 'quick' | 'timeline' | 'compare' | 'import' | 'assets' | 'bible'
@@ -104,7 +104,7 @@ export function ProjectView({ projectId, initialTab }: { projectId: string; init
       {tab === 'timeline' && <MusicTimeline projectId={projectId} onCreated={() => shots.reload()} />}
       {tab === 'compare' && <VariationCompare projectId={projectId} />}
       {tab === 'import' && <ImportPanel projectId={projectId} onImported={() => shots.reload()} />}
-      {tab === 'assets' && <AssetsPanel projectId={projectId} onQuickCreate={() => setTab('quick')} />}
+      {tab === 'assets' && <AssetsPanel projectId={projectId} onQuickCreate={() => setTab('quick')} focusUpload={focusUpload} />}
       {tab === 'bible' && (
         <AsyncBlock state={project}>
           {(data) => (
@@ -208,12 +208,30 @@ function ImportPanel({ projectId, onImported }: { projectId: string; onImported:
   )
 }
 
-function AssetsPanel({ projectId, onQuickCreate }: { projectId: string; onQuickCreate: () => void }) {
+/**
+ * The file types the API stores, in the words the hint uses. The `accept` list
+ * and the API's sniffed-type table (apps/api/src/routes/assets.ts) must agree
+ * with this; a test holds all three together.
+ */
+export const REFERENCE_ACCEPT = 'image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/wav,audio/mpeg'
+/** The multipart `fileSize` limit the API registers (apps/api/src/server.ts). */
+export const REFERENCE_MAX_MB = 512
+export const REFERENCE_HINT = `Takes PNG, JPG and WebP pictures, MP4 and MOV video, and WAV and MP3 audio, up to ${REFERENCE_MAX_MB} MB each.`
+
+function AssetsPanel({ projectId, onQuickCreate, focusUpload = false }: { projectId: string; onQuickCreate: () => void; focusUpload?: boolean }) {
   const assets = useAsync(() => api.assets(projectId), [projectId])
   const [error, setError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [authorized, setAuthorized] = React.useState(false)
   const [owner, setOwner] = React.useState('')
+  // The browser's file input stays in the page, hidden, and the visible
+  // control is a real button that opens it. The button is what gets focus
+  // when the front door sends someone here to add a picture.
+  const fileRef = React.useRef<HTMLInputElement | null>(null)
+  const pickRef = React.useRef<HTMLButtonElement | null>(null)
+  React.useEffect(() => {
+    if (focusUpload) pickRef.current?.focus()
+  }, [focusUpload, projectId])
 
   const upload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -254,7 +272,36 @@ function AssetsPanel({ projectId, onQuickCreate }: { projectId: string; onQuickC
             </label>
           </Field>
         </div>
-        <input type="file" onChange={(e) => void upload(e)} disabled={busy} accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,audio/wav,audio/mpeg" />
+        <div className="mo-reference-door">
+          <input
+            ref={fileRef}
+            className="mo-reference-file"
+            type="file"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => void upload(e)}
+            disabled={busy}
+            accept={REFERENCE_ACCEPT}
+          />
+          <button
+            ref={pickRef}
+            type="button"
+            className="mo-reference-pick"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            aria-busy={busy}
+            aria-describedby="mo-reference-hint"
+          >
+            {busy ? 'Uploading…' : 'Choose a picture, video or audio file'}
+          </button>
+          <p id="mo-reference-hint" className="mo-reference-hint">{REFERENCE_HINT}</p>
+          {busy && (
+            <p className="mo-reference-busy" role="status" aria-live="polite">
+              <span className="mo-create-spinner" aria-hidden="true" />
+              Uploading your file to this film. Keep this page open.
+            </p>
+          )}
+        </div>
         {error && <Callout tone="danger">{error}</Callout>}
       </Card>
 

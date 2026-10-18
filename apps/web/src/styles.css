@@ -595,9 +595,9 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   background: linear-gradient(90deg, var(--mo-ink), transparent 36%), linear-gradient(0deg, var(--mo-ink), transparent 30%);
 }
 
-/* ------------------------------------------------------ the three modes --- */
+/* ------------------------------------------------------- the four modes --- */
 .mo-modes { min-width: 0; border: 0; padding: 0; margin: 0; }
-.mo-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.mo-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
 .mo-mode {
   position: relative;
   display: block;
@@ -797,6 +797,12 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   .mo-scenery { height: 445px; }
   .mo-rail { padding-top: 34px; }
   .mo-motto { margin-top: 56px; }
+}
+
+/* Four cards in one row need about 230px each. Under that the row becomes two
+   rows of two, which keeps every title on one or two lines. */
+@media (max-width: 1280px) {
+  .mo-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1100px) {
@@ -1035,6 +1041,29 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .mo-scenery::after { background: linear-gradient(90deg, #090b0cd9, #090b0c20 75%), linear-gradient(0deg, #090b0c, transparent 65%); }
 .mo-audio-consent { display:flex; align-items:flex-start; gap:10px; }
 .mo-audio-consent input { width:auto; flex:none; margin-top:4px; }
+
+/* References: the file picker is a real button (owner, 2026-10-18: "motion
+   doesn't have an image uploader" — it did, as a bare file input nobody saw).
+   The browser's input stays in the page for the picker; the button is the
+   control. 44px tall, Motion's tokens, visible focus, and a busy line while
+   the upload runs. */
+.mo-reference-door { margin-top: 14px; }
+.mo-reference-file { display: none; }
+.mo-reference-pick {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 44px; padding: 10px 20px;
+  border: 1px solid var(--mo-paper); border-radius: 4px;
+  background: transparent; color: var(--mo-paper);
+  font-size: 14px; font-weight: 600; letter-spacing: 0.2px; cursor: pointer;
+}
+.mo-reference-pick:hover:not(:disabled) { border-color: var(--mo-cyan); color: var(--mo-cyan); background: transparent; }
+.mo-reference-pick:focus-visible { outline: 2px solid var(--mo-cyan); outline-offset: 3px; }
+.mo-reference-pick:disabled { opacity: 0.6; cursor: progress; }
+.mo-reference-hint { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--mo-muted); }
+.mo-reference-busy { display: flex; align-items: center; gap: 10px; margin: 10px 0 0; font-size: 14px; color: var(--mo-paper); }
+@media (max-width: 767px) {
+  .mo-reference-pick { width: 100%; }
+}
 
 /* Mobile MOTION project pages are full-width. Desktop sidebar must not
    consume the phone viewport or push the editor off the right edge. */
