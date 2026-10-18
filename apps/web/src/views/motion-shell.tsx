@@ -2,7 +2,7 @@ import React from 'react'
 import { MotionLogo } from '../motion-logo.jsx'
 import { api, type Project, type Shot, type User, type VaultSong } from '../api.js'
 import { navigate, streetBankerUrl } from '../App.jsx'
-import { railItems, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
+import { railItems, referencesUploadPath, searchWorkspace, tabTrap, type RailItem, type SpendReading, type StartMode } from './overview-model.js'
 
 /**
  * The parts of Motion's front door that more than one screen needs.
@@ -320,7 +320,10 @@ export function StartDialog({ mode, onClose, onCreated }: { mode: StartMode; onC
       }
       setProgress('Opening film…')
       onCreated()
-      navigate(`/project/${filmId}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
+      // A picture start lands on References with the file button focused, so
+      // the file the person came to add is one key press away.
+      if (mode.id === 'picture') navigate(referencesUploadPath(filmId))
+      else navigate(`/project/${filmId}?tab=${mode.id === 'audio' ? 'assets' : mode.id === 'template' ? 'import' : 'shots'}`)
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)

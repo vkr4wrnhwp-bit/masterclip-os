@@ -1,6 +1,7 @@
 import React from 'react'
 import { api, type OutputView, type Project, type User } from '../api.js'
 import { useAsync } from '../ui.jsx'
+import { navigate } from '../App.jsx'
 import { MotionRail, StartDialog } from './motion-shell.jsx'
 import {
   countJobs,
@@ -10,6 +11,7 @@ import {
   deriveStage,
   modeById,
   orderProjects,
+  referencesUploadPath,
   STAGES,
   START_MODES,
   type ShotCard,
@@ -75,6 +77,14 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
   const mode = modeById(modeId)
   const begin = (selected: StartMode) => {
     setModeId(selected.id)
+    // A picture or reference goes into a film that exists. When the newest
+    // film is known, the card is a door straight to its References tab with
+    // the file button focused; the dialog only appears when there is no film
+    // to put the file in, and then it lands on References once there is.
+    if (selected.id === 'picture' && newest !== null) {
+      navigate(referencesUploadPath(newest.id))
+      return
+    }
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setDialogMode(selected)
   }
@@ -314,6 +324,14 @@ function ModeIcon({ id }: { id: StartMode['id'] }) {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M5 3h10l4 4v14H5zm10 0v5h4M8 12h8m-8 4h6" />
+      </svg>
+    )
+  }
+  if (id === 'picture') {
+    // A framed picture: a horizon with a sun, the usual sign for an image.
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 4h18v16H3zm0 12l5-5 4 4 3-3 6 6M16 9h.01" />
       </svg>
     )
   }

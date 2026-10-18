@@ -213,7 +213,7 @@ export function App() {
         </nav>
 
         <main className="main">
-          {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} initialTab={route.params.tab} />}
+          {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} initialTab={route.params.tab} focusUpload={route.params.focus === 'upload'} />}
           {route.name === 'shot' && <ShotBuilder shotId={route.params.shotId ?? ''} />}
           {route.name === 'review' && <ReviewGrid shotId={route.params.shotId ?? ''} />}
           {route.name === 'queue' && <QueueView projectId={route.params.projectId ?? ''} />}
