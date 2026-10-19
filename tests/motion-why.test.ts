@@ -34,14 +34,14 @@ const MASTER = {
   metadata: { provider: 'mock', model: 'mock-v1' }, deliverables: [], finishingJobs: [], captionCount: 0,
   songMoment: { startSeconds: 12, endSeconds: 20 }, vault: { fileId: 'v1', label: 'Hero take.mp4' },
 }
-/** What each screen's reads answer, by the call they make (whitespace aside). Anything else is still loading. */
+/** What each screen's reads answer, by the one call a read makes. Anything else is still loading. */
 const ANSWERS: Array<[string, unknown]> = [
-  ['()=>api.musicTimelineSources(', { videos: [], audio: [] }],
-  ['()=>api.project(', { project: { id: 'film-1', name: 'Night Drive', brief: 'A night drive through the city.', styleBible: { look: 'neon' } }, scenes: [] }],
-  ['()=>api.shots(', { shots: [] }],
-  ['()=>api.masters(', { masters: [MASTER] }],
-  ['()=>api.costs(', COSTS],
-  ['()=>api.providers(', { mode: 'sandbox', operatorView: true, providers: [{ providerId: 'mock', displayName: 'Mock', configured: true, keyFingerprint: '', health: null }] }],
+  ['musicTimelineSources', { videos: [], audio: [] }],
+  ['project', { project: { id: 'film-1', name: 'Night Drive', brief: 'A night drive through the city.', styleBible: { look: 'neon' } }, scenes: [] }],
+  ['shots', { shots: [] }],
+  ['masters', { masters: [MASTER] }],
+  ['costs', COSTS],
+  ['providers', { mode: 'sandbox', operatorView: true, providers: [{ providerId: 'mock', displayName: 'Mock', configured: true, keyFingerprint: '', health: null }] }],
 ]
 /** The front door renders with nothing read, as on a first visit; every other view gets its answers. */
 let answering = true
@@ -49,8 +49,11 @@ let answering = true
 vi.mock('../apps/web/src/ui.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../apps/web/src/ui.js')>()),
   useAsync: (fn: () => unknown) => {
+    // A read is `() => api.name(...)`; the test runner may rename the imported
+    // `api` (to something like __vi_import_0__.api), so only the call is matched.
     const source = String(fn).replace(/\s+/g, '')
-    const hit = answering ? ANSWERS.find(([call]) => source.startsWith(call)) : undefined
+    const call = /^\(\)=>[\w$.]*?api\.(\w+)\(/.exec(source)?.[1]
+    const hit = answering ? ANSWERS.find(([name]) => name === call) : undefined
     return hit ? done(hit[1]) : idle
   },
 }))
