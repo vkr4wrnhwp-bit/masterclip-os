@@ -2,6 +2,8 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, statusTone, useAsync } from '../ui.jsx'
 import { capFigure, customerCapLine, readCap } from './overview-model.js'
+import { useWhy } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 
 /**
  * What the mode banner says once live mode is on.
@@ -30,6 +32,7 @@ function liveModeLine(spent: string, reading: ReturnType<typeof readCap>): strin
 }
 
 export function ProvidersView() {
+  const why = useWhy(WHY.providers)
   const providers = useAsync(() => api.providers(), [])
   const [refreshing, setRefreshing] = React.useState(false)
   const models = useAsync(() => api.models(), [])
@@ -49,11 +52,15 @@ export function ProvidersView() {
   return (
     <>
       <div className="topbar">
-        <h2>Providers &amp; models</h2>
+        <div className="mo-why-row">
+          <h2>Providers &amp; models</h2>
+          {why.button}
+        </div>
         <button className="small" onClick={() => void refresh()} disabled={refreshing}>
           {refreshing ? 'refreshing…' : 'Refresh catalog'}
         </button>
       </div>
+      {why.panel}
 
       <AsyncBlock state={providers}>
         {(data) => (
@@ -80,7 +87,7 @@ export function ProvidersView() {
                 : 'Sandbox mode. Adapters use provider sandbox modes where they exist, and the local ffmpeg mock otherwise. Nothing is billable. The live-spend cap is not consulted here.'}
             </Callout>
 
-            <Card title="Connected providers">
+            <Card title="Connected providers" why={WHY.connected}>
               <table>
                 <thead>
                   <tr>
@@ -122,6 +129,7 @@ export function ProvidersView() {
 
       <Card
         title="Model catalog"
+        why={WHY.catalog}
         action={
           <input
             style={{ width: 220 }}
@@ -218,7 +226,7 @@ export function ProvidersView() {
         </AsyncBlock>
       </Card>
 
-      <Card title="Routing profiles">
+      <Card title="Routing profiles" why={WHY.profiles}>
         <AsyncBlock state={profiles}>
           {(data) => (
             <table>

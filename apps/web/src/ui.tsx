@@ -1,15 +1,35 @@
 import React from 'react'
+import { useWhy, type WhyNote } from './components/Why.jsx'
 
-export function Card({ title, children, action }: { title?: string; children: React.ReactNode; action?: React.ReactNode }) {
+/**
+ * `why` puts the "?" beside the card's title and its note under the title row
+ * (owner, 2026-10-18: "this question mark should go everywhere").
+ */
+export function Card({ title, children, action, why }: { title?: string; children: React.ReactNode; action?: React.ReactNode; why?: WhyNote }) {
   return (
     <div className="card">
-      {title && (
+      {title && why && <CardHead title={title} action={action} why={why} />}
+      {title && !why && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <h3>{title}</h3>
           {action}
         </div>
       )}
       {children}
+    </div>
+  )
+}
+
+function CardHead({ title, action, why }: { title: string; action?: React.ReactNode; why: WhyNote }) {
+  const note = useWhy(why)
+  return (
+    <div className="mo-why-head">
+      <div className="mo-why-row">
+        <h3>{title}</h3>
+        {note.button}
+      </div>
+      {action}
+      {note.panel}
     </div>
   )
 }

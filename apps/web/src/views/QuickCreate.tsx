@@ -4,6 +4,7 @@ import { AsyncBlock, Callout, Card, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { MeasuredWaveform } from './MeasuredWaveform.jsx'
 import { BeatGrid } from './BeatGrid.jsx'
+import { WHY } from '../why-notes.js'
 
 type Media = { id: string; filename: string; kind: string; url: string; durationSeconds: number | null; rights?: { owner?: string; authorized?: boolean; consent?: string; expiresAt?: string | null } }
 type Cue = { asset_id: string; start_seconds: number; end_seconds: number; creative_look?: string }
@@ -107,7 +108,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
   }
 
   return <div className="mcq">
-    <Card title="Quick Create — music-first video brief">
+    <Card title="Quick Create — music-first video brief" why={WHY.quickCreate}>
       <p className="muted">Prepare a versioned shot and choose a real song moment. This saves a draft; it does not generate video, embed the song, publish, or spend credits.</p>
       <AsyncBlock state={assets}>{() => <>
         {!audios.some(cleared) && <Callout tone="warn">No rights-cleared audio in this MOTION project. <button type="button" onClick={onReferences}>Open References to add audio</button></Callout>}
@@ -179,7 +180,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         {saved && clipNote && <p className="muted" role="status">{clipNote}</p>}
       </>}</AsyncBlock>
     </Card>
-    <Card title="Saved creative treatments">
+    <Card title="Saved creative treatments" why={WHY.treatments}>
       <p className="muted">Save reusable directions, format and looks for this film. Existing footage, recordings and source versions are never altered.</p>
       <AsyncBlock state={savedLooks}>{data => <>
         <Field label="Reuse a saved treatment">
@@ -213,7 +214,7 @@ export function QuickCreate({ projectId, onSaved, onReferences }: { projectId: s
         <p className="faint">Project editors can save a look; saving does not generate or approve video.</p>
       </>}</AsyncBlock>
     </Card>
-    <Card title="Creative variations">
+    <Card title="Creative variations" why={WHY.variations}>
       <p className="muted">Create a separate source-linked shot to compare ideas. No external provider is called and no render charge occurs.</p>
       <Field label="Variation name"><input maxLength={80} value={variantLabel} onChange={e=>setVariantLabel(e.target.value)} /></Field>
       <Field label="Source draft"><select value={editing ?? ''} onChange={e=>{

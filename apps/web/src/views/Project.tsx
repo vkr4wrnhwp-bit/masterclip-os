@@ -5,6 +5,7 @@ import { navigate } from '../App.jsx'
 import { QuickCreate } from './QuickCreate.jsx'
 import { VariationCompare } from './VariationCompare.jsx'
 import { MusicTimeline } from './MusicTimeline.jsx'
+import { WHY } from '../why-notes.js'
 
 export function ProjectView({ projectId, initialTab, focusUpload = false }: { projectId: string; initialTab?: string; focusUpload?: boolean }) {
   const project = useAsync(() => api.project(projectId), [projectId])
@@ -46,7 +47,7 @@ export function ProjectView({ projectId, initialTab, focusUpload = false }: { pr
       </div>
 
       {tab === 'shots' && (
-        <Card title="Shot list" action={<NewShotButton projectId={projectId} onCreated={() => shots.reload()} />}>
+        <Card title="Shot list" why={WHY.shots} action={<NewShotButton projectId={projectId} onCreated={() => shots.reload()} />}>
           <AsyncBlock state={shots}>
             {(data) =>
               data.shots.length === 0 ? (
@@ -109,10 +110,10 @@ export function ProjectView({ projectId, initialTab, focusUpload = false }: { pr
         <AsyncBlock state={project}>
           {(data) => (
             <div className="grid cols-2">
-              <Card title="Creative brief">
+              <Card title="Creative brief" why={WHY.brief}>
                 <div style={{ whiteSpace: 'pre-wrap' }}>{data.project.brief || <span className="faint">no brief recorded</span>}</div>
               </Card>
-              <Card title="Style bible">
+              <Card title="Style bible" why={WHY.styleBible}>
                 <pre className="prompt-box" style={{ maxHeight: 400 }}>
                   {JSON.stringify(data.project.styleBible, null, 2)}
                 </pre>
@@ -176,7 +177,7 @@ function ImportPanel({ projectId, onImported }: { projectId: string; onImported:
   }
 
   return (
-    <Card title="Import shot list">
+    <Card title="Import shot list" why={WHY.importShots}>
       <Callout tone="info">
         CSV columns accept dotted paths (<code className="mono">lighting.dominant_source</code>) and pipe-separated lists. Download a template from{' '}
         <a href="/api/schema/shot-template.csv">/api/schema/shot-template.csv</a>. Always dry-run first: the importer reports every rejected row and why.
@@ -256,7 +257,7 @@ function AssetsPanel({ projectId, onQuickCreate, focusUpload = false }: { projec
 
   return (
     <>
-      <Card title="Upload a reference">
+      <Card title="Upload a reference" why={WHY.references}>
         <Callout tone="warn" title="Rights are recorded at upload, not later">
           Identity-preserving generation only runs against references explicitly marked authorized with recorded consent. An unmarked upload can still be
           used as a general reference, but never as a character identity lock.
@@ -317,7 +318,7 @@ function AssetsPanel({ projectId, onQuickCreate, focusUpload = false }: { projec
         </Callout>
       )}
 
-      <Card title="References">
+      <Card title="References" why={WHY.referencesList}>
         <AsyncBlock state={assets}>
           {(data) =>
             data.assets.length === 0 ? (

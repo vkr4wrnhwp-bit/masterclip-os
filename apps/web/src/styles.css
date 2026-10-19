@@ -1312,3 +1312,123 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
   border-radius: 6px;
   font: inherit;
 }
+
+/* ---------------------------------------------------------------- the "?" --
+   The "?" on a section, a feature or a group of controls (owner, 2026-10-18:
+   "this question mark should go everywhere"); components/Why.tsx, words in
+   why-notes.ts. The look of the main app's Rack and the V2 suites: a 28px
+   round "?", a 44px hit area through the pseudo-element, lit while its note
+   is open, a visible focus ring, and never a hover state. MOTION's tokens
+   only. The !important flags keep the page's own button rules (44px minimum
+   heights, outlines, fills) off this one small control. */
+.mo-why {
+  position: relative !important;
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important; height: 28px !important;
+  min-width: 28px !important; min-height: 28px !important;
+  max-width: 28px !important; max-height: 28px !important;
+  margin: 0 0 0 8px !important;
+  padding: 0 !important;
+  border: 1px solid var(--mo-line) !important;
+  border-radius: 50% !important;
+  background: var(--mo-panel) !important;
+  color: var(--mo-cyan) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  font-family: var(--sans) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  font-style: normal !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  vertical-align: middle !important;
+  transition: none !important;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* 28px drawn, 44px to press: the hit area grows 8px on every side. */
+.mo-why::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: -8px !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  display: block !important;
+}
+.mo-why::after { content: none !important; }
+.mo-why:focus { outline: none; }
+.mo-why:focus-visible { outline: 2px solid var(--mo-paper) !important; outline-offset: 2px !important; }
+.mo-why[aria-expanded="true"] {
+  background: var(--mo-cyan) !important;
+  color: var(--mo-ink) !important;
+  border-color: var(--mo-cyan) !important;
+}
+@media (forced-colors: active) {
+  .mo-why { border-color: ButtonText !important; }
+  .mo-why[aria-expanded="true"] { background: Highlight !important; color: HighlightText !important; }
+}
+
+/* The note it opens: a line of its own under the row, whatever the row says
+   about its own text (card titles here are small, uppercase and spaced). */
+.mo-why-note {
+  box-sizing: border-box;
+  display: block;
+  flex: 1 0 100%;
+  grid-column: 1 / -1;
+  max-width: 65ch;
+  margin: 8px 0 12px;
+  padding: 10px 14px;
+  border: 0;
+  border-left: 3px solid var(--mo-cyan);
+  border-radius: 0 6px 6px 0;
+  background: var(--mo-panel);
+  color: var(--mo-paper) !important;
+  font-family: var(--sans) !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  font-style: normal !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  text-align: left !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mo-why-note[hidden] { display: none !important; }
+.mo-why-note p {
+  margin: 0 !important;
+  padding: 0 !important;
+  font: inherit !important;
+  color: inherit !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  max-width: none !important;
+}
+.mo-why-note p + p { margin-top: 6px !important; }
+
+/* A heading with its "?" beside it, lined up on the text; a card's title row. */
+.mo-why-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 4px; min-width: 0; }
+.mo-why-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0 12px; }
+
+/* The four starting points: each "?" sits on its card's top right corner,
+   beside the card's button and never inside it, and its note under the card. */
+.mo-mode-cell { position: relative; display: grid; grid-template-rows: 1fr auto; min-width: 0; }
+.mo-mode-cell > .mo-mode { width: 100%; }
+.mo-mode-cell > .mo-why { position: absolute !important; top: 12px; right: 12px; margin: 0 !important; }
+/* The six steps: the "?" between the row and LET'S GO, the note under all three. */
+.mo-workflow { flex-wrap: wrap; }
+.mo-workflow > .mo-why { align-self: center; margin: 0 !important; }
+@media (max-width: 767px) {
+  .mo-why-note { max-width: 100%; }
+}
+@media (max-width: 420px) {
+  .mo-vault-send .mo-why-row > button:not(.mo-why) { flex: 1 1 auto; }
+}
+@media print {
+  .mo-why { display: none !important; }
+}
