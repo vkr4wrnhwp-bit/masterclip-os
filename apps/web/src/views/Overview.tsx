@@ -3,6 +3,8 @@ import { api, type OutputView, type Project, type User } from '../api.js'
 import { useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { MotionRail, StartDialog } from './motion-shell.jsx'
+import { Why, useWhy } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 import {
   countJobs,
   countMasters,
@@ -44,7 +46,11 @@ export { StartDialog }
  */
 const BAND_LIMIT = 6
 
+/** The "?" beside each starting point, in START_MODES order (owner, 2026-10-18). */
+const START_WHY = { audio: WHY.startAudio, idea: WHY.startIdea, template: WHY.startTemplate, picture: WHY.startPicture } as const
+
 export function Overview({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+  const stagesWhy = useWhy(WHY.stages)
   const projects = useAsync(() => api.projects(), [])
   const providers = useAsync(() => api.providers(), [])
 
@@ -161,7 +167,8 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             <legend className="mo-sr">Choose a starting point</legend>
             <div className="mo-cards">
               {START_MODES.map((item) => (
-                <button type="button" className="mo-mode" key={item.id}
+                <div className="mo-mode-cell" key={item.id}>
+                <button type="button" className="mo-mode"
                   aria-label={item.actionLabel}
                   onClick={() => begin(item)}>
                   {/* The selection is a mark as well as a border colour, so it
@@ -180,6 +187,9 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
                     &rsaquo;
                   </span>
                 </button>
+                {/* Beside the card, never inside it: a button cannot hold a button. */}
+                <Why note={START_WHY[item.id]} />
+                </div>
               ))}
             </div>
           </fieldset>
@@ -203,6 +213,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
                 )
               })}
             </ol>
+            {stagesWhy.button}
             <button
               type="button"
               className="mo-start"
@@ -213,6 +224,7 @@ export function Overview({ user, onSignOut }: { user: User; onSignOut: () => voi
             >
               LET&rsquo;S GO <span aria-hidden="true">&rarr;</span>
             </button>
+            {stagesWhy.panel}
           </section>
 
           {film.error !== null && film.data === null && (

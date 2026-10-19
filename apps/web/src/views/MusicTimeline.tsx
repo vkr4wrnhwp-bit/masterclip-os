@@ -3,6 +3,8 @@ import { api } from '../api.js'
 import { SceneHandoff } from './SceneHandoff.jsx'
 import { MusicStructureEditor } from './MusicStructureEditor.jsx'
 import { AsyncBlock, Callout, Card, Empty, Field, useAsync } from '../ui.jsx'
+import { WhyHeading } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 
 type Clip = { master_id:string;source_start_seconds:number;source_end_seconds:number }
 type SourceVideo = { masterId:string;name:string;durationSeconds:number;videoUrl:string }
@@ -227,7 +229,7 @@ export function MusicTimeline({projectId,onCreated}:{projectId:string;onCreated:
     finally{setBusy(false)}
   }
   return <div className="mc-timeline">
-    <Card title="Music Video Timeline — approved clips">
+    <Card title="Music Video Timeline — approved clips" why={WHY.timeline}>
       <p className="muted">Sequence and trim up to 16 human-approved masters against an authorized song. This is a cut-only editing workspace; originals remain unchanged.</p>
       <AsyncBlock state={sources}>{data=><>
         {data.videos.length===0&&<Callout tone="warn">No human-approved master videos in this film. Render, approve and promote shots before creating a cut.</Callout>}
@@ -349,7 +351,7 @@ export function MusicTimeline({projectId,onCreated}:{projectId:string;onCreated:
           <button type="button" onClick={()=>{setDraft(blank);setTimelineId(null);setVersion(0);setSnapshot(null);setRenderJob(null);setMessage(null);setError(null)}}>Start new cut</button>
         </div>
         <section className="mc-timeline-render" aria-label="Real MP4 finishing">
-          <h4>Finish a real video</h4>
+          <WhyHeading as="h4" note={WHY.finishVideo}>Finish a real video</WhyHeading>
           <p className="muted">Build a straight-cut MP4 from approved video masters and the original track. Source aspect ratios are preserved with padding; nothing is cropped or published automatically. No AI render credits are used.</p>
           <button type="button" className="primary" disabled={!valid||!cleanSaved||busy||!!renderJob||persistedBusy}
             onClick={()=>void assemble()}>

@@ -3,6 +3,7 @@ import { api, type Shot } from '../api.js'
 import { AsyncBlock, Badge, Card, Empty, Field, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { areRelatedVariants, variationRoot } from './variant-model.js'
+import { WHY } from '../why-notes.js'
 
 type Side = 'left' | 'right'
 
@@ -80,7 +81,7 @@ export function VariationCompare({ projectId }: { projectId: string }) {
     for (const video of Object.values(videos.current)) if (video) action(video)
   }
 
-  return <Card title="Compare creative variations">
+  return <Card title="Compare creative variations" why={WHY.compare}>
     <p className="muted">Compare actual renders of a shot and its saved creative alternatives. This view does not submit render jobs or choose a winner.</p>
     <AsyncBlock state={shots}>{() => creative.length < 2 || roots.size === creative.length
       ? <Empty>No source-linked variation pair is available. Create alternatives in Quick Create, render both shots, then compare their real outputs.</Empty>

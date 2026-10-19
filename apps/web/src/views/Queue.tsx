@@ -3,8 +3,11 @@ import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, statusTone, useAsync } from '../ui.jsx'
 import { navigate } from '../App.jsx'
 import { QueueCreditNotice } from './RenderCreditNotice.jsx'
+import { useWhy } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 
 export function QueueView({ projectId }: { projectId: string }) {
+  const why = useWhy(WHY.queue)
   const queue = useAsync(() => api.queue(projectId), [projectId])
   const [filter, setFilter] = React.useState<string>('all')
   const [busy, setBusy] = React.useState<string | null>(null)
@@ -49,7 +52,10 @@ export function QueueView({ projectId }: { projectId: string }) {
   return (
     <>
       <div className="topbar">
-        <h2>Render queue</h2>
+        <div className="mo-why-row">
+          <h2>Render queue</h2>
+          {why.button}
+        </div>
         <div className="button-row">
           {['all', 'queued', 'processing', 'completed', 'failed', 'blocked'].map((option) => (
             <button key={option} className={`small${filter === option ? ' primary' : ''}`} onClick={() => setFilter(option)}>
@@ -58,6 +64,7 @@ export function QueueView({ projectId }: { projectId: string }) {
           ))}
         </div>
       </div>
+      {why.panel}
       <p>Every generated video uses credits, including versions you decide not to keep. There is no included video allowance.</p>
 
       <AsyncBlock state={queue}>

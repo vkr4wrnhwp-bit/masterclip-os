@@ -2,17 +2,24 @@ import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Callout, Card, Empty, Field, Stat, useAsync } from '../ui.jsx'
 import { capFigure, customerCapLine, readCap, type CapFacts, type CustomerCapFacts } from './overview-model.js'
+import { useWhy } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 
 export function CostLab({ projectId }: { projectId: string }) {
+  const why = useWhy(WHY.costLab)
   const costs = useAsync(() => api.costs(projectId), [projectId])
   const performance = useAsync(() => api.modelPerformance(projectId), [projectId])
 
   return (
     <>
       <div className="topbar">
-        <h2>Cost lab</h2>
+        <div className="mo-why-row">
+          <h2>Cost lab</h2>
+          {why.button}
+        </div>
         <div className="meta">optimising for cost per approved second, not per render</div>
       </div>
+      {why.panel}
 
       <AsyncBlock state={costs}>
         {(data) => {
@@ -62,7 +69,7 @@ export function CostLab({ projectId }: { projectId: string }) {
               <LiveCapCallout liveCap={liveCap} />
 
               <div className="grid cols-2">
-                <Card title="Spend by model">
+                <Card title="Spend by model" why={WHY.spendByModel}>
                   {(data.byProvider as Array<Record<string, unknown>>).length === 0 ? (
                     <Empty>No charges recorded yet.</Empty>
                   ) : (
@@ -89,7 +96,7 @@ export function CostLab({ projectId }: { projectId: string }) {
                   )}
                 </Card>
 
-                <Card title="Why candidates were rejected">
+                <Card title="Why candidates were rejected" why={WHY.rejections}>
                   {(data.rejections as Array<Record<string, unknown>>).length === 0 ? (
                     <Empty>No rejections recorded yet.</Empty>
                   ) : (
@@ -119,7 +126,7 @@ export function CostLab({ projectId }: { projectId: string }) {
         }}
       </AsyncBlock>
 
-      <Card title="Model acceptance history">
+      <Card title="Model acceptance history" why={WHY.acceptance}>
         <AsyncBlock state={performance}>
           {(data) =>
             data.performance.length === 0 ? (
@@ -291,7 +298,7 @@ function StrategySimulator() {
   }
 
   return (
-    <Card title="Draft-first vs premium-only">
+    <Card title="Draft-first vs premium-only" why={WHY.simulator}>
       <div className="field-row">
         <Field label="Approved masters needed">
           <input type="number" value={masters} onChange={(e) => setMasters(Number(e.target.value))} />

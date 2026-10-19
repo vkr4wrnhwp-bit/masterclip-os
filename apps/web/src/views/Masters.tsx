@@ -1,6 +1,8 @@
 import React from 'react'
 import { api } from '../api.js'
 import { AsyncBlock, Badge, Callout, Card, Empty, Field, statusTone, useAsync } from '../ui.jsx'
+import { WhyHeading, useWhy } from '../components/Why.jsx'
+import { WHY } from '../why-notes.js'
 
 const FORMATS = [
   { value: 'delivery_h264', label: 'H.264 delivery master (CRF 17)' },
@@ -12,6 +14,7 @@ const FORMATS = [
 ]
 
 export function MastersView({ projectId }: { projectId: string }) {
+  const why = useWhy(WHY.masters)
   const masters = useAsync(() => api.masters(projectId), [projectId])
   const [busy, setBusy] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
@@ -138,8 +141,12 @@ export function MastersView({ projectId }: { projectId: string }) {
   return (
     <>
       <div className="topbar">
-        <h2>Masters</h2>
+        <div className="mo-why-row">
+          <h2>Masters</h2>
+          {why.button}
+        </div>
       </div>
+      {why.panel}
 
       <Callout tone="info" title="What a delivery is, and is not">
         Deliverables are container and codec conversions of the approved provider output. Nothing here upscales or interpolates: a 720p source wrapped as
@@ -186,6 +193,7 @@ function SendToVault({ master, vaultOn }: { master: Record<string, unknown>; vau
   const [state, setState] = React.useState<{ kind: 'idle' | 'sending' | 'saved' | 'already' | 'error'; text: string }>(
     kept ? { kind: 'already', text: kept.label } : { kind: 'idle', text: '' },
   )
+  const why = useWhy(WHY.sendToVault)
   if (!signedOff && !kept) return null
   if (!vaultOn && state.kind !== 'already') return null
 
@@ -201,11 +209,15 @@ function SendToVault({ master, vaultOn }: { master: Record<string, unknown>; vau
 
   return (
     <div className="mo-vault-send">
-      {vaultOn && state.kind !== 'already' && state.kind !== 'saved' && (
-        <button type="button" disabled={state.kind === 'sending'} onClick={() => void send()}>
-          {state.kind === 'sending' ? 'Sending…' : 'Send to my Vault'}
-        </button>
-      )}
+      <div className="mo-why-row">
+        {vaultOn && state.kind !== 'already' && state.kind !== 'saved' && (
+          <button type="button" disabled={state.kind === 'sending'} onClick={() => void send()}>
+            {state.kind === 'sending' ? 'Sending…' : 'Send to my Vault'}
+          </button>
+        )}
+        {why.button}
+      </div>
+      {why.panel}
       <p role="status" aria-live="polite">
         {state.kind === 'sending' && 'Sending…'}
         {state.kind === 'saved' && `Saved to your Vault: ${state.text}`}
@@ -320,7 +332,7 @@ function MasterCard({
 
       {song && (
         <section className="mcq-master-audio" aria-label="Music video finishing">
-          <h4>Song-moment finishing</h4>
+          <WhyHeading as="h4" note={WHY.songFinishing}>Song-moment finishing</WhyHeading>
           <p className="muted">Use the approved shot's selection, {song.startSeconds.toFixed(1)}–{song.endSeconds.toFixed(1)} seconds. This replaces generated sound with the authorized recording in a real MP4. It does not publish or incur provider charges.</p>
           <button className="primary small" type="button" disabled={busy || finishingActive || master.status === 'archived'} onClick={() => void onSong()}>
             {busy ? 'Finishing…' : 'Finish with selected song'}
