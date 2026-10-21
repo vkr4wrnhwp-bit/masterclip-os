@@ -52,6 +52,22 @@ describe('verifyHandoff', () => {
     expect(workspaceKey({ uid: '42', email: 'A@B.co' })).toBe('uid:42')
     expect(workspaceKey({ uid: '', email: 'A@B.co' })).toBe('email:a@b.co')
   })
+
+  it('ignores the pass claim Street Banker adds for a 7-day free pass', () => {
+    // sb_suite_sso.issue() adds pass = {ends, v, reach} for an account on a free pass
+    // (2026-10-21). This reader takes only the fields it names, so the token verifies
+    // and nothing it hands back changes; Street Banker's credit door is what refuses a
+    // render once the pass has ended.
+    const token = mint({
+      uid: '801',
+      email: 'p@artists.test',
+      name: 'P',
+      pass: { ends: '2026-10-28T12:00:00+00:00', v: 1, reach: { research_runs: 3, approved_outreach: 0, active_campaigns: 1 } },
+    })
+    const who = verifyHandoff(token, SECRET, ['motion'])
+    expect(who).toEqual({ uid: '801', email: 'p@artists.test', name: 'P', plan: 'label', suite: 'motion' })
+    expect('pass' in who).toBe(false)
+  })
 })
 
 /**
@@ -59,7 +75,7 @@ describe('verifyHandoff', () => {
  * proved against Python-minted tokens above; this only lets the route tests
  * arrive with a token that has not expired.
  */
-function mint(claims: { uid: string; email: string; name?: string }): string {
+function mint(claims: { uid: string; email: string; name?: string; pass?: Record<string, unknown> }): string {
   const b64 = (value: Buffer) => value.toString('base64url')
   // A fresh nonce each time, as sb_suite_sso.py does (secrets.token_urlsafe),
   // so two links minted in the same second are two links.
