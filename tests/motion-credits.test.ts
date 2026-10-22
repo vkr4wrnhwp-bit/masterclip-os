@@ -301,7 +301,16 @@ it('spends once when two workers claim the same render', async () => {
 })
 
 
-it.each([false, true])('Python accepts the signed request, with MOTION key set: %s', async ownKey => {
+// Street Banker checks these tokens in Python with itsdangerous. CI installs it
+// (see .github/workflows/ci.yml) and must run this check; on a laptop without it
+// the two cases skip and say why.
+const hasItsdangerous = (() => {
+  try { execFileSync('python', ['-c', 'import itsdangerous'], { stdio: 'ignore' }); return true } catch { return false }
+})()
+if (!hasItsdangerous && process.env.CI) throw new Error('CI must install the Python itsdangerous package for the signed-request tests')
+if (!hasItsdangerous) console.warn('Skipping "Python accepts the signed request": run `pip install itsdangerous` to include it')
+
+it.skipIf(!hasItsdangerous).each([false, true])('Python accepts the signed request, with MOTION key set: %s', async ownKey => {
   runtime.config.SUITE_SSO_SECRET_MOTION = ownKey ? 'test-motion-key' : ''
   const render = new RenderService(runtime), id = await plannedJob(render)
   await render.submitRender(id)

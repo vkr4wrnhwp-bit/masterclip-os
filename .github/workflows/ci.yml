@@ -20,6 +20,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffmpeg -version | head -1
           ffprobe -version | head -1
+      # Street Banker verifies Motion's signed credit requests in Python with
+      # itsdangerous; tests/motion-credits.test.ts checks that round trip.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install itsdangerous
+        run: python -m pip install itsdangerous
       - uses: pnpm/action-setup@v4
         with:
           version: 10

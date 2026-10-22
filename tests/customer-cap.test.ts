@@ -117,7 +117,7 @@ describe('visual QC and the customer cap', () => {
     await charge(ledger, orgs.a, 1, 'qc')
     await expect(check(orgs.a)).rejects.toMatchObject({
       code: 'spend.customer_cap',
-      message: "You've used this month's $10 of MOTION renders. It resets on the 1st.",
+      message: "You've reached this month's $10 safety cap for paid MOTION renders. It resets on the 1st. Buying credits does not raise this cap.",
     })
     // Another customer, and the owner's own account, are not held to A's month.
     await expect(check(orgs.b)).resolves.toBeUndefined()
