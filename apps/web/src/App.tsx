@@ -1,4 +1,5 @@
 import React from 'react'
+import { MotionChrome, MotionGuidanceContext } from './SuiteChrome.js'
 import { ApiError, api, type User } from './api.js'
 import { Callout, Card, Field, useAsync } from './ui.jsx'
 import { Dashboard } from './views/Dashboard.jsx'
@@ -154,6 +155,8 @@ export function App() {
   const [user, setUser] = React.useState<User | null>(null)
   const [checking, setChecking] = React.useState(true)
   const health = useAsync(() => api.health(), [])
+  const isMotion = ['dashboard','project','shot','review','queue','masters','costs','providers'].includes(route.name)
+  const motionProviders = useAsync(() => user && isMotion ? api.providers().catch(() => null) : Promise.resolve(null), [user?.email, isMotion])
   // Live Lab is entitlement-gated: the nav entry only exists when the org has
   // live_lab.access. (The server enforces it regardless — this is courtesy.)
   // Keyed by email because the signup/login response carries `id` while
@@ -355,6 +358,8 @@ export function App() {
         </nav>
 
         <main className="main">
+          <MotionGuidanceContext.Provider value={isMotion}>
+          {isMotion && <MotionChrome />}
           {route.name === 'dashboard' && <Dashboard />}
           {route.name === 'project' && <ProjectView projectId={route.params.projectId ?? ''} />}
           {route.name === 'shot' && <ShotBuilder shotId={route.params.shotId ?? ''} />}
@@ -396,6 +401,8 @@ export function App() {
           {route.name === 'live-project' && <LiveProject projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-midi' && <LiveMidi projectId={route.params.liveProjectId ?? ''} />}
           {route.name === 'live-settings' && <LiveSettings />}
+          {isMotion && <MotionChrome footer connected={health.data?.mode === 'live' && !!motionProviders.data?.providers.some(p => p.configured)} />}
+          </MotionGuidanceContext.Provider>
         </main>
       </div>
     </>
