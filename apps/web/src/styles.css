@@ -730,6 +730,9 @@ ol.setlist li:hover .setlist-actions { opacity: 1; }
 .motion-tip [role=note] { padding: 12px; max-width: 44ch; overflow-wrap: anywhere; color: var(--text); background: var(--bg-panel); }
 .motion-guide { box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 20px; color: var(--text); background: var(--bg-panel); font: 14px/1.5 var(--sans); }
 .motion-guide h2 { font: 600 20px var(--sans); }
+.motion-guide-offer { flex: 1 1 100%; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 16px; color: var(--text); background: var(--bg-panel); font: 14px/1.5 var(--sans); }
+.motion-guide-offer h2 { font: 600 18px var(--sans); margin: 0 0 4px; }
+.motion-suite-header .motion-guide-offer button { min-height: 44px; }
 .motion-suite-footer { margin-top: 32px; border-top: 1px solid var(--border); padding: 20px 0; font: 14px/1.5 var(--sans); overflow-wrap: anywhere; }
 .motion-suite-footer summary { min-height: 44px; cursor: pointer; }
 .motion-suite-footer ul { list-style: none; padding: 0; }

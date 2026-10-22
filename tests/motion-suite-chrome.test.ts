@@ -58,3 +58,9 @@ describe('Motion suite guidance', () => {
   expect(initialGuide('?walkthrough=motion&step=-9').step).toBe(0)
   expect(initialGuide('', { getItem() { throw new Error('blocked') } }).offer).toBe(true)
  })
+
+it('never opens a modal on its own: the first-visit offer is a panel in the page', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../apps/web/src/SuiteChrome.tsx', import.meta.url), 'utf8')
+  expect(src).toContain('motion-guide-offer')
+  expect(src).not.toMatch(/if \(offer[^)]*\)[^\n]*showModal/)
+})

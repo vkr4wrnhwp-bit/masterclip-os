@@ -63,7 +63,9 @@ export function MotionChrome({ footer = false, connected = false }: { footer?: b
     try { initial = initialGuide(location.search, localStorage) } catch { initial = initialGuide(location.search) }
     setStep(initial.step); setOffer(initial.offer)
   }, [footer])
-  React.useEffect(() => { if (offer || step !== null) { if (!dialog.current?.open) dialog.current?.showModal() } else dialog.current?.close() }, [offer, step])
+  // Only the walkthrough itself is a modal. The first-visit offer is a panel in the page, so it never
+  // covers the controls of somebody who just wants to work.
+  React.useEffect(() => { if (step !== null) { if (!dialog.current?.open) dialog.current?.showModal() } else if (dialog.current?.open) dialog.current?.close() }, [step])
   const remember = () => { try { localStorage.setItem('sbSuiteIntro:motion', '1') } catch {} }
   const close = () => { remember(); setOffer(false); setStep(null); launch.current?.focus() }
   if (footer) return <div className="motion-suite-footer" role="contentinfo" aria-label="Motion features">
@@ -76,11 +78,16 @@ export function MotionChrome({ footer = false, connected = false }: { footer?: b
     <a className="motion-suite-button" href={homeUrl(import.meta.env.VITE_STREET_BANKER_URL)}>Back to Street Banker</a>
     <button ref={launch} type="button" onClick={() => { remember(); setOffer(false); setStep(0) }}>Walkthrough</button>
     <MotionTip title="Motion">Build and review a video one shot at a time. A sandbox preview is not a paid AI render or a completed master.</MotionTip>
-    <dialog ref={dialog} className="motion-guide" aria-labelledby="motion-guide-title" onCancel={close} onClose={close}>
-      <h2 id="motion-guide-title">{offer ? 'Want a quick look around Motion?' : STEPS[step ?? 0][0]}</h2>
-      <p>{offer ? 'Five short steps show the real controls. The walkthrough never submits a render or spends money.' : STEPS[step ?? 0][1]}</p>
-      {!offer && <p aria-live="polite">{(step ?? 0) + 1} of {STEPS.length}</p>}
-      <div className="motion-guide-actions">{offer ? <><button type="button" onClick={() => { remember(); setOffer(false); setStep(0) }}>Start walkthrough</button><button type="button" onClick={close}>Explore</button><button type="button" onClick={close}>Skip for now</button></> : <><button type="button" disabled={step === 0} onClick={() => setStep(n => Math.max(0, (n ?? 0) - 1))}>Back</button><button type="button" onClick={() => step === STEPS.length - 1 ? close() : setStep(n => (n ?? 0) + 1)}>{step === STEPS.length - 1 ? 'Finish' : 'Next'}</button><button type="button" onClick={close}>Close</button></>}</div>
+    {offer && step === null && <section className="motion-guide-offer" aria-labelledby="motion-offer-title">
+      <h2 id="motion-offer-title">Want a quick look around Motion?</h2>
+      <p>Five short steps show the real controls. The walkthrough never submits a render or spends money.</p>
+      <div className="motion-guide-actions"><button type="button" onClick={() => { remember(); setOffer(false); setStep(0) }}>Start walkthrough</button><button type="button" onClick={close}>Skip for now</button></div>
+    </section>}
+    <dialog ref={dialog} className="motion-guide" aria-labelledby="motion-guide-title" onCancel={close} onClose={() => { if (step !== null) close() }}>
+      <h2 id="motion-guide-title">{STEPS[step ?? 0][0]}</h2>
+      <p>{STEPS[step ?? 0][1]}</p>
+      <p aria-live="polite">{(step ?? 0) + 1} of {STEPS.length}</p>
+      <div className="motion-guide-actions"><button type="button" disabled={step === 0} onClick={() => setStep(n => Math.max(0, (n ?? 0) - 1))}>Back</button><button type="button" onClick={() => step === STEPS.length - 1 ? close() : setStep(n => (n ?? 0) + 1)}>{step === STEPS.length - 1 ? 'Finish' : 'Next'}</button><button type="button" onClick={close}>Close</button></div>
     </dialog>
   </header>
 }
