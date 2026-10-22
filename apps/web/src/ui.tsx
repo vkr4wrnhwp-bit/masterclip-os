@@ -1,11 +1,13 @@
 import React from 'react'
+import { MotionTip, MotionGuidanceContext } from './SuiteChrome.js'
 
 export function Card({ title, children, action }: { title?: string; children: React.ReactNode; action?: React.ReactNode }) {
+  const motion = React.useContext(MotionGuidanceContext)
   return (
     <div className="card">
       {title && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h3>{title}</h3>
+          <div className="motion-section-title"><h3>{title}</h3>{motion && <MotionTip title={title}>{SECTION_TIPS[title] || "Read the saved state shown here before taking an action. A missing value means it has not been recorded; it is not a measured zero."}</MotionTip>}</div>
           {action}
         </div>
       )}
@@ -159,4 +161,12 @@ export function statusTone(status: string): 'ok' | 'warn' | 'danger' | 'info' | 
   if (status === 'processing' || status === 'submitted' || status === 'downloading' || status === 'degraded') return 'info'
   if (status === 'queued' || status === 'authorizing' || status === 'unconfigured') return 'warn'
   return undefined
+}
+
+const SECTION_TIPS: Record<string, string> = {
+  'Upload a reference': 'Add source material to this project. Record the rights owner and permission. Uploading does not start a render.',
+  'References': 'These are the source files kept with this project. Only authorized references can be used for identity work.',
+  'Projects': 'Open an existing project or create one for a separate video. Nothing renders when you open a project.',
+  'Render queue': 'Submitted work waits or runs here. A queued item is not a completed video.',
+  'Cost breakdown': 'These are recorded provider costs. Estimates and hard spending limits are different from a final bill.',
 }

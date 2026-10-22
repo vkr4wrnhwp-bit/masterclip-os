@@ -404,3 +404,7 @@ First production-capable release. Every feature's actual state — REAL,
 DEV-LABELED, PARTIAL, or NOT BUILT — is itemised in
 [`docs/build-audit.md`](docs/build-audit.md), including what still needs
 credentials and what has never been run against a live provider.
+
+### Motion suite guidance
+
+Motion's video workspace includes a read-only walkthrough, click-open section tips and a browser-only tried-feature checklist. Ticks are not server activity or completion records. The return link uses the other suites' default Command Center address, `https://app.streetbankermusic.com/command-center`. This checkout has its own login, with no Street Banker SSO/home setting; deployments can set the optional Vite build setting `VITE_STREET_BANKER_URL` to their Street Banker origin. The walkthrough describes the dollar estimates and caps this checkout actually shows; it does not invent a credit price. Live rendering is tagged as needing a key until the provider list and live mode report it ready.

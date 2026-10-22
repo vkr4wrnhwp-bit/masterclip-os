@@ -720,3 +720,31 @@ ol.setlist li:hover .setlist-actions { opacity: 1; }
 .basis { margin-top: 6px; font-size: 11px; }
 .basis-missing { margin: 4px 0 0; padding-left: 16px; color: var(--warn); }
 .basis-missing li { margin: 2px 0; }
+/* Motion guidance uses the existing palette and type tokens. */
+.motion-suite-header, .motion-guide-actions, .motion-section-title { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+.motion-suite-header { margin-bottom: 20px; }
+.motion-suite-header button, .motion-suite-button, .motion-guide button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); background: var(--bg-raised); font: 14px var(--sans); max-width: 100%; white-space: normal; }
+.motion-tip { position: relative; font: 14px var(--sans); }
+.motion-tip summary { display: inline-flex; align-items: center; justify-content: center; list-style: none; cursor: pointer; min-width: 44px; min-height: 44px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--text); }
+.motion-tip summary::-webkit-details-marker { display: none; }
+.motion-tip [role=note] { padding: 12px; max-width: 44ch; overflow-wrap: anywhere; color: var(--text); background: var(--bg-panel); }
+.motion-guide { box-sizing: border-box; width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 20px; color: var(--text); background: var(--bg-panel); font: 14px/1.5 var(--sans); }
+.motion-guide h2 { font: 600 20px var(--sans); }
+.motion-guide-offer { flex: 1 1 100%; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 16px; color: var(--text); background: var(--bg-panel); font: 14px/1.5 var(--sans); }
+.motion-guide-offer h2 { font: 600 18px var(--sans); margin: 0 0 4px; }
+.motion-suite-header .motion-guide-offer button { min-height: 44px; }
+.motion-suite-footer { margin-top: 32px; border-top: 1px solid var(--border); padding: 20px 0; font: 14px/1.5 var(--sans); overflow-wrap: anywhere; }
+.motion-suite-footer summary { min-height: 44px; cursor: pointer; }
+.motion-suite-footer ul { list-style: none; padding: 0; }
+.motion-suite-footer label { display: flex; gap: 12px; align-items: center; min-height: 44px; padding: 8px 0; }
+.motion-suite-footer input { width: 20px; height: 20px; flex: none; }
+.motion-feature-tag { display: inline-block; border: 1px solid currentColor; border-radius: var(--radius); padding: 2px 6px; font-size: 12px; }
+@media (max-width: 640px) { .app { grid-template-columns: minmax(0, 1fr); height: auto; } .sidebar { min-width: 0; max-height: none; } .main { min-width: 0; padding: 16px; } .motion-suite-header { align-items: stretch; } }
+
+/* The existing Motion workspace also respects the suite's readable type floor. */
+.main:has(.motion-suite-header) .mono { font-family: var(--sans); }
+.main:has(.motion-suite-header) :is(small, .small, .faint, .stat-label, .field-label) { font-size: max(12px, 1em); }
+.app:has(.motion-suite-header) .sidebar .sub { font-size: 12px; }
+.main:has(.motion-suite-header) [style*="font-size: 11px"], .main:has(.motion-suite-header) [style*="font-size: 10px"] { font-size: 12px !important; }
+.main:has(.motion-suite-header) :is(button, a) { min-height: 44px; }
+.main:has(.motion-suite-header) .card { min-width: 0; overflow-wrap: anywhere; }
