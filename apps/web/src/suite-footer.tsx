@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { streetBankerUrl } from './App.jsx'
+import { api } from './api.js'
 
 // A little footer on every suite (owner, 2026-09-29: terms of use and a line about
 // Street Banker; owner, 2026-10-01: no links to the other suites, instead the suite
 // asks "Do you know all the features it has? Click here." and opens its own list).
 // "What's in Motion" (owner, 2026-09-30): a checklist the person ticks ("I've
 // tried this"). Nothing ticks itself; saved in this browser only.
-type Feature = { id: string; title: string; group: string }
+// Each line says whether it works today (live audit, 2026-10-22): everything is Real except rendering with an
+// AI video provider, which says Needs a key until live mode is on and a provider is connected.
+type Feature = { id: string; title: string; group: string; needsProvider?: boolean }
 const FEATURES: Feature[] = [
   { id: 'film', title: 'Start a film from an authorized song, an idea, or a template', group: 'CREATE' },
   { id: 'references', title: 'Upload and manage rights-cleared songs, footage, and images', group: 'CREATE' },
@@ -17,7 +20,7 @@ const FEATURES: Feature[] = [
   { id: 'shots', title: 'Direct and version individual shots, camera, lighting, and action', group: 'DIRECT' },
   { id: 'providers', title: 'Connect and manage video providers and compatible models', group: 'DIRECT' },
   { id: 'costs', title: 'Estimate render costs before committing resources', group: 'DIRECT' },
-  { id: 'render', title: 'Render selected shot variations and follow the queue', group: 'DIRECT' },
+  { id: 'render', title: 'Render selected shot variations and follow the queue', group: 'DIRECT', needsProvider: true },
   { id: 'review', title: 'Compare takes, inspect QC, and approve the strongest', group: 'FINISH' },
   { id: 'variants', title: 'Compare related creative drafts and versions', group: 'FINISH' },
   { id: 'masters', title: 'Promote approved footage to managed masters', group: 'FINISH' },
@@ -48,7 +51,15 @@ function readTicks(): Record<string, boolean> {
 }
 function FeatureChecklist() {
   const [ticks,setTicks]=useState<Record<string,boolean>>({})
+  const [providerReady,setProviderReady]=useState(false)
   useEffect(()=>setTicks(readTicks()),[])
+  useEffect(()=>{
+    let alive=true
+    Promise.all([api.health(),api.providers()])
+      .then(([h,p])=>{ if(alive) setProviderReady(h.mode==='live' && p.providers.some(x=>x.configured)) })
+      .catch(()=>{ /* not signed in or not reachable: the render line keeps Needs a key */ })
+    return ()=>{alive=false}
+  },[])
   const done=FEATURES.filter(f=>ticks[f.id]).length
   const flip=(id:string)=>{
     const next={...ticks,[id]:!ticks[id]}
@@ -60,7 +71,7 @@ function FeatureChecklist() {
       <summary>
         Did you know MOTION can do all this? <span className="sb-suite-features-count" aria-live="polite">{done} of {FEATURES.length} tried</span>
       </summary>
-      <p className="sb-suite-features-note">Discover the creative workflow. Check off what you have tried; your progress stays on this device.</p>
+      <p className="sb-suite-features-note">Discover the creative workflow. Check off what you have tried; your progress stays on this device. Each line says Real, or Needs a key when Street Banker still has to connect the service.</p>
       {(['CREATE','DIRECT','FINISH'] as const).map(group=>(
         <section key={group} aria-label={group.toLowerCase()+' features'}>
           <h3 className="sb-suite-features-group">{group}</h3>
@@ -68,7 +79,7 @@ function FeatureChecklist() {
             {FEATURES.filter(f=>f.group===group).map(feature=>(
               <li key={feature.id}><label>
                 <input type="checkbox" checked={!!ticks[feature.id]} onChange={()=>flip(feature.id)}/>
-                <span>{feature.title}</span>
+                <span>{feature.title} <span className="sb-suite-tag">{feature.needsProvider && !providerReady ? 'Needs a key' : 'Real'}</span></span>
               </label></li>
             ))}
           </ul>
