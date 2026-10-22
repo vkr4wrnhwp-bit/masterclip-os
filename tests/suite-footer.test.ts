@@ -35,3 +35,13 @@ describe('what is in Motion', () => {
     expect(src).not.toMatch(/setTicks\(\{[^}]*true/)
   })
 })
+
+describe('every feature says whether it works today (live audit, 2026-10-22)', () => {
+  it('tags each line Real, and the provider render Needs a key until one is connected', () => {
+    expect(src).toContain("className=\"sb-suite-tag\"")
+    expect(src).toContain("'Needs a key'")
+    expect(src).toContain("'Real'")
+    expect(src).toMatch(/id: 'render'[^\n]*needsProvider: true/)
+    expect(src).toContain("h.mode==='live' && p.providers.some(x=>x.configured)")
+  })
+})

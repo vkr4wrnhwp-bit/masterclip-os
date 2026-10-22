@@ -1024,6 +1024,8 @@ details[open] summary { margin-bottom: 9px; color: var(--text); }
 .sb-suite-footer .sb-suite-features-group { margin:14px 0 6px; padding:8px 6px 5px; border-bottom:1px solid #12c8ff55; color:#12c8ff; font-size:12px; letter-spacing:.12em; text-align:left; }
 .sb-suite-footer .sb-suite-features section { margin: 0; }
 .sb-suite-footer .sb-suite-features-list span { font-size:13px; line-height:1.5; }
+/* Real / Needs a key, beside each feature (live audit, 2026-10-22). */
+.sb-suite-footer .sb-suite-features-list .sb-suite-tag { display:inline-block; margin-left:6px; padding:1px 8px; border:1px solid currentColor; border-radius:999px; font-size:12px; line-height:1.4; white-space:nowrap; opacity:.85; }
 @media (max-width:600px) { .sb-suite-footer .sb-suite-features summary { padding:8px 12px; } }
 
 .sb-suite-footer .sb-suite-features-list { list-style: none; margin: 0; padding: 0; }
