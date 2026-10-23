@@ -86,6 +86,11 @@ afterEach(async () => {
 })
 
 describe('CSRF', () => {
+  it('does not register linked Song Journey routes with the default-off feature flag', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/song-journey/links' })
+    expect(response.statusCode).toBe(404)
+  })
+
   it('issues a readable token cookie alongside the http-only session', async () => {
     const response = await app.inject({
       method: 'POST',

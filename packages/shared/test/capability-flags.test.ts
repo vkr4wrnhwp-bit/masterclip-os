@@ -34,6 +34,11 @@ const PRODUCT_FLAGS = new Set([
   'SONG_LAB_EXPERIMENTS_ENABLED',
   'SONG_LAB_LYRICS_ENABLED',
   'SONG_LAB_AR_VIEW_ENABLED',
+  // Song Lab's suite shell, sign-in surface and linked-record journey.
+  // These gate product entry points, not audio-provider capabilities.
+  'SONG_LAB_SUITE_ENABLED',
+  'SONG_LAB_SUITE_SUITE_SSO_ENABLED',
+  'SONG_LAB_SUITE_LINKED_RECORDS_ENABLED',
   // Street Banker Studio. Every one of these hides a whole surface: the nav
   // entry, the tab and the routes all disappear together, so nobody meets a
   // refusal partway through a workflow.
@@ -54,6 +59,14 @@ const PRODUCT_FLAGS = new Set([
 ])
 
 describe('audio capability flags', () => {
+  it('keeps the Song Lab suite and linked journey opt-in', () => {
+    resetConfigCache()
+    const config = loadConfig({} as NodeJS.ProcessEnv, true)
+    expect(config.SONG_LAB_SUITE_ENABLED).toBe(false)
+    expect(config.SONG_LAB_SUITE_SUITE_SSO_ENABLED).toBe(false)
+    expect(config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED).toBe(false)
+  })
+
   it('accounts for every _ENABLED flag in the schema', () => {
     resetConfigCache()
     const config = loadConfig({} as NodeJS.ProcessEnv, true)

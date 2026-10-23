@@ -27,7 +27,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 
-const get = <T>(path: string) => request<T>(path)
+let songJourneyVersionId: string | null = null
+export function setSongJourneyVersion(versionId: string | null): void { songJourneyVersionId = versionId }
+const get = <T>(path: string) => request<T>(songJourneyVersionId && path.startsWith('/api/song-lab/projects/') && !path.includes('versionId=')
+  ? `${path}${path.includes('?') ? '&' : '?'}versionId=${encodeURIComponent(songJourneyVersionId)}`
+  : path)
 const post = <T>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
 const patch = <T>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) })
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
@@ -368,7 +372,7 @@ export const songLabApi = {
     get<{ capabilities: string[]; flagship: boolean; rightsStatement: string; analysisProvider: string }>('/api/song-lab/capabilities'),
 
   projects: () => get<{ projects: SongLabProject[] }>('/api/song-lab/projects'),
-  project: (id: string) => get<ProjectDetail>(`/api/song-lab/projects/${id}`),
+  project: (id: string, versionId?: string) => get<ProjectDetail>(`/api/song-lab/projects/${id}${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ''}`),
   vocalStems: (id: string) => get<{ vocalStems: SongVocalStem[] }>(`/api/song-lab/projects/${id}/vocal-stems`),
   transcribeLyrics: (id: string, replaceUserSupplied = false) =>
     post<{ jobId: string; source: 'isolated_stem' | 'full_mix' }>(`/api/song-lab/projects/${id}/lyrics/transcribe`, { replaceUserSupplied }),

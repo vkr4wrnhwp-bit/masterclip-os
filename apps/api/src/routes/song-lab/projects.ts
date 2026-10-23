@@ -77,11 +77,18 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
     const { id } = request.params as { id: string }
     const project = await songLab.repos.projects.get(actor.orgId, id)
     const versions = await songLab.repos.versions.list(actor.orgId, id)
-    const analysis = project.currentVersionId ? await songLab.repos.analyses.latestForVersion(actor.orgId, project.currentVersionId) : null
+    const requestedVersionId = typeof (request.query as { versionId?: unknown } | undefined)?.versionId === 'string'
+      ? (request.query as { versionId: string }).versionId
+      : null
+    const selectedVersionId = requestedVersionId ?? project.currentVersionId
+    if (requestedVersionId && !versions.some(version => version.id === requestedVersionId)) {
+      throw new AppError({ kind: 'forbidden', code: 'song_lab.version_project', message: 'That version does not belong to this song.' })
+    }
+    const analysis = selectedVersionId ? await songLab.repos.analyses.latestForVersion(actor.orgId, selectedVersionId) : null
     const sections = analysis ? await songLab.repos.sections.list(actor.orgId, analysis.id) : []
     const observations = await songLab.repos.observations.listForProject(actor.orgId, id)
 
-    const currentVersion = versions.find((version) => version.id === project.currentVersionId)
+    const currentVersion = versions.find((version) => version.id === selectedVersionId)
     const audioUrl =
       currentVersion?.sourceAssetId !== undefined && currentVersion?.sourceAssetId !== null
         ? (await songLab.repos.projects.get(actor.orgId, id)) && (await signedUrlFor(runtime, actor.orgId, currentVersion.sourceAssetId))
@@ -209,7 +216,7 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
   app.get('/api/song-lab/projects/:id/structure', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.structure')
     const { id } = request.params as { id: string }
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedSongVersion(request))
     const result = await songLab.views.structure(actor, analysis.id)
     return { analysisId: analysis.id, ...result, timeline: songLab.views.timeline(result.sections) }
   })
@@ -217,7 +224,7 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
   app.patch('/api/song-lab/projects/:id/structure', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.structure')
     const { id } = request.params as { id: string }
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedSongVersion(request))
     const body = z
       .object({
         corrections: z
@@ -261,14 +268,14 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
   app.get('/api/song-lab/projects/:id/energy', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
     const { id } = request.params as { id: string }
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedSongVersion(request))
     return songLab.views.energy(actor, analysis.id)
   })
 
   app.get('/api/song-lab/projects/:id/arrangement', async (request) => {
     const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
     const { id } = request.params as { id: string }
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedSongVersion(request))
     return songLab.views.arrangement(actor, analysis.id)
   })
 
@@ -282,7 +289,7 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
     const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
     const { id } = request.params as { id: string }
     const project = await songLab.repos.projects.get(actor.orgId, id)
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedSongVersion(request))
     const results = project.selectedBenchmarkCohortId
       ? await songLab.repos.benchmarkResults.list(actor.orgId, analysis.id, project.selectedBenchmarkCohortId)
       : []
@@ -353,17 +360,25 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
   })
 }
 
-/** The analysis for the project's current version, or a clear refusal. */
-export async function currentAnalysis(runtime: Runtime, orgId: string, projectId: string) {
+/** The analysis for the explicitly selected version (or current version), or a clear refusal. */
+export async function currentAnalysis(runtime: Runtime, orgId: string, projectId: string, requestedVersionId?: string | null) {
   const project = await runtime.songLab.repos.projects.get(orgId, projectId)
-  if (!project.currentVersionId) {
+  const versionId = requestedVersionId ?? project.currentVersionId
+  if (!versionId) {
     throw new AppError({ kind: 'validation', code: 'song_lab.no_audio', message: 'this project has no audio yet' })
   }
-  const analysis = await runtime.songLab.repos.analyses.latestForVersion(orgId, project.currentVersionId)
+  const version = await runtime.songLab.repos.versions.get(orgId, versionId)
+  if (version.songLabProjectId !== projectId) throw new AppError({ kind: 'forbidden', code: 'song_lab.version_project', message: 'That version does not belong to this song.' })
+  const analysis = await runtime.songLab.repos.analyses.latestForVersion(orgId, versionId)
   if (!analysis) {
     throw new AppError({ kind: 'validation', code: 'song_lab.not_analyzed', message: 'this song has not finished analysis yet' })
   }
   return analysis
+}
+
+function requestedSongVersion(request: { query?: unknown }): string | null {
+  const value = (request.query as { versionId?: unknown } | undefined)?.versionId
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 /** Signed, expiring URL. Audio is never served from a permanent path. */

@@ -64,6 +64,7 @@ export type IdPrefix =
   | 'hook'
   | 'model'
   | 'run'
+  | 'sjl'
   | 'key'
   // Street Banker Audio Intelligence
   | 'apol' // audio data policy

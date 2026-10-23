@@ -13,6 +13,7 @@ import { LiveMidi } from '../live/LiveMidi.js'
 import { LiveSettings } from '../live/LiveSettings.js'
 import { StreetBankerLogo } from './StreetBankerLogo.js'
 import { SONG_LAB_FEATURES } from './features.js'
+import { SongJourneyPage } from './SongJourneyPage.js'
 import './song-lab-suite.css'
 
 export const JOURNEY_STEPS = ['Choose', 'Understand', 'Decide', 'Finish', 'Approve', 'Deliver'] as const
@@ -30,10 +31,11 @@ export function SongLabSuite() {
   const [error, setError] = React.useState('')
   const [mode, setMode] = React.useState<string | null>(null)
   const [home, setHome] = React.useState('https://app.streetbankermusic.com')
+  const [linkedEnabled, setLinkedEnabled] = React.useState(false)
   const [canSeeAr, setCanSeeAr] = React.useState(false)
   const [selectedStep, setSelectedStep] = React.useState(0)
   React.useEffect(() => {
-    fetch('/api/song-lab-suite').then(r => r.json()).then(r => setHome(r.streetBankerUrl)).catch(() => undefined)
+    fetch('/api/song-lab-suite').then(r => r.json()).then(r => { setHome(r.streetBankerUrl); setLinkedEnabled(r.linkedRecordsEnabled === true) }).catch(() => undefined)
     api.health().then(r => setMode(r.mode)).catch(() => undefined)
     api.me().then(r => setUser(r.user)).catch(err => {
       if (err instanceof ApiError && err.status === 401) window.location.replace('/login')
@@ -41,6 +43,9 @@ export function SongLabSuite() {
     })
     songLabApi.capabilities().then(r => setCanSeeAr(r.capabilities.includes('song_lab.ar_view'))).catch(() => undefined)
   }, [])
+  React.useEffect(() => {
+    if (linkedEnabled && route.name === 'song-lab' && route.params.legacy !== 'true') window.location.hash = '/song-journey'
+  }, [linkedEnabled, route.name, route.params.legacy])
   const song = route.params.songProjectId
   const studio = route.params.studioProjectId
   const step = Number.isInteger(Number(route.params.step)) && route.params.step !== undefined ? Math.max(0, Math.min(5, Number(route.params.step))) : selectedStep
@@ -51,6 +56,7 @@ export function SongLabSuite() {
     return (studio ? `/studio/${studio}/${['rack', 'versions', 'deliver'][index - 3]}` : '/studio') + suffix
   }
   let screen: React.ReactNode = <SongLabHome />
+  if (linkedEnabled && route.name === 'song-journey') screen = <SongJourneyPage />
   if (route.name === 'song-lab-new') screen = <SongLabNew />
   if (route.name === 'song-lab-projects') screen = <SongLabProjects />
   if (route.name === 'song-lab-project') screen = <SongLabProject projectId={song ?? ''} tab={route.params.tab ?? 'overview'} canSeeAr={canSeeAr} />
@@ -73,7 +79,7 @@ export function SongLabSuite() {
     <main className="sl-workspace">
       <nav className="sl-steps" aria-label="Song journey">{JOURNEY_STEPS.map((name, i) => <a href={'#' + destination(i)} key={name} aria-current={step === i ? 'step' : undefined} onClick={() => setSelectedStep(i)}><span className="sl-led"/><span className="sl-step-number">0{i + 1}</span><b>{name}</b></a>)}</nav>
       <div className="sl-guidance"><span>0{step + 1} / {JOURNEY_STEPS[step]}</span><p>{GUIDANCE[step]}</p></div>
-      <nav className="sl-libraries" aria-label="Existing screens"><a href="#/song-lab">Song Lab home</a><a href="#/song-lab/new">New song</a><a href="#/song-lab/projects">All songs</a><a href="#/studio">Studio projects</a><a href="#/live-lab">Live Lab preview</a><a href="#/live-lab/settings">Live settings</a></nav>
+      <nav className="sl-libraries" aria-label="Existing screens">{linkedEnabled && <a href="#/song-journey">One song journey</a>}<a href="#/song-lab/library">Song Lab home</a><a href="#/song-lab/new">New song</a><a href="#/song-lab/projects">All songs</a><a href="#/studio">Studio projects</a><a href="#/live-lab">Live Lab preview</a><a href="#/live-lab/settings">Live settings</a></nav>
       {error ? <section role="alert"><h1>Sign in through Street Banker</h1><p>{error}</p><a className="button" href="/login">Sign in at Street Banker</a></section> : user ? <section className="sl-existing">{screen}</section> : <p role="status">Checking Street Banker access…</p>}
       <footer><span>Street Banker Song Lab · {user?.displayName ?? 'Street Banker sign-in'}</span>{user && <button onClick={() => void api.logout().then(() => window.location.assign(home + '/command-center'))}>Sign out</button>}<span>Phase 1 · existing screens · Vault / Rack handoffs not connected here yet</span></footer>
     </main>

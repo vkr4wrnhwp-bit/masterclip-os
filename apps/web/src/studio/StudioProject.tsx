@@ -16,15 +16,16 @@ export type StudioTab = (typeof STUDIO_TABS)[number]
  * putting them in the sidebar would make the platform's top level about
  * features rather than about work.
  */
-export function StudioProject({ projectId, tab, at }: { projectId: string; tab: StudioTab; at?: string }) {
-  const [versionId, setVersionId] = React.useState<string | null>(null)
+export function StudioProject({ projectId, tab, at, journeyVersionId, journeyOnlyStep }: { projectId: string; tab: StudioTab | 'journey'; at?: string; journeyVersionId?: string; journeyOnlyStep?: 'choose' | 'finish' | 'approve' | 'deliver' }) {
+  const [versionId, setVersionId] = React.useState<string | null>(journeyVersionId ?? null)
+  React.useEffect(() => { if (journeyVersionId) setVersionId(journeyVersionId) }, [journeyVersionId])
   const session = useAsync(() => studioApi.session(projectId, versionId ?? undefined), [projectId, versionId])
 
   return (
     <AsyncBlock state={session}>
       {(data) => (
         <>
-          <div className="topbar">
+          {tab !== 'journey' && <div className="topbar">
             <div>
               <div className="project-artist">{data.project.artistName}</div>
               <h2>{data.project.title}</h2>
@@ -44,16 +45,17 @@ export function StudioProject({ projectId, tab, at }: { projectId: string; tab: 
             <button className="small" onClick={() => navigate('/studio')}>
               All projects
             </button>
-          </div>
+          </div>}
 
-          <div className="tabs">
+          {tab !== 'journey' && <div className="tabs">
             {STUDIO_TABS.map((name) => (
               <button key={name} className={tab === name ? 'active' : ''} onClick={() => navigate(`/studio/${projectId}/${name}`)}>
                 {name}
               </button>
             ))}
-          </div>
+          </div>}
 
+          {tab === 'journey' && <StudioJourneyPanels projectId={projectId} data={data} setVersionId={setVersionId} reload={session.reload} onlyStep={journeyOnlyStep} />}
           {tab === 'session' && <Session data={data} projectId={projectId} onVersion={setVersionId} reload={session.reload} at={at} />}
           {tab === 'rack' && <StudioRack projectId={projectId} versionId={data.version?.id ?? null} />}
           {tab === 'mix' && <StudioMix data={data} projectId={projectId} reload={session.reload} />}
@@ -65,6 +67,51 @@ export function StudioProject({ projectId, tab, at }: { projectId: string; tab: 
       )}
     </AsyncBlock>
   )
+}
+
+function StudioJourneyPanels({ projectId, data, setVersionId, reload, onlyStep }: {
+  projectId: string
+  data: SessionPayload
+  setVersionId: (id: string) => void
+  reload: () => void
+  onlyStep?: 'choose' | 'finish' | 'approve' | 'deliver'
+}) {
+  const selectedId = data.version?.id ?? null
+  return <div className="sl-studio-panels">
+    {(!onlyStep || onlyStep === 'choose') && <section id="choose" className="sl-journey-step">
+      <div className="sl-step-heading"><span>01</span><div><p>OPEN THE SOURCE RECORD</p><h2>Choose</h2></div></div>
+      <details open><summary>Studio session · selected Studio version {data.version?.label ?? 'not selected'}</summary>
+        {selectedId ? <Session data={data} projectId={projectId} onVersion={setVersionId} reload={reload} /> : <p>Choose an exact Studio version above to open its session, waveform and timed notes.</p>}
+      </details>
+    </section>}
+    {(!onlyStep || onlyStep === 'finish') && <section id="finish" className="sl-journey-step">
+      <div className="sl-step-heading"><span>04</span><div><p>PREPARE THE NEXT PASS</p><h2>Finish</h2></div></div>
+      <div className="sl-rack-next"><div><p>PHASE 3 HAND-OFF</p><h3>Send to The Rack</h3><span>Coming next. This control is not connected yet.</span></div><button disabled aria-disabled="true">Coming next</button></div>
+      <details open><summary>Mix Doctor, meters, references and translation</summary><StudioMix data={data} projectId={projectId} reload={reload} /></details>
+      <details><summary>Saved processing intent · read only</summary><SavedProcessingIntent projectId={projectId} /></details>
+      <details><summary>Mastering guidance</summary><StudioMaster projectId={projectId} data={data} reload={reload} /></details>
+    </section>}
+    {(!onlyStep || onlyStep === 'approve') && <section id="approve" className="sl-journey-step">
+      <div className="sl-step-heading"><span>05</span><div><p>COMPARE AND SIGN OFF</p><h2>Approve</h2></div></div>
+      <details open><summary>Version Vault and A/B</summary><StudioVersions projectId={projectId} versions={data.versions} onOpen={setVersionId} /></details>
+      <details><summary>Timed comments, collaborators and approvals</summary><StudioCollaborate projectId={projectId} data={data} reload={reload} /></details>
+    </section>}
+    {(!onlyStep || onlyStep === 'deliver') && <section id="deliver" className="sl-journey-step">
+      <div className="sl-step-heading"><span>06</span><div><p>CHECK THE RECORD</p><h2>Deliver</h2></div></div>
+      <details open><summary>Release readiness, checks, rights and Record Passport</summary><StudioDeliver projectId={projectId} data={data} reload={reload} /></details>
+    </section>}
+  </div>
+}
+
+function SavedProcessingIntent({ projectId }: { projectId: string }) {
+  const state = useAsync(() => studioApi.racks(projectId), [projectId])
+  return <AsyncBlock state={state}>{payload => payload.racks.length === 0
+    ? <Empty>No saved processing intent on this Studio project yet. This view does not process audio.</Empty>
+    : <div className="sl-intent-list">{payload.racks.map(item => <Card key={item.chain.id} title={item.chain.name}>
+        <p>{item.chain.rackType.replace(/_/g, ' ')} · saved intent only</p>
+        <ol>{item.modules.map((module, index) => <li key={`${item.chain.id}-${index}`}>{module.moduleType.replace(/_/g, ' ')}{module.bypassed ? ' · bypassed' : ''}</li>)}</ol>
+      </Card>)}</div>}
+  </AsyncBlock>
 }
 
 // ---------------------------------------------------------------------------

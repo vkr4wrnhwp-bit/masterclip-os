@@ -91,6 +91,8 @@
     "@masterclip/song-feature-vectors": "workspace:*",
     "@masterclip/song-lab-domain": "workspace:*",
     "@masterclip/song-lab-engine": "workspace:*",
+    "@masterclip/song-journey-domain": "workspace:*",
+    "@masterclip/song-journey-engine": "workspace:*",
     "@masterclip/song-structure": "workspace:*",
     "@masterclip/studio-domain": "workspace:*",
     "@masterclip/studio-engine": "workspace:*",
