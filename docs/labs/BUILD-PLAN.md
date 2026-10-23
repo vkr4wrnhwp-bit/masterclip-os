@@ -113,10 +113,13 @@ All production controls require an implemented outcome and honest error state.
 6. Owner reviews evidence and each PR before rollout. Never self-merge. Rollback
    changes the entry switch, not stored files/history or a completed provider job.
 
-Phase 0 validation is limited to source/hash inspection, document/link/HTML/CSS
-checks and static JavaScript parsing. It does not claim the three existing apps
-or new proposed integrations passed a runtime suite. Browser rendering and live
-device QA remain required review evidence before an implementation is accepted.
+Phase 0 validation includes source/hash inspection, document/link/HTML/CSS checks,
+static JavaScript parsing and rendered Chromium checks of all ten mockups at
+375px and 1440px, with disclosures collapsed and expanded. Home/song/Stage
+keyboard focus and the sample A/B/navigation paths were checked too. See
+VALIDATION.md. This does not establish physical iPhone/Safari, hardware playback,
+or runtime correctness of the three apps or the proposed integrations. Those
+checks remain required before an implementation is accepted.
 
 ## Claude-ready MVP implementation brief
 
