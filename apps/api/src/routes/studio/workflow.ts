@@ -1,3 +1,4 @@
+import { SongLabHandoffs } from '../../song-lab-handoffs.js'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
@@ -320,15 +321,15 @@ export async function registerStudioWorkflowRoutes(app: FastifyInstance, runtime
     const { id } = request.params as { id: string }
     const actor = await requireStudio(runtime, request, 'studio.deliver', { project: { id, permission: 'upload' } })
     const body = z.object({ versionId: z.string().min(1), assetKind: z.enum(DELIVERABLE_KINDS), fileName: z.string().max(200).optional() }).parse(request.body)
-    return {
-      deliverable: await studio.delivery.createDeliverable({
-        actor,
-        projectId: id,
-        versionId: body.versionId,
-        assetKind: body.assetKind,
-        ...(body.fileName ? { fileName: body.fileName } : {}),
-      }),
+    const deliverable = await studio.delivery.createDeliverable({
+      actor, projectId: id, versionId: body.versionId, assetKind: body.assetKind,
+      ...(body.fileName ? { fileName: body.fileName } : {}),
+    })
+    if (runtime.config.SONG_LAB_SUITE_ENABLED && runtime.config.SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED && deliverable.assetId) {
+      const handoffs = new SongLabHandoffs(runtime)
+      await handoffs.saveAsset(actor.orgId, await handoffs.identity(request), deliverable.assetId)
     }
+    return { deliverable }
   })
 
   app.post('/api/studio/projects/:id/deliverables/:deliverableId/check', async (request) => {

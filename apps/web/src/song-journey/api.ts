@@ -22,7 +22,7 @@ export interface JourneyLinkRow {
   studioVersions: Array<{ id: string; label: string; createdAt: string }>
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase()
   const match = document.cookie.match(/(?:^|;\s*)masterclip_csrf=([^;]*)/)
   const token = method === 'GET' || method === 'HEAD' ? '' : match?.[1] ? decodeURIComponent(match[1]) : ''
