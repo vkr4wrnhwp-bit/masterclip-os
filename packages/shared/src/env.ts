@@ -187,6 +187,10 @@ const EnvSchema = z.object({
   SONG_LAB_SUITE_LINKED_RECORDS_ENABLED: bool(false),
   /** Stage room entry into the existing Live Lab; off means no door or route. */
   STAGE_LIVE_LAB_ENABLED: bool(false),
+  SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED: bool(false),
+  SONG_LAB_SUITE_RACK_HANDOFF_ENABLED: bool(false),
+  SONG_LAB_SUITE_RACK_URL: z.string().default(''),
+  SONG_LAB_SUITE_HANDOFF_SIGNING_KEY: z.string().default(''),
   SUITE_SSO_SECRET_SONG_LAB: z.string().default(''),
   STREET_BANKER_URL: z.string().url().default('https://app.streetbankermusic.com'),
   SONG_LAB_ENABLED: bool(true),
@@ -357,6 +361,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env, force = fals
     'S3_SECRET_ACCESS_KEY',
     'SESSION_SECRET',
     'SUITE_SSO_SECRET_SONG_LAB',
+    'SONG_LAB_SUITE_HANDOFF_SIGNING_KEY',
     'ASSET_SIGNING_SECRET',
     'WEBHOOK_SECRET',
     'SECRETS_ENCRYPTION_KEY',

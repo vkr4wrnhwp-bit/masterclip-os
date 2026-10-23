@@ -118,7 +118,7 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
 
   app.addHook('preHandler', async (request, reply) => {
     const path = request.url.split('?')[0] ?? ''
-    if (!path.startsWith('/api/') || ['/api/health', '/api/song-lab-suite'].includes(path)) return
+    if (!path.startsWith('/api/') || ['/api/health', '/api/song-lab-suite', '/api/webhooks/song-lab-rack'].includes(path)) return
     if (path === '/api/auth/login' || path === '/api/auth/signup') return refusal(reply, 401)
     if (path === '/api/auth/logout') {
       await runtime.db.run('DELETE FROM song_lab_suite_sessions WHERE token_hash = ?', [sha256Hex(request.cookies[SESSION_COOKIE] ?? '')])

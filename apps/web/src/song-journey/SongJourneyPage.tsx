@@ -6,6 +6,7 @@ import { SongLabProject } from '../song-lab/SongLabProject.js'
 import { studioApi } from '../studio/api.js'
 import { StudioProject } from '../studio/StudioProject.js'
 import { songJourneyApi, type JourneyLinkRow } from './api.js'
+import { SuiteHandoffs } from './SuiteHandoffs.js'
 import { InstrumentDeck } from './InstrumentDeck.js'
 import './song-journey.css'
 
@@ -117,9 +118,9 @@ export function SongJourneyPage() {
       {ready ? <>
         <section id="journey-step-1" className="sl-journey-step"><div className="sl-step-heading"><span>02</span><div><p>MEASURED FROM THE SELECTED SONG VERSION</p><h2>Understand</h2></div></div><InstrumentDeck songId={song.id} songVersionId={songVersionId} studioId={studio.id} studioVersionId={studioVersionId} /><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="understand" /></section>
         <section id="journey-step-2" className="sl-journey-step"><div className="sl-step-heading"><span>03</span><div><p>CHOOSE WHAT TO TEST</p><h2>Decide</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="decide" /></section>
-        <section id="journey-step-3" className="sl-journey-step"><div className="sl-step-heading"><span>04</span><div><p>STUDIO MEASUREMENTS · SELECTED VERSION</p><h2>Finish</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="finish" /></section>
+        <section id="journey-step-3" className="sl-journey-step"><div className="sl-step-heading"><span>04</span><div><p>STUDIO MEASUREMENTS · SELECTED VERSION</p><h2>Finish</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="finish" /><SuiteHandoffs linkId={active.link.id} versionId={songVersionId} /></section>
         <section id="journey-step-4" className="sl-journey-step"><div className="sl-step-heading"><span>05</span><div><p>COMPARE THE EXACT VERSIONS</p><h2>Approve</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="approve" /><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="approve" /></section>
-        <section id="journey-step-5" className="sl-journey-step"><div className="sl-step-heading"><span>06</span><div><p>CHECKS AND SOURCE HISTORY</p><h2>Deliver</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="deliver" /><div className="sl-vault-truth"><strong>Vault hand-off</strong><p>Not connected yet. New files and saves stay in Song Lab for now; nothing here has been sent to the Street Banker Vault.</p></div></section>
+        <section id="journey-step-5" className="sl-journey-step"><div className="sl-step-heading"><span>06</span><div><p>CHECKS AND SOURCE HISTORY</p><h2>Deliver</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="deliver" /><div className="sl-vault-truth"><strong>Vault hand-off</strong><p>Save the chosen version through the Vault control in Finish. A completed Rack receipt names the actual saved Vault version and its verified checksum. When the hand-off is off, nothing is sent.</p></div></section>
       </> : <div className="sl-journey-locked">Choose both source versions above to load Understand, Decide, Finish, Approve and Deliver for this record.</div>}
     </>}
   </div>
