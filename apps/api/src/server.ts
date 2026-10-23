@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import cookie from '@fastify/cookie'
 import multipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { AppError, asAppError, httpStatusFor, type Logger } from '@masterclip/shared'
 import type { Runtime } from '@masterclip/runtime'
@@ -15,13 +15,14 @@ import { registerLiveLabRoutes } from './routes/live-lab.js'
 import { registerSongLabRoutes } from './routes/song-lab/index.js'
 import { registerStudioRoutes } from './routes/studio/index.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
+import { registerSongLabSuite } from './song-lab-suite.js'
 import { registerCsrf } from './security/csrf.js'
 
 export const SESSION_COOKIE = 'masterclip_session'
 
 declare module 'fastify' {
   interface FastifyRequest {
-    auth?: { userId: string; orgId: string; email: string; displayName: string; orgRole: string }
+    auth?: { userId: string; orgId: string; email: string; displayName: string; orgRole: string; suiteSeatAccess?: 'read' | 'edit' }
   }
 }
 
@@ -104,7 +105,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     }
     const indexPath = opts.webRoot ? join(opts.webRoot, 'index.html') : null
     if (indexPath && existsSync(indexPath)) {
-      void reply.type('text/html').sendFile('index.html')
+      void reply.type('text/html').send(shellIndex(indexPath, runtime.config.SONG_LAB_SUITE_ENABLED))
       return
     }
     void reply.status(404).send({ error: { kind: 'not_found', code: 'route', message: 'not found' } })
@@ -125,6 +126,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     time: runtime.clock.isoNow(),
   }))
 
+  await registerSongLabSuite(app, runtime)
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
   await registerAssetRoutes(app, runtime)
@@ -135,6 +137,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerLiveLabRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
+    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED)))
     await app.register(fastifyStatic, { root: resolve(opts.webRoot), prefix: '/' })
   }
 
@@ -180,4 +183,9 @@ export async function requireProject(
 
 export function sendError(reply: FastifyReply, error: AppError): void {
   void reply.status(httpStatusFor(error.kind)).send(error.toJSON())
+}
+
+/** Cache the correct entry choice with the HTML, including an offline Live Lab reload. */
+function shellIndex(path: string, enabled: boolean): string {
+  return readFileSync(path, 'utf8').replace('<head>', `<head><script>window.__SONG_LAB_SUITE_ENABLED__=${enabled ? 'true' : 'false'}</script>`)
 }

@@ -117,6 +117,8 @@ export function registerCsrf(app: FastifyInstance, runtime: Runtime): void {
     // Decoded the same way the router decodes it, so a percent-encoded path
     // cannot make a protected route look like an exempt one.
     const path = routedPath(request.url)
+    // The posted suite handoff has a signed token and a browser-bound state.
+    if (runtime.config.SONG_LAB_SUITE_ENABLED && path === '/auth/street-banker') return
     if (EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix))) return
 
     const sessionToken = request.cookies[SESSION_COOKIE]

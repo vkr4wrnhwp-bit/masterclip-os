@@ -31,6 +31,7 @@ export async function requireStudio(
     orgRole: auth.orgRole,
     email: auth.email,
     displayName: auth.displayName,
+    suiteSeatAccess: auth.suiteSeatAccess,
   }
   await runtime.studio.access.authorize({ capability, actor, ...opts })
   return actor

@@ -112,6 +112,8 @@ export interface StudioDeps {
 }
 
 export interface Actor {
+  /** Verified parent Studio-room seat; never read from a request body. */
+  suiteSeatAccess?: 'read' | 'edit'
   userId: string
   orgId: string
   orgRole: string

@@ -2865,4 +2865,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_studio_provenance_seq ON studio_provenance
 CREATE INDEX IF NOT EXISTS idx_studio_provenance_subject ON studio_provenance_events(org_id, subject_type, subject_id);
 `,
   },
+  {
+    id: '0013_song_lab_suite_sessions',
+    sql: `
+CREATE TABLE IF NOT EXISTS song_lab_suite_nonces (nonce_hash TEXT PRIMARY KEY, used_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS song_lab_suite_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  org_id TEXT NOT NULL REFERENCES orgs(id),
+  tenant_uid TEXT NOT NULL,
+  email TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  access_mode TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+`,
+  },
 ]

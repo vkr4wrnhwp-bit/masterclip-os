@@ -60,6 +60,7 @@ export class SongLabAccessControl {
   }
 
   async isFlagship(orgId: string): Promise<boolean> {
+    if (this.config.SONG_LAB_SUITE_ENABLED) return false
     return orgId === (await this.flagshipOrgId())
   }
 
