@@ -1,4 +1,5 @@
 import React from 'react'
+import { SongLabSuite } from './song-journey/SongLabSuite.js'
 import { MotionChrome, MotionGuidanceContext } from './SuiteChrome.js'
 import { ApiError, api, type User } from './api.js'
 import { Callout, Card, Field, useAsync } from './ui.jsx'
@@ -151,6 +152,22 @@ function rememberedUser(): User | null {
 }
 
 export function App() {
+  const [bootError, setBootError] = React.useState(false)
+  const [enabled, setEnabled] = React.useState<boolean | null>(() => (window as unknown as { __SONG_LAB_SUITE_ENABLED__?: boolean }).__SONG_LAB_SUITE_ENABLED__ ?? null)
+  React.useEffect(() => {
+    if (enabled !== null) return
+    // Choose the shell before mounting legacy identity/storage behavior.
+    fetch('/api/song-lab-suite', { credentials: 'same-origin' })
+      .then(r => { if (!r.ok) throw new Error('configuration unavailable'); return r.json() })
+      .then(r => setEnabled(r.enabled === true))
+      .catch(() => setBootError(true))
+  }, [])
+  if (bootError) return <div className="spinner">Cannot reach Street Banker access. Reconnect and reload.</div>
+  if (enabled === null) return <div className="spinner">Loading…</div>
+  return enabled ? <SongLabSuite /> : <LegacyApp />
+}
+
+export function LegacyApp() {
   const route = useRoute()
   const [user, setUser] = React.useState<User | null>(null)
   const [checking, setChecking] = React.useState(true)

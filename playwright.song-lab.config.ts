@@ -1,0 +1,3 @@
+import { defineConfig } from '@playwright/test'
+import base from './playwright.config.js'
+export default defineConfig({ ...base, webServer: { ...base.webServer as object, command: 'node scripts/song-lab-e2e-server.mjs' }, projects: base.projects?.map(project => ({ ...project, use: { ...project.use, launchOptions: { ...project.use?.launchOptions, args: process.env.SONG_LAB_BROWSER_SINGLE_PROCESS ? ['--single-process', '--no-zygote', '--in-process-gpu', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [] } } })), testMatch: '**/song-lab-shell.spec.ts', use: { ...base.use, screenshot: 'off', trace: 'off', video: 'off' } })

@@ -32,6 +32,11 @@ const credentials = passwordIsPublic ? `${EMAIL} / ${PASSWORD}` : `${EMAIL} (pas
 
 async function main(): Promise<void> {
   const runtime = await createRuntime()
+  if (runtime.config.SONG_LAB_SUITE_ENABLED) {
+    console.log('Song Lab suite: schema ready; accounts arrive through Street Banker only')
+    await runtime.close()
+    return
+  }
 
   const existingUser = await runtime.db.get<{ id: string; org_id: string }>('SELECT id, org_id FROM users WHERE email = ?', [EMAIL])
   let orgId: string

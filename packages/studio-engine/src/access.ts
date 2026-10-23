@@ -115,7 +115,10 @@ export class StudioAccessControl {
     let collaboratorMessage = 'ok'
     if (opts.project) {
       const administers = (ROLE_RANK[opts.actor.orgRole] ?? 0) >= ROLE_RANK.admin
-      if (!administers) {
+      if (this.config.SONG_LAB_SUITE_ENABLED && opts.actor.suiteSeatAccess) {
+        collaboratorOk = opts.actor.suiteSeatAccess === 'edit' || opts.project.permission === 'view'
+        collaboratorMessage = collaboratorOk ? 'ok' : 'this team seat is read-only'
+      } else if (!administers) {
         const held = await this.collaborators.permissionsFor(opts.actor.orgId, opts.project.id, opts.actor.userId, opts.actor.email ?? '')
         // An admin permission subsumes the rest — otherwise the person who set
         // the project up would have to grant themselves each one by hand.
@@ -187,6 +190,7 @@ export class StudioAccessControl {
    * projects whether or not somebody remembered to invite them.
    */
   async projectPermissionsFor(actor: Actor, projectId: string): Promise<CollaboratorPermission[]> {
+    if (this.config.SONG_LAB_SUITE_ENABLED && actor.suiteSeatAccess) return actor.suiteSeatAccess === 'read' ? ['view'] : ['view', 'comment', 'upload', 'approve', 'download', 'admin']
     if ((ROLE_RANK[actor.orgRole] ?? 0) >= ROLE_RANK.admin) return ['view', 'comment', 'upload', 'approve', 'download', 'admin']
     return this.collaborators.permissionsFor(actor.orgId, projectId, actor.userId, actor.email ?? '')
   }

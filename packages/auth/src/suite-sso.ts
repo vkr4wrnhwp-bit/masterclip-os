@@ -1,0 +1,139 @@
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { inflateSync } from 'node:zlib'
+
+/**
+ * Street Banker's suite sign-in hand-off, verifier side.
+ *
+ * Street Banker (app.streetbankermusic.com) is the account of record for every
+ * suite. It sends the person across with a short-lived signed token; this
+ * module checks that token. The token is minted in Python by itsdangerous'
+ * URLSafeTimedSerializer (sb_suite_sso.py), so the wire format here is that
+ * library's, reproduced exactly:
+ *
+ *   [.]base64url(payload) . base64url(timestamp) . base64url(HMAC-SHA1)
+ *
+ * a leading "." means the JSON payload is zlib-compressed; the timestamp is
+ * big-endian seconds since the epoch; the key is SHA1(salt + "signer" + secret)
+ * and the signature covers "payload.timestamp".
+ */
+export const SUITE_SSO_SALT = 'street-banker-suite-sso-v1'
+export const SUITE_SSO_MAX_AGE_SECONDS = 120
+
+export type HandoffRejection = 'no token' | 'bad signature' | 'expired' | 'wrong suite' | 'malformed'
+
+export class HandoffRejected extends Error {
+  constructor(readonly reason: HandoffRejection) {
+    super(`hand-off rejected: ${reason}`)
+  }
+}
+
+export interface HandoffIdentity {
+  uid: string
+  email: string
+  name: string
+  plan: string
+  suite: string
+  nonce: string
+  state: string
+  seat?: { seat_id: string; artist_uid: string; artist_plan: string; rooms: string[] | "all"; access: "read" | "edit" }
+}
+
+/**
+ * The key a person's own suite workspace is filed under. Street Banker's user
+ * id when the token carries one, because an email can change hands; the
+ * lowercased email otherwise.
+ */
+export function workspaceKey(who: Pick<HandoffIdentity, 'uid' | 'email'>): string {
+  const uid = who.uid.trim()
+  return uid ? `uid:${uid}` : `email:${who.email.trim().toLowerCase()}`
+}
+
+const fromB64Url =(value: string): Buffer => Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+const toB64Url = (value: Buffer): string => value.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+
+/**
+ * The proof a suite brings to Street Banker's /suites/token to reach the
+ * artist's Vault (vault_doors_api.check_proof). Same itsdangerous wire format
+ * as the hand-off, its own salt, good for 120 seconds. Signed with the key the
+ * hand-off is checked with, which Street Banker holds for the named suite.
+ */
+export const SUITE_PROOF_SALT = 'street-banker-suite-proof-v1'
+
+export function signSuiteProof(
+  input: { email: string; uid?: string; suite: string; scope: 'read' | 'deliver'; nonce: string },
+  secret: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): string {
+  const payload = {
+    v: 1,
+    uid: input.uid ?? '',
+    email: input.email.trim().toLowerCase(),
+    suite: input.suite,
+    scope: input.scope,
+    nonce: input.nonce,
+    iat: nowSeconds,
+  }
+  const body = toB64Url(Buffer.from(JSON.stringify(payload), 'utf8'))
+  const bytes: number[] = []
+  for (let n = nowSeconds; n > 0; n = Math.floor(n / 256)) bytes.unshift(n % 256)
+  const signed = `${body}.${toB64Url(Buffer.from(bytes))}`
+  const key = createHash('sha1').update(`${SUITE_PROOF_SALT}signer${secret}`).digest()
+  return `${signed}.${toB64Url(createHmac('sha1', key).update(signed).digest())}`
+}
+
+export function verifyHandoff(
+  token: string | undefined,
+  secret: string,
+  acceptedSuites: readonly string[],
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): HandoffIdentity {
+  if (!secret || !token || token.length > 16384) throw new HandoffRejected('no token')
+  const lastDot = token.lastIndexOf('.')
+  const signed = token.slice(0, lastDot)
+  const stampDot = signed.lastIndexOf('.')
+  if (lastDot < 1 || stampDot < 1) throw new HandoffRejected('bad signature')
+
+  const key = createHash('sha1').update(`${SUITE_SSO_SALT}signer${secret}`).digest()
+  const expected = createHmac('sha1', key).update(signed).digest()
+  const given = fromB64Url(token.slice(lastDot + 1))
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw new HandoffRejected('bad signature')
+  // Round-trip the signature so a non-canonical base64 spelling is refused too.
+  if (toB64Url(given) !== token.slice(lastDot + 1)) throw new HandoffRejected('bad signature')
+
+  const stamp = fromB64Url(signed.slice(stampDot + 1))
+  let issued = 0
+  for (const byte of stamp) issued = issued * 256 + byte
+  if (nowSeconds - issued > SUITE_SSO_MAX_AGE_SECONDS || issued - nowSeconds > 30) throw new HandoffRejected('expired')
+
+  let body = signed.slice(0, stampDot)
+  let payload: Record<string, unknown>
+  try {
+    const compressed = body.startsWith('.')
+    if (compressed) body = body.slice(1)
+    const raw = compressed ? inflateSync(fromB64Url(body), { maxOutputLength: 16384 }) : fromB64Url(body)
+    payload = JSON.parse(raw.toString('utf8')) as Record<string, unknown>
+  } catch {
+    throw new HandoffRejected('malformed')
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new HandoffRejected('malformed')
+  const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : ''
+  const suite = typeof payload.suite === 'string' ? payload.suite : ''
+  if (payload.v !== 1 || !email.includes('@')) throw new HandoffRejected('malformed')
+  if (typeof payload.uid !== 'string' || !payload.uid.trim() || typeof payload.nonce !== 'string' || !payload.nonce.trim()) throw new HandoffRejected('malformed')
+  if (payload.acting !== undefined) throw new HandoffRejected('malformed')
+  if (payload.seat !== undefined) {
+    const seat = payload.seat as HandoffIdentity['seat']
+    if (!seat || typeof seat.seat_id !== 'string' || !seat.seat_id || typeof seat.artist_uid !== 'string' || !seat.artist_uid || typeof seat.artist_plan !== 'string' || !['read', 'edit'].includes(seat.access) || !(seat.rooms === 'all' || Array.isArray(seat.rooms) && seat.rooms.every(r => typeof r === 'string'))) throw new HandoffRejected('malformed')
+  }
+  if (!acceptedSuites.includes(suite)) throw new HandoffRejected('wrong suite')
+  return {
+    uid: String(payload.uid ?? ''),
+    email,
+    name: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : email.split('@')[0]!,
+    plan: typeof payload.plan === 'string' ? payload.plan : '',
+    suite,
+    nonce: payload.nonce as string,
+    state: typeof payload.state === "string" ? payload.state : "",
+    ...(payload.seat ? { seat: payload.seat as NonNullable<HandoffIdentity["seat"]> } : {}),
+  }
+}
