@@ -185,6 +185,8 @@ const EnvSchema = z.object({
   SONG_LAB_SUITE_ENABLED: bool(false),
   SONG_LAB_SUITE_SUITE_SSO_ENABLED: bool(false),
   SONG_LAB_SUITE_LINKED_RECORDS_ENABLED: bool(false),
+  /** Stage room entry into the existing Live Lab; off means no door or route. */
+  STAGE_LIVE_LAB_ENABLED: bool(false),
   SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED: bool(false),
   SONG_LAB_SUITE_RACK_HANDOFF_ENABLED: bool(false),
   SONG_LAB_SUITE_RACK_URL: z.string().default(''),

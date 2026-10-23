@@ -21,14 +21,14 @@ function mint(payload: Record<string, unknown>, age = 0, secret = SECRET) {
   return `${signed}.${createHmac('sha1', key).update(signed).digest('base64url')}`
 }
 let db: Db, runtime: Runtime, app: FastifyInstance, root: string
-async function boot(enabled = true, sso = true) {
+async function boot(enabled = true, sso = true, live = false) {
   db = await createTestDb(); root = await mkdtemp(join(tmpdir(), 'songlab-suite-'))
-  const config = loadConfig({ NODE_ENV: 'test', SONG_LAB_SUITE_ENABLED: enabled ? '1' : '0', SONG_LAB_SUITE_SUITE_SSO_ENABLED: sso ? '1' : '0', SUITE_SSO_SECRET_SONG_LAB: SECRET, SESSION_SECRET: 'fixture-session', ASSET_SIGNING_SECRET: 'fixture-storage', RATE_LIMIT_ENABLED: '0' }, true)
+  const config = loadConfig({ NODE_ENV: 'test', SONG_LAB_SUITE_ENABLED: enabled ? '1' : '0', SONG_LAB_SUITE_SUITE_SSO_ENABLED: sso ? '1' : '0', STAGE_LIVE_LAB_ENABLED: live ? '1' : '0', SUITE_SSO_SECRET_SONG_LAB: SECRET, SESSION_SECRET: 'fixture-session', ASSET_SIGNING_SECRET: 'fixture-storage', RATE_LIMIT_ENABLED: '0' }, true)
   runtime = await createRuntime({ config, db, logger: silentLogger, mockOnly: true, storage: new LocalStorage({ root, signingSecret: 'fixture-storage' }) })
   app = await buildServer({ runtime }); await app.ready()
 }
-async function arrival(payload: Record<string, unknown> = {}, age = 0, secret = SECRET) {
-  const start = await app.inject({ url: '/login' })
+async function arrival(payload: Record<string, unknown> = {}, age = 0, secret = SECRET, entry: 'song' | 'live' = 'song') {
+  const start = await app.inject({ url: entry === 'live' ? '/login?entry=live' : '/login' })
   const state = new URL(start.headers.location!).searchParams.get('state')!
   const cookie = start.cookies.find(c => c.name === 'song_lab_signin_state')!
   const token = mint({ state, ...payload }, age, secret)
@@ -47,6 +47,35 @@ describe('Song Lab suite server boundary', () => {
       expect(songs.statusCode).toBe(200)
       expect((await app.inject({ url: '/api/studio/projects', headers: { cookie: `masterclip_session=${session}` } })).statusCode).toBe(200)
     }
+  })
+  it('opens the existing Live Lab from a Stage seat with only Stage scoped routes', async () => {
+    await app.close(); await runtime.close(); if (root) await rm(root, { recursive: true, force: true })
+    await boot(true, true, true)
+    const seat = { seat_id: 'stage-seat', artist_uid: 'stage-owner', artist_plan: 'pro', rooms: ['stage'], access: 'edit' }
+    const { result, session } = await arrival({ uid: 'stage-performer', plan: 'fan', seat }, 0, SECRET, 'live')
+    expect(result.statusCode).toBe(303)
+    expect(result.headers.location).toBe('/#/live-lab')
+    const cookie = { cookie: `masterclip_session=${session}` }
+    expect((await app.inject({ url: '/api/live-lab/projects', headers: cookie })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/projects', headers: cookie })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: '/api/live-lab/projects/live-1/import-release', headers: cookie, payload: { sourceProjectId: 'release-1' } })).statusCode).toBe(403)
+    expect((await app.inject({ url: '/api/studio/projects', headers: cookie })).statusCode).toBe(403)
+    expect((await app.inject({ method: 'POST', url: '/api/projects', headers: cookie, payload: { name: 'Cross-room write' } })).statusCode).toBe(403)
+    const access = (await app.inject({ url: '/api/song-lab-suite', headers: cookie })).json()
+    expect(access.entryMode).toBe('live'); expect(access.sourceLibraryEnabled).toBe(false)
+    const releaseSeat = { ...seat, seat_id: 'stage-and-release-seat', rooms: ['stage', 'releases'] }
+    const withReleases = await arrival({ uid: 'stage-performer-with-releases', plan: 'fan', seat: releaseSeat }, 0, SECRET, 'live')
+    expect(withReleases.result.statusCode).toBe(303)
+    const releaseCookie = { cookie: `masterclip_session=${withReleases.session}` }
+    expect((await app.inject({ url: '/api/projects', headers: releaseCookie })).statusCode).toBe(200)
+    expect((await app.inject({ url: '/api/song-lab-suite', headers: releaseCookie })).json().sourceLibraryEnabled).toBe(true)
+  })
+  it('keeps Live set opt-in and refuses seats without Stage', async () => {
+    expect((await app.inject({ url: '/login?entry=live' })).statusCode).toBe(404)
+    await app.close(); await runtime.close(); if (root) await rm(root, { recursive: true, force: true })
+    await boot(true, true, true)
+    const studioSeat = { seat_id: 'studio-seat', artist_uid: 'studio-owner', artist_plan: 'pro', rooms: ['studio'], access: 'edit' }
+    expect((await arrival({ uid: 'studio-performer', seat: studioSeat }, 0, SECRET, 'live')).result.statusCode).toBe(403)
   })
   it.each(['artist', 'fan', '', 'unknown'])('locks %s on the server with an upgrade door', async plan => {
     const { result, session } = await arrival({ plan })

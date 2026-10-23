@@ -8,9 +8,9 @@ import { liveApi } from './api.js'
  * Live Lab home: build a live set from what the artist already has, and get
  * back into recent shows fast.
  */
-export function LiveLabHome() {
+export function LiveLabHome({ canImportRelease = true }: { canImportRelease?: boolean }) {
   const projects = useAsync(() => liveApi.projects(), [])
-  const sources = useAsync(() => api.projects(), [])
+  const sources = useAsync(() => canImportRelease ? api.projects() : Promise.resolve({ projects: [] }), [canImportRelease])
   const [mode, setMode] = React.useState<'none' | 'blank' | 'import' | 'duplicate'>('none')
   const [name, setName] = React.useState('')
   const [tempo, setTempo] = React.useState('120')
@@ -47,9 +47,9 @@ export function LiveLabHome() {
 
       <Card title="BUILD MY LIVE SET">
         <div className="button-row" style={{ marginBottom: 12 }}>
-          <button className={mode === 'import' ? 'primary' : ''} onClick={() => setMode('import')}>
+          {canImportRelease && <button className={mode === 'import' ? 'primary' : ''} onClick={() => setMode('import')}>
             Import Street Banker release
-          </button>
+          </button>}
           <button className={mode === 'blank' ? 'primary' : ''} onClick={() => setMode('blank')}>
             Start from blank set
           </button>
@@ -63,7 +63,7 @@ export function LiveLabHome() {
         {mode !== 'none' && (
           <div>
             <Field label="Set name">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fall Tour 2026" />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Fall Festival 2026" />
             </Field>
             <Field label="Master tempo (BPM)">
               <input value={tempo} onChange={(e) => setTempo(e.target.value)} style={{ width: 90 }} />
