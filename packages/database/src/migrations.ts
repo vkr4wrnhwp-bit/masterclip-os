@@ -2881,4 +2881,28 @@ CREATE TABLE IF NOT EXISTS song_lab_suite_sessions (
 );
 `,
   },
+  {
+    id: '0014_song_journey_links',
+    sql: `
+-- Song Lab and Studio remain independently-owned records. This table stores
+-- only their IDs and explicit version selections; it never copies source data.
+CREATE TABLE IF NOT EXISTS song_journey_links (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id),
+  song_lab_project_id TEXT NOT NULL REFERENCES song_lab_projects(id),
+  studio_project_id TEXT NOT NULL REFERENCES studio_projects(id),
+  source_kind TEXT NOT NULL,
+  selected_song_version_id TEXT,
+  selected_studio_version_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  unlinked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_song_journey_links_org ON song_journey_links(org_id, unlinked_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_song_journey_links_song ON song_journey_links(org_id, song_lab_project_id, unlinked_at);
+CREATE INDEX IF NOT EXISTS idx_song_journey_links_studio ON song_journey_links(org_id, studio_project_id, unlinked_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_song_journey_links_active_pair ON song_journey_links(org_id, song_lab_project_id, studio_project_id) WHERE unlinked_at IS NULL;
+`,
+  },
 ]

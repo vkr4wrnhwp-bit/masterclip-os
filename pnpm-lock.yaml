@@ -137,6 +137,12 @@ importers:
       '@masterclip/song-feature-vectors':
         specifier: workspace:*
         version: link:packages/song-feature-vectors
+      '@masterclip/song-journey-domain':
+        specifier: workspace:*
+        version: link:packages/song-journey-domain
+      '@masterclip/song-journey-engine':
+        specifier: workspace:*
+        version: link:packages/song-journey-engine
       '@masterclip/song-lab-domain':
         specifier: workspace:*
         version: link:packages/song-lab-domain
@@ -285,6 +291,12 @@ importers:
       '@masterclip/song-feature-vectors':
         specifier: workspace:*
         version: link:../../packages/song-feature-vectors
+      '@masterclip/song-journey-domain':
+        specifier: workspace:*
+        version: link:../../packages/song-journey-domain
+      '@masterclip/song-journey-engine':
+        specifier: workspace:*
+        version: link:../../packages/song-journey-engine
       '@masterclip/song-lab-domain':
         specifier: workspace:*
         version: link:../../packages/song-lab-domain
@@ -294,6 +306,9 @@ importers:
       '@masterclip/song-structure':
         specifier: workspace:*
         version: link:../../packages/song-structure
+      '@masterclip/studio-domain':
+        specifier: workspace:*
+        version: link:../../packages/studio-domain
 
   apps/cli:
     dependencies:
@@ -854,6 +869,33 @@ importers:
       '@masterclip/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/song-journey-domain:
+    dependencies:
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/song-journey-engine:
+    dependencies:
+      '@masterclip/database':
+        specifier: workspace:*
+        version: link:../database
+      '@masterclip/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@masterclip/song-journey-domain':
+        specifier: workspace:*
+        version: link:../song-journey-domain
+      '@masterclip/song-lab-domain':
+        specifier: workspace:*
+        version: link:../song-lab-domain
+      '@masterclip/studio-domain':
+        specifier: workspace:*
+        version: link:../studio-domain
 
   packages/song-lab-domain:
     dependencies:

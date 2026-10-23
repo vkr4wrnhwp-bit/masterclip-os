@@ -81,7 +81,8 @@ export async function registerSongLabBenchmarkRoutes(app: FastifyInstance, runti
     if (!project.selectedBenchmarkCohortId) {
       return { cohort: null, results: [], observations: [], lowSample: false, message: 'Select a comparison cohort to benchmark this song.' }
     }
-    const analysis = await currentAnalysis(runtime, actor.orgId, id)
+    const requestedVersionId = (request.query as { versionId?: string } | undefined)?.versionId
+    const analysis = await currentAnalysis(runtime, actor.orgId, id, requestedVersionId)
     const entitled = await songLab.access.entitledToProprietaryCohorts(actor.orgId)
     const cohort = await songLab.repos.cohorts.getForOrg(actor.orgId, project.selectedBenchmarkCohortId, entitled)
 

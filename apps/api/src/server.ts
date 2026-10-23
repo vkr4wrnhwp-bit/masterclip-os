@@ -16,6 +16,7 @@ import { registerSongLabRoutes } from './routes/song-lab/index.js'
 import { registerStudioRoutes } from './routes/studio/index.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
 import { registerSongLabSuite } from './song-lab-suite.js'
+import { registerSongJourneyRoutes } from './routes/song-journey.js'
 import { registerCsrf } from './security/csrf.js'
 
 export const SESSION_COOKIE = 'masterclip_session'
@@ -105,7 +106,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     }
     const indexPath = opts.webRoot ? join(opts.webRoot, 'index.html') : null
     if (indexPath && existsSync(indexPath)) {
-      void reply.type('text/html').send(shellIndex(indexPath, runtime.config.SONG_LAB_SUITE_ENABLED))
+      void reply.type('text/html').send(shellIndex(indexPath, runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED))
       return
     }
     void reply.status(404).send({ error: { kind: 'not_found', code: 'route', message: 'not found' } })
@@ -127,6 +128,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   }))
 
   await registerSongLabSuite(app, runtime)
+  await registerSongJourneyRoutes(app, runtime)
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
   await registerAssetRoutes(app, runtime)
@@ -137,7 +139,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerLiveLabRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
-    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED)))
+    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED)))
     await app.register(fastifyStatic, { root: resolve(opts.webRoot), prefix: '/' })
   }
 
@@ -186,6 +188,6 @@ export function sendError(reply: FastifyReply, error: AppError): void {
 }
 
 /** Cache the correct entry choice with the HTML, including an offline Live Lab reload. */
-function shellIndex(path: string, enabled: boolean): string {
-  return readFileSync(path, 'utf8').replace('<head>', `<head><script>window.__SONG_LAB_SUITE_ENABLED__=${enabled ? 'true' : 'false'}</script>`)
+function shellIndex(path: string, enabled: boolean, linkedRecordsEnabled: boolean): string {
+  return readFileSync(path, 'utf8').replace('<head>', `<head><script>window.__SONG_LAB_SUITE_ENABLED__=${enabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_LINKED_RECORDS_ENABLED__=${enabled && linkedRecordsEnabled ? 'true' : 'false'}</script>`)
 }

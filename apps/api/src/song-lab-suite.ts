@@ -34,7 +34,13 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
   const home = new URL(config.STREET_BANKER_URL).origin
   app.get('/api/song-lab-suite', async (_req, reply) => {
     void reply.header('cache-control', 'no-store')
-    return { enabled: config.SONG_LAB_SUITE_ENABLED, signIn: '/login', streetBankerUrl: home, suiteId: SONG_LAB_SUITE_ID }
+    return {
+      enabled: config.SONG_LAB_SUITE_ENABLED,
+      linkedRecordsEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED,
+      signIn: '/login',
+      streetBankerUrl: home,
+      suiteId: SONG_LAB_SUITE_ID,
+    }
   })
   if (!config.SONG_LAB_SUITE_ENABLED) return
 

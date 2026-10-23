@@ -46,8 +46,10 @@ function parseHash(): Route {
   const segments = (path ?? '').split('/').filter(Boolean)
   const params: Record<string, string> = {}
   for (const [key, value] of new URLSearchParams(query ?? '')) params[key] = value
+  if (segments[0] === 'song-journey') return { name: 'song-journey', params: { ...params, ...(segments[1] ? { journeyLinkId: segments[1] } : {}) } }
   if (segments.length === 0) return { name: 'dashboard', params }
   if (segments[0] === 'song-lab') {
+    if (segments[1] === 'library') return { name: 'song-lab', params: { ...params, legacy: 'true' } }
     if (segments[1] === 'new') return { name: 'song-lab-new', params }
     if (segments[1] === 'projects' && segments[2]) {
       // The tab is part of the path so a producer can link straight to, say,

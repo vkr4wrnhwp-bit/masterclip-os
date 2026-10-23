@@ -17,6 +17,7 @@ import {
 import {
   clock,
   seconds,
+  setSongJourneyVersion,
   songLabApi,
   type Measured,
   type ProducerFeatureRow,
@@ -32,14 +33,15 @@ import {
  * because burying forty raw features in front of an artist is how a diagnostic
  * tool stops being usable.
  */
-export function SongLabProject({ projectId, tab, canSeeAr }: { projectId: string; tab: string; canSeeAr: boolean }) {
-  const detail = useAsync(() => songLabApi.project(projectId), [projectId])
+export function SongLabProject({ projectId, tab, canSeeAr, journeyVersionId, journeyOnlyStep }: { projectId: string; tab: string; canSeeAr: boolean; journeyVersionId?: string; journeyOnlyStep?: 'understand' | 'decide' | 'approve' }) {
+  const detail = useAsync(() => songLabApi.project(projectId, journeyVersionId), [projectId, journeyVersionId])
+  React.useEffect(() => { setSongJourneyVersion(tab === 'journey' ? journeyVersionId ?? null : null) }, [tab, journeyVersionId])
 
   return (
     <AsyncBlock state={detail}>
       {(data) => (
         <>
-          <div className="topbar">
+          {tab !== 'journey' && <div className="topbar">
             <div>
               <h2>{data.project.title}</h2>
               <div className="meta">
@@ -53,9 +55,9 @@ export function SongLabProject({ projectId, tab, canSeeAr }: { projectId: string
                 Reanalyze with current engine
               </button>
             </div>
-          </div>
+          </div>}
 
-          <Tabs projectId={projectId} active={tab} extra={canSeeAr ? [{ key: 'ar', label: 'A&R' }] : []} />
+          {tab !== 'journey' && <Tabs projectId={projectId} active={tab} extra={canSeeAr ? [{ key: 'ar', label: 'A&R' }] : []} />}
 
           {data.project.status === 'analyzing' && (
             <Callout tone="info" title="Analysis running">
@@ -68,6 +70,7 @@ export function SongLabProject({ projectId, tab, canSeeAr }: { projectId: string
             </Callout>
           )}
 
+          {tab === 'journey' && <SongAnalysisJourney projectId={projectId} detail={data} reload={detail.reload} canSeeAr={canSeeAr} onlyStep={journeyOnlyStep} />}
           {tab === 'overview' && <OverviewTab projectId={projectId} detail={data} reload={detail.reload} />}
           {tab === 'structure' && <StructureTab projectId={projectId} />}
           {tab === 'hook' && <HookTab projectId={projectId} />}
@@ -84,6 +87,38 @@ export function SongLabProject({ projectId, tab, canSeeAr }: { projectId: string
       )}
     </AsyncBlock>
   )
+}
+
+function SongAnalysisJourney({ projectId, detail, reload, canSeeAr, onlyStep }: {
+  projectId: string
+  detail: Awaited<ReturnType<typeof songLabApi.project>>
+  reload: () => void
+  canSeeAr: boolean
+  onlyStep?: 'understand' | 'decide' | 'approve'
+}) {
+  return <div className="sl-song-panels">
+    {(!onlyStep || onlyStep === 'understand') && <section id="understand" className="sl-journey-step">
+      <div className="sl-step-heading"><span>02</span><div><p>READ THE RECORD</p><h2>Understand</h2></div></div>
+      <details open><summary>Waveform, structure and the selected version</summary><OverviewTab projectId={projectId} detail={detail} reload={reload} /></details>
+      <details><summary>Structure and section map</summary><StructureTab projectId={projectId} /></details>
+      <details><summary>Hook and title phrase</summary><HookTab projectId={projectId} /></details>
+      <details><summary>Lyrics and timing</summary><LyricsTab projectId={projectId} /></details>
+      <details><summary>Energy curve</summary><EnergyTab projectId={projectId} /></details>
+      <details><summary>Tempo, key and confidence</summary><TempoTab projectId={projectId} /></details>
+      <details><summary>Arrangement and tonal movement</summary><ArrangementTab projectId={projectId} /></details>
+    </section>}
+    {(!onlyStep || onlyStep === 'decide') && <section id="decide" className="sl-journey-step">
+      <div className="sl-step-heading"><span>03</span><div><p>CHOOSE THE MOVE</p><h2>Decide</h2></div></div>
+      <details open><summary>Experiments</summary><ExperimentsTab projectId={projectId} /></details>
+      <details><summary>Producer view</summary><ProducerTab projectId={projectId} /></details>
+      <details><summary>Benchmark and comparison groups</summary><BenchmarkTab projectId={projectId} /></details>
+      {canSeeAr && <details><summary>A&amp;R · permission gated</summary><ArTab projectId={projectId} /></details>}
+    </section>}
+    {(!onlyStep || onlyStep === 'approve') && <section id="approve-song" className="sl-journey-step">
+      <div className="sl-step-heading"><span>05</span><div><p>KEEP THE LINEAGE</p><h2>Song versions</h2></div></div>
+      <details><summary>Song Lab version history</summary><VersionsTab projectId={projectId} /></details>
+    </section>}
+  </div>
 }
 
 // ------------------------------------------------------------- overview ----
