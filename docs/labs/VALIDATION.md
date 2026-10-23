@@ -1,66 +1,86 @@
-# Street Banker Song Lab — Phase 0 revision validation
+# Street Banker Song Lab — Round 3 validation
 
-Validated 2026-10-23 for the owner’s PR 69 revision. This is documentation and
-static HTML only. The previous ten mockups have all been replaced in place;
-seven new screens and FEATURE-MAP.md extend the packet. The owner-selected
-public name is Street Banker Song Lab, monogram SL.
+Validated 2026-10-23 for PR 69. Documentation and static mockups only.
 
-## Actual result lines
+## Actual results
 
 ```text
-PASS: 17 self-contained HTML mockups; 532 local file/anchor references; inline JavaScript syntax; chrome, sample status, Stage exclusions and reduced motion.
-PASS: 78 named features, 100 source-panel anchors and 19 inventory surfaces mapped; exactly 10 propose picks retained.
-PASS: 588 existing repository files match main Git blob hashes; only docs/labs Markdown/HTML proposed.
-PASS: 68 Chromium layout cases (17 pages × 375/1440px × collapsed/expanded help); zero horizontal overflow, rendered text below 12px, control heights below 44px, or JavaScript errors.
-PASS: 12 keyboard cases (home/song/Stage and dedicated phone views × 375/1440px); Back link first, Enter-operated walkthrough/help and visible focus.
+PASS: 17 HTML mockups; exact 15-colour allowlist; zero hits for all eight owner-listed forbidden tokens across docs/labs.
+PASS: actual light-logo SVG geometry/lettering retained in every page; paint normalized to pure white; Archivo Google Fonts declarations present.
+PASS: FEATURE-MAP.md byte-identical; all 78 features and 100 source-panel anchors retain their destinations; 531 local links/anchors resolve.
+PASS: 588 existing repository source files unchanged; inline JavaScript parses; Stage exclusions and sample-only operation verified.
+PASS: 68 Chromium layout cases (17 pages × 1440/375px × closed/expanded help); zero issues.
+PASS: 12 keyboard cases; zero clipped instrument-axis labels.
 PASS: 6 sample interactions and persistent emergency bar
-PASS: immediate performance controls visible in the first 812px viewport at 375/1440px; emergency usable with preview lock; recovery heading clear of the sticky bar.
-PASS: instrument-axis clipping checks on Understand and finishing-brief pages at 375/1440px; zero clipped labels.
 ```
 
-## Final pre-review corrections
+## Browser matrix
 
-The feature map now separates existing local upload (Real) from the proposed
-V1 Vault picker/save connection (Stub/Not built), for 78 named capabilities.
-Live performance keeps previous/next song, click and synchronized preview lock
-with its persistent emergency bar. Phone header spacing is restored. These
-corrections are included in the result lines above.
+Every file was opened in Chromium 153 at both widths with help closed and expanded.
 
-## Method and limits
+| Mockup | 1440px | 375px |
+| --- | --- | --- |
+| benchmarks-ar.html | Pass | Pass |
+| collaborate.html | Pass | Pass |
+| delivery.html | Pass | Pass |
+| experiments-producer.html | Pass | Pass |
+| finishing-brief.html | Pass | Pass |
+| handoffs-records.html | Pass | Pass |
+| home.html | Pass | Pass |
+| live-midi-settings.html | Pass | Pass |
+| live-performance.html | Pass | Pass |
+| live.html | Pass | Pass |
+| phone-home.html | Pass | Pass |
+| phone-live.html | Pass | Pass |
+| phone-song.html | Pass | Pass |
+| rack.html | Pass | Pass |
+| song.html | Pass | Pass |
+| vault.html | Pass | Pass |
+| versions.html | Pass | Pass |
 
-Static checks parse every HTML page, verify every local file and fragment link,
-check all feature/source-panel destinations, parse inline JavaScript with Node,
-and compare existing source files to the audited main Git blobs. All committed
-paths are restricted to docs/labs Markdown and HTML. No screenshots, scripts,
-workflow files or secrets are included. Existing binary files are retained by
-building the revision on the current branch’s Git tree.
+Each layout case checks no horizontal overflow, visible text at least 12px
+(including scaled SVG text), controls at least 44px tall, no clipped instrument
+labels and no JavaScript errors. Every page has exactly one 48px primary action
+with the prescribed bright-gold fill, pure-black ground and the actual logo
+viewBox. Archivo 900 and Archivo Narrow 700 were verified loaded.
 
-Chromium 153 opened the HTML directly, with outside requests blocked. Thus the
-fallback fonts were tested; Google Fonts remains an optional permitted design
-resource, not a required file dependency. Measurements include actual transformed
-SVG text size, not just the CSS font-size. All pages were tested with help closed
-and expanded; desktop chrome keeps its two disclosures mutually exclusive.
-Reduced motion was requested in the browser. Representative desktop, phone and
-instrument views were also visually inspected; screenshots are not committed.
+## Method and evidence
 
-The six sample checks cover A/B selection, pad selection, lock state, synchronized
-lock controls, emergency state and the persistent stop bar while inspecting recovery. They change local
-preview labels only. No audio, upload, save, analysis, sign-in, MIDI, cloud or
-external service operation runs. All displayed recordings, artwork, waveforms,
-measurements, confidence values and matched-level badges are Sample/Example.
-“Today · Real” is a source assessment of the existing feature, not a claim that
-this redesign is implemented or a live provider is configured.
+The browser could not fetch Google Fonts directly. Browser validation therefore
+served unchanged official Google Fonts CSS and font responses from a local cache.
+The HTML retains the permitted Google Fonts URL; no font files are committed.
+All other external browser requests were blocked. Reduced motion was requested.
+Desktop, phone, instrument and performance screenshots were inspected locally;
+no screenshots are committed.
 
-Physical iPhone/Safari, three-metre stage readability, real hardware audio/MIDI,
-actual level matching, authorization and cross-service contracts remain later
-implementation acceptance checks. Runtime app tests were not rerun for this
-docs-only revision; no app code changed. The original source inventory and
-research remain based on main a4d92e254cca18ff7d5a8c8ca5bc1ee48c6874fb.
+The repository light-logo asset has ivory paint. Only its paint is normalized to
+pure white; its paths, text, lettering attributes and viewBox are preserved.
+The 15-colour allowlist includes only the owner's specified palette. Monochrome
+noise and white/black alpha highlights and shadows add material without tint.
 
-The Superdesign CLI was blocked by automatic approval review because it attempted
-an unrequested telemetry connection with an unknown payload. It was not retried.
-The complete revision was authored locally as inline HTML, CSS and SVG and
-verified with Chromium instead.
+Keyboard checks cover home, song, Stage and all three dedicated phone views at
+both widths: Back link first, Enter-operated walkthrough and section help,
+and visible focus. Sample interaction checks cover A/B selection, pad selection,
+lock state, synchronized lock controls, emergency stop while locked, and the
+persistent stop bar at recovery. These change preview labels only.
 
-Claude reviews this revised Phase 0 packet, then the owner approves the plan.
-Neither this validation nor the selected name authorizes Phase 1 or deployment.
+Static checks verify local links, feature destinations, inline JavaScript syntax,
+the exact accepted feature-map bytes and existing source Git blob hashes.
+All revision paths are restricted to docs/labs Markdown and HTML. Source code,
+workflow files and existing binary files are preserved by building on the current
+branch tree. No secrets, screenshots, validation scripts or font caches are committed.
+
+## Limits and review gate
+
+All recordings, artwork, waveforms, measurements, confidence values and matched-level
+badges are Sample/Example. Existing-feature status is a source assessment, not a
+claim that the redesign or proposed integrations run. No audio, upload, save,
+analysis, sign-in, MIDI, cloud or external service operation runs in these mockups.
+
+Physical iPhone/Safari, three-metre stage readability, real audio/MIDI hardware,
+level matching and authorization remain implementation acceptance checks. App tests
+were not rerun because no app code changed. The original inventory and research
+remain based on main a4d92e254cca18ff7d5a8c8ca5bc1ee48c6874fb.
+
+Claude reviews Phase 0, then the owner approves. Phase 1 and deployment remain
+unauthorized by this design revision.

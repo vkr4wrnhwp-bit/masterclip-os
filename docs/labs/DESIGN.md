@@ -52,100 +52,143 @@ reachable through result/record details. These are grouped doors with clear name
 not nineteen tabs, deleted tools or hidden live functionality. A later migration
 requires an inventory-to-destination checklist for every control and saved record.
 
-## Surface design and graphic direction
+## Round 3 — owner-locked visual system
 
-Use V1 sb tokens read from `static/css/tailwind.css`: ground #0b0a08,
-surface-1 #131110, ink #f2ece0, ink-2 #a99b84 and gold #c9a24a. The HTML
-uses these exact values under sb token names, with off-white section bands.
-Gold marks the primary action,
-active step and selected version. Avoid gold body paragraphs, rainbow status
-badges, fake “pro” meters, stock mixing-console imagery and decorative graphs.
-Status always has words; red appears only for an actual blocker/emergency.
+This revision supersedes the previous material and typography direction. The
+feature map and all feature destinations remain unchanged. The visual rule is
+**white text on black; gold for action and highlight**. No tinted neutral,
+paper treatment, background colour wash or alternate palette is permitted.
 
-### Material, hierarchy and typography
+### Exact colour contract
 
-The song is the hero on every screen: original geometric sample artwork, title,
-version and a complete waveform, followed by one obvious next action. Surfaces
-use layered anodized charcoal, restrained gold edge light, inset meter glass,
-soft grain, bevel highlights and deep inner shadows. Warm white section bands
-separate the four tool-page stages. This is an original Street Banker system;
-no competitor branding, layout or copy is borrowed. Red is reserved for a
-blocking delivery example and emergency controls, never decoration or progress.
+| Role | Exact values | Use |
+| --- | --- | --- |
+| Ground | #000000 | Page and instrument glass |
+| Panels | #0A0A0A / #111111 / #1A1A1A | Surface, panel and raised surface |
+| Lines | #262626 / #3A3A3A | Normal and strong separation |
+| Text | #FFFFFF | Primary text, song title and instrument values |
+| Supporting text | #B8B8B8 / #8C8C8C | Secondary and tertiary; never darker text on black |
+| Gold | #C9A24A / #E8B950 / #8A6E30 | Main accent, bright action/highlight, deep edge/pressed state |
+| On gold | #000000 | Primary button text |
+| Status | #4CC38A / #F2A93B / #E5484D | Good, warning, blocking; words always accompany state |
 
-Display: **Barlow Condensed**, weight 600–700; UI: **Manrope**, 400–800.
-Google Fonts is optional; Nimbus Sans Narrow/Arial Narrow and Arial are usable
-fallbacks. No monospace. Desktop title 61px, performance title 88px, section
-27px, body 15px, description 14px, supporting text and graph labels at least
-12px. Phone title 38px; performance title 46px. Numbers use tabular figures.
-SVG instrument labels are sized to remain at least 12 screen pixels; the phone
-waveform uses a separate readable HTML section/time legend.
+White at 0.06 alpha is the 1px panel top highlight. Black shadows and a very
+subtle monochrome noise filter supply depth. Other neutral fills are the exact
+pure greys above. The artwork, figures and embedded logo follow the same palette.
+Red is used only for blocking examples and the emergency stop. Gold is never a
+large background wash or a replacement for white body copy.
 
-### Instruments tell the truth
+### Three proposed suite splashes
 
-All instruments and artwork are original inline SVG/CSS, labelled **Sample** or
-**Example**. Waveform bars, section boundaries, energy envelopes, scatter shapes
-and tonal curves use plausible deterministic shapes; they are not measurements
-of a supplied recording. A later implementation must replace them with actual
-saved analyzer output and its source/version, never infer results from styling.
+The owner has not selected a separate suite colour. These are colour directions
+for review, not additions to the allowed mockup palette:
 
-| Instrument | Purpose and truthful rendering |
+| Option | Why it could work | Portfolio caution |
+| --- | --- | --- |
+| Electric lime | Bright, unmistakable signal colour; strong for an SL mark and a selected step. | Must stay visually distinct from Royalty Sweep’s green. |
+| Vivid cyan | Precise audio-instrument character and excellent separation from gold actions. | MOTION already uses cyan; this would need a deliberately distinct identity. |
+| Signal yellow | Bold, easy to identify at small sizes and without a soft neutral cast. | Must remain distinguishable from the parent gold and warning colour. |
+
+Recommend testing **electric lime** first. No separate splash is applied in this
+round: the SL mark and active step use the approved gold. After a colour is
+selected, apply it only to the SL monogram and active-step indicator. Never
+change the black ground, neutral panels, white text, gold primary action or
+status colours. These are proposals, not a claim of final brand approval.
+
+### Actual logo and suite lockup
+
+Each page embeds the actual SVG from V1
+`static/img/streetbanker-logo-light.svg`, retrieved from `staging`. The source
+asset’s corner paths, viewBox, period, wording, coordinates, stroke width,
+letter spacing and embedded wordmark font are preserved. The source’s ivory
+paint is normalized to **#FFFFFF only**, to obey the owner’s pure-white rule;
+its explanatory source comment is omitted. Nothing is redrawn or substituted
+with a new typed wordmark. The original asset is retained outside the commit as
+verification evidence. The regular and dark files were inspected as well.
+
+The header’s back link contains this wordmark and accessible text “Back to
+Street Banker”. The suite lockup is a bracketed **SL**, **SONG LAB**, and
+**BY STREET BANKER**. Stage uses its own ST/Stage lockup and the same parent
+wordmark. Page titles and public suite references remain **Street Banker Song
+Lab**. The logo’s original font is an asset-specific exception to the app font;
+replacing it with Archivo would alter the actual mark.
+
+### Archivo type and spacing
+
+Google Fonts loads **Archivo 400, 500, 700, 800, 900** and **Archivo Narrow 700**.
+Display titles use Archivo 900 with tight tracking, up to 88px on desktop;
+section and panel headings use Archivo 800. Labels use Archivo Narrow 700,
+uppercase and wide tracking. Body uses Archivo 400–500. Numbers use tabular
+figures everywhere. No monospace. Minimum rendered text is 12px, including
+scaled SVG labels. Buttons have a 48px minimum; other interaction targets remain
+at least 44px. Emergency and performance controls are larger.
+
+Spacing follows an 8px rhythm: 8, 16, 24, 32, 48 and 64px. Desktop margins are
+64px; phone margins are 16px. Panels have 12px radii, a 1px top highlight,
+inner shadow and subtle monochrome grain. The active panel has a gold hairline.
+A single song hero dominates each page. Existing panels are grouped beneath
+clear section headings with a named feature index, retaining every placement.
+
+### The song and its instruments
+
+Every page starts with fictional sample artwork, the huge white song title,
+artist and exact version, then a full-width waveform with dense transient peaks,
+subtle grey section bands, gold section markers/playhead and a time ruler.
+The shape is deterministic fictional sample data with independent transients
+and section-dependent intensity; it is not a sine-wave silhouette or a claim
+that an uploaded recording was analyzed. The visible artist/song are fictional.
+
+Every page also has the same labelled Sample/Example signal view:
+
+| Instrument | Rendering and meaning |
 | --- | --- |
-| Complete waveform | Whole-song amplitude shape, section bands, times and section markers; a static sample playhead. |
-| Energy curve | Changes in intensity through the song with a labelled relative scale; human section corrections remain authoritative. |
-| Key and tempo | Readout with separate sample confidence values; musical key and BPM [beats per minute] are explained. |
-| Loudness and peak meters | Stereo bars, numerical values and a -48 to 0 dBFS [digital full-scale level] scale; LUFS [perceived loudness] clearly named. |
-| Stereo field | Correlation [how similarly left and right move] scale from -1 to +1; sample spread is diagnostic context, not an editing control. |
-| Tonal balance | Your mix and reference curves on a frequency scale; no unmeasured pass/fail claim. |
-| A/B players | Exact version identities and **Example matched-level** badges; preview controls select notes only and never play or normalize audio. |
+| Segmented loudness/peak | LED-style segments; -60 to 0 dBFS [digital full-scale level] scale; gold high segments. Red is reserved for actual blocking clipping states. |
+| LUFS | Large tabular -14.2 example readout; LUFS means perceived loudness. |
+| Correlation | Left/right agreement from -1 to +1, with a sample stereo scatter and +0.62 marker. |
+| Tonal balance | Gold mix curve against a pure-grey reference range, with a frequency ruler. |
+| Energy | Section-aware intensity curve; sample shape and start/end times. |
+| Key and BPM | Large example values with separate confidence rings; BPM means beats per minute. |
+| A/B, in its existing feature home | Version identities, explicit Example matched-level badges and independent sample-note selectors. No audio is played or changed. |
 
-The finishing brief combines Mix Doctor, references, Translation Lab and Artist
-Sonic DNA findings. Actual mix/master processing hands off to The Rack. Rack
-intent chains, presets and history remain a brief and evidence record, not a
-second processor. Rights, record history and engineer requests remain reachable.
+These are displays of findings and comparison. Actual mixing/mastering stays
+in The Rack. No processor controls are introduced in the combined suite.
 
-### Every feature has a visible home
+### Actions and hardware selector
 
-[FEATURE-MAP.md](FEATURE-MAP.md) maps all 19 principal inventory surfaces,
-78 named capabilities and every one of the 100 existing Card-panel occurrences.
-Each source panel has a named visible subpanel and an HTML anchor. Status badges
-separate **today’s source assessment** (Real / Needs a key / Sample / Stub) from
-**this display** (always Sample). The chrome calls Stub “Not built”. Mixed
-surfaces explain exceptions rather than claiming a provider or handoff works.
-No migration may replace the preview until this crosswalk is satisfied for
-controls, permissions, saved records and the actual counterpart contracts.
+Each screen has exactly one gold primary action: solid #E8B950, black text,
+48px height. Hover uses main gold; pressed uses deep gold. Secondary buttons
+are white outlines. Disabled service operations keep readable text and an
+explicit reason. Numbered step controls have raised hardware-key surfaces,
+inner edges and a lit gold current state. They are not a plain tab rail.
 
-The original ten HTML files are all redesigned. Seven additional screens show
-Benchmark/A&R; Experiments/Producer; the finishing brief; Collaborate; handoffs,
-memory and requests; Live MIDI/settings; and full Live performance. The README
-links all 17. A&R remains server permission-gated. Comments, collaborators,
-approvals, Record Passport, rights and provenance are explicit panels, not
-implied future items behind the ten research proposals.
+### Phone and live performance
 
-### Phone composition and accessibility
+The three phone-specific pages retain their own narrow compositions even when
+opened on a desktop. At 375px, the suite header stacks above the parent back
+link; selectors use number-over-label keys; artwork and title form a compact
+header; the primary action spans the column. Instrument groups stack as full
+width glass displays, with readable HTML rulers where dense SVG labels would
+become too small. No sideways scrolling or clipped feature text is permitted.
 
-The three dedicated phone views recompose home, the song and Stage around one
-column, a compact artwork/title group, full-width next action, a short step grid,
-and readable stacked instruments. All screens also adapt to 375px. Preparation
-pads become two columns. Tables become labelled blocks; no sideways tab rail.
-Controls, links and help summaries are at least 44px tall; performance controls
-are 72px or larger. Keep long text wrapping and visible keyboard focus. Do not
-hide content overflow to conceal a layout failure. Every section has “?” help,
-with the feature checklist, Walkthrough and Back to Street Banker in the chrome.
-All new external service operations are disabled with a reason in the mockup.
+Performance has a persistent current-song/next-song safety bar, unmistakable
+red emergency stop and immediate previous/next/click/preview-lock controls.
+Large prepared-sound pads, a large tabular sample clock and BPM display supply
+the stage-gear view. Both lock controls share sample state. Emergency remains
+available while locked; anchor offsets clear the bar. Three-metre readability
+must still be checked on the actual display during later implementation.
 
 ### Motion specification for later implementation
 
 | Element | Normal motion | Reduced-motion / safety behavior |
 | --- | --- | --- |
-| Level meters | 20–50ms attack, 300–700ms decay; optional peak hold about 1s, driven by real audio values. | Remove easing and glow pulses; retain readable numerical values and deliberate updates. Never fabricate activity. |
-| Playhead | Follow actual transport time; interpolate only between measured positions while audio plays. | Discrete position/time updates; no decorative sweep or automatic scrolling. |
-| Panel reveal | 120–180ms opacity and at most 4px movement after deliberate disclosure. | Immediate reveal with no movement. Preserve focus and reading order. |
-| Version choice | Brief border change, persistent selected label and aria-pressed state. | Immediate label/border change, with no flashing. |
-| Performance | No continuous decorative motion, changing layout or delayed emergency feedback. | Same stationary layout; emergency state updates immediately. |
+| Level meters | Real-value 20–50ms attack, 300–700ms decay, optional 1s peak hold. | No easing or glow pulses; readable measured numbers remain. |
+| Playhead | Follow actual transport time while audio plays. | Discrete position/time updates; no automatic scrolling. |
+| Panel reveals | 120–180ms opacity and at most 4px movement on deliberate disclosure. | Immediate reveal; preserve focus and reading order. |
+| Version choice | Brief border transition, persistent selected label. | Immediate label/border change. |
+| Performance | Stationary control positions; immediate emergency feedback. | Same stationary layout and immediate response. |
 
-The current static HTML does not simulate playback. CSS honors
-`prefers-reduced-motion`; local interactions change sample notes/state only.
-Future meter animation must stop when the page is hidden or transport stops.
+The static mockups do not simulate playback. CSS honors reduced motion; local
+interactions change sample labels only. No save, upload, audio or provider runs.
 
 ## Live Lab inside Stage
 

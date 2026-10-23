@@ -18,6 +18,14 @@ Render setting, workflow, live branch or saved record changes in this PR.
   existing suite sign-in, V1 strip door, own service, tests and default-off settings.
 - [Validation](VALIDATION.md): actual checks and limits.
 
+## Round 3 visual revision
+
+All 17 mockups use the owner’s exact pure black/white/grey/gold palette, actual
+inline Street Banker wordmark, Archivo type and rebuilt sample instruments.
+FEATURE-MAP.md is preserved byte-for-byte from the accepted Round 2 packet.
+Three bold suite-splash directions are proposed in DESIGN.md; the mockups keep
+the approved gold until a separate splash is selected.
+
 ## Static design review
 
 Open the HTML locally or serve this folder. Every page is self-contained and
