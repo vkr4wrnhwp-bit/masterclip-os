@@ -106,7 +106,7 @@ second processor. Rights, record history and engineer requests remain reachable.
 ### Every feature has a visible home
 
 [FEATURE-MAP.md](FEATURE-MAP.md) maps all 19 principal inventory surfaces,
-77 named capabilities and every one of the 100 existing Card-panel occurrences.
+78 named capabilities and every one of the 100 existing Card-panel occurrences.
 Each source panel has a named visible subpanel and an HTML anchor. Status badges
 separate **today’s source assessment** (Real / Needs a key / Sample / Stub) from
 **this display** (always Sample). The chrome calls Stub “Not built”. Mixed
@@ -227,3 +227,19 @@ preview labs, no creation workstation promise. Owner-chosen name: Street Banker 
 six-step layout, top-ten selection, linked-record identity and pilot thresholds.
 Before code: Claude reviews this plan, verifies counterpart contracts, and the
 owner explicitly approves the design/scope. Phase 0 ends at that review gate.
+
+## Final pre-review corrections
+
+Existing local upload/rights confirmation is Real. The proposed V1 Vault picker
+and save connection is a separate Stub/Not built capability until the owning
+services’ identity, ownership and file contracts are verified. The intake screen
+and feature map label these separately. No local upload is represented as a
+completed Vault connection.
+
+Performance places previous/next song, click and preview lock alongside the
+persistent emergency stop. These remain visible as the operator reads lower
+sections; source-panel controls remain available. Both preview lock controls
+share the same displayed state. Sample next/previous/click remain disabled while
+no audio is loaded. Anchor offsets account for the safety bar’s actual height
+so it does not cover the requested panel. Three-metre and hardware verification
+remain later acceptance checks.

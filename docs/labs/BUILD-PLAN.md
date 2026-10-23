@@ -158,7 +158,7 @@ approval, duplicate charges or false completion. Roll back entry flags, never da
 
 The full public name is Street Banker Song Lab, SL. Apply NAMES.md’s collision
 caution to marketing and chrome. FEATURE-MAP.md is the mandatory implementation
-checklist, including 77 capabilities, 100 existing panel occurrences and all
+checklist, including 78 capabilities, 100 existing panel occurrences and all
 19 principal inventory surfaces. None may disappear, be left TBD or be confused
 with the ten optional research proposals. Every mapped capability needs its
 real status, permission, retained record and working destination verified before

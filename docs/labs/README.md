@@ -12,7 +12,7 @@ Render setting, workflow, live branch or saved record changes in this PR.
 - [Design](DESIGN.md): one six-step journey, workflow/ease-of-use/graphic audit,
   plain language, Street Banker tokens, state/permissions and migration gates.
 - [Names](NAMES.md): the owner’s choice, SL, and mandatory full-name collision caution.
-- [Feature map](FEATURE-MAP.md): 77 named capabilities, 100 source-panel occurrences
+- [Feature map](FEATURE-MAP.md): 78 named capabilities, 100 source-panel occurrences
   and all 19 principal inventory surfaces, each with status and a visible home.
 - [Build plan](BUILD-PLAN.md): separate later PRs, Pro/Label access proposal,
   existing suite sign-in, V1 strip door, own service, tests and default-off settings.

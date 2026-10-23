@@ -8,14 +8,23 @@ public name is Street Banker Song Lab, monogram SL.
 ## Actual result lines
 
 ```text
-PASS: 17 self-contained HTML mockups; 530 local file/anchor references; inline JavaScript syntax; chrome, sample status, Stage exclusions and reduced motion.
-PASS: 77 named features, 100 source-panel anchors and 19 inventory surfaces mapped; exactly 10 propose picks retained.
+PASS: 17 self-contained HTML mockups; 532 local file/anchor references; inline JavaScript syntax; chrome, sample status, Stage exclusions and reduced motion.
+PASS: 78 named features, 100 source-panel anchors and 19 inventory surfaces mapped; exactly 10 propose picks retained.
 PASS: 588 existing repository files match main Git blob hashes; only docs/labs Markdown/HTML proposed.
 PASS: 68 Chromium layout cases (17 pages × 375/1440px × collapsed/expanded help); zero horizontal overflow, rendered text below 12px, control heights below 44px, or JavaScript errors.
 PASS: 12 keyboard cases (home/song/Stage and dedicated phone views × 375/1440px); Back link first, Enter-operated walkthrough/help and visible focus.
-PASS: 5 sample interactions and persistent emergency bar
+PASS: 6 sample interactions and persistent emergency bar
+PASS: immediate performance controls visible in the first 812px viewport at 375/1440px; emergency usable with preview lock; recovery heading clear of the sticky bar.
 PASS: instrument-axis clipping checks on Understand and finishing-brief pages at 375/1440px; zero clipped labels.
 ```
+
+## Final pre-review corrections
+
+The feature map now separates existing local upload (Real) from the proposed
+V1 Vault picker/save connection (Stub/Not built), for 78 named capabilities.
+Live performance keeps previous/next song, click and synchronized preview lock
+with its persistent emergency bar. Phone header spacing is restored. These
+corrections are included in the result lines above.
 
 ## Method and limits
 
@@ -34,8 +43,8 @@ and expanded; desktop chrome keeps its two disclosures mutually exclusive.
 Reduced motion was requested in the browser. Representative desktop, phone and
 instrument views were also visually inspected; screenshots are not committed.
 
-The five sample checks cover A/B selection, pad selection, lock state, emergency
-state and the persistent stop bar while inspecting recovery. They change local
+The six sample checks cover A/B selection, pad selection, lock state, synchronized
+lock controls, emergency state and the persistent stop bar while inspecting recovery. They change local
 preview labels only. No audio, upload, save, analysis, sign-in, MIDI, cloud or
 external service operation runs. All displayed recordings, artwork, waveforms,
 measurements, confidence values and matched-level badges are Sample/Example.
