@@ -32,10 +32,17 @@ function cookieOptions(runtime: Runtime) {
 export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtime): Promise<void> {
   const config = runtime.config
   const home = new URL(config.STREET_BANKER_URL).origin
-  app.get('/api/song-lab-suite', async (_req, reply) => {
+  app.get('/api/song-lab-suite', async (request, reply) => {
     void reply.header('cache-control', 'no-store')
+    const session = request.cookies[SESSION_COOKIE]
+      ? await runtime.db.get('SELECT access_mode FROM song_lab_suite_sessions WHERE token_hash = ? AND expires_at > ?', [sha256Hex(request.cookies[SESSION_COOKIE]), runtime.clock.isoNow()])
+      : null
+    const accessMode = toStr(session?.access_mode)
     return {
       enabled: config.SONG_LAB_SUITE_ENABLED,
+      liveLabEnabled: config.STAGE_LIVE_LAB_ENABLED,
+      entryMode: accessMode.startsWith('live-') ? 'live' : 'full',
+      sourceLibraryEnabled: !accessMode.startsWith('live-') || accessMode.endsWith(':source'),
       linkedRecordsEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED,
       signIn: '/login',
       streetBankerUrl: home,
@@ -44,14 +51,16 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
   })
   if (!config.SONG_LAB_SUITE_ENABLED) return
 
-  const refusal = (reply: FastifyReply, status: number, locked = false) => reply.code(status).header('cache-control', 'no-store').header('referrer-policy', 'no-referrer').type('text/html').send(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Song Lab access</title><body style="background:#000000;color:#FFFFFF;font:16px Arial,sans-serif;margin:0;padding:24px"><main style="max-width:640px;margin:10vh auto;padding:24px;background:#111111;border:1px solid #3A3A3A;border-radius:10px"><strong style="color:#E8B950">[ SL ]</strong><h1>Street Banker Song Lab</h1><p>${locked ? 'Song Lab requires Pro or Label and permission to use the Studio room.' : 'Open Song Lab from Street Banker to get a fresh sign-in link.'}</p><a style="display:inline-flex;align-items:center;min-height:48px;padding:0 24px;background:#E8B950;color:#000000;border-radius:10px" href="${home}${locked ? '/pricing' : '/suites/go/song-lab'}">${locked ? 'Upgrade at Street Banker' : 'Sign in at Street Banker'}</a></main></body></html>`,
+  const refusal = (reply: FastifyReply, status: number, locked = false, room = 'Studio') => reply.code(status).header('cache-control', 'no-store').header('referrer-policy', 'no-referrer').type('text/html').send(
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Song Lab access</title><body style="background:#000000;color:#FFFFFF;font:16px Archivo,Arial,sans-serif;margin:0;padding:24px"><main style="max-width:640px;margin:10vh auto;padding:24px;background:#111111;border:1px solid #3A3A3A;border-radius:10px"><strong style="color:#E8B950">[ SL ]</strong><h1>Street Banker Song Lab</h1><p>${locked ? `Song Lab requires Pro or Label and permission to use the ${room} room.` : 'Open Song Lab from Street Banker to get a fresh sign-in link.'}</p><a style="display:inline-flex;align-items:center;min-height:48px;padding:0 24px;background:#E8B950;color:#000000;border-radius:10px" href="${home}${locked ? '/pricing' : '/suites/go/song-lab'}">${locked ? 'Upgrade at Street Banker' : 'Sign in at Street Banker'}</a></main></body></html>`,
   )
-  app.get('/login', async (_request, reply) => {
+  app.get('/login', async (request, reply) => {
     if (!config.SONG_LAB_SUITE_SUITE_SSO_ENABLED || !config.SUITE_SSO_SECRET_SONG_LAB) return refusal(reply, 503)
-    const state = randomBytes(32).toString('base64url')
+    const liveEntry = request.query && typeof request.query === 'object' && (request.query as Record<string, unknown>).entry === 'live'
+    if (liveEntry && !config.STAGE_LIVE_LAB_ENABLED) return refusal(reply, 404)
+    const state = `${liveEntry ? 'live_' : ''}${randomBytes(32).toString('base64url')}`
     void reply.setCookie(STATE_COOKIE, state, { ...cookieOptions(runtime), sameSite: 'none', maxAge: 300 })
-    return reply.header('cache-control', 'no-store').redirect(`${home}/suites/go/song-lab?state=${state}`)
+    return reply.header('cache-control', 'no-store').redirect(`${home}/suites/go/song-lab?${liveEntry ? 'entry=live&' : ''}state=${state}`)
   })
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string', bodyLimit: 32768 }, (_req, body, done) => {
     done(null, Object.fromEntries(new URLSearchParams(String(body))))
@@ -66,8 +75,18 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
       const state = request.cookies[STATE_COOKIE]
       if (!state || !who.state || sha256Hex(state) !== sha256Hex(who.state)) return refusal(reply, 401)
     } catch { return refusal(reply, 401) }
+    const liveEntry = who.state?.startsWith('live_') === true
+    if (liveEntry && !config.STAGE_LIVE_LAB_ENABLED) return refusal(reply, 403)
     let membership: ReturnType<typeof songLabMembership>
-    try { membership = songLabMembership(who) } catch { return refusal(reply, 403, true) }
+    try {
+      if (liveEntry) {
+        const seat = who.seat
+        const plan = seat ? seat.artist_plan : who.plan
+        if (!['pro', 'label'].includes(plan)) throw denied('Live set requires Pro or Label.')
+        if (seat && seat.rooms !== 'all' && !seat.rooms.includes('stage')) throw denied('This team seat needs the Stage room.')
+        membership = { tenant: seat?.artist_uid ?? who.uid, role: seat ? 'member' : 'owner', access: seat?.access ?? 'edit' }
+      } else membership = songLabMembership(who)
+    } catch { return refusal(reply, 403, true, liveEntry ? 'Stage' : 'Studio') }
     const tokenValue = randomBytes(32).toString('base64url')
     const orgId = `org_sl_${sha256Hex(membership.tenant).slice(0, 32)}`
     const userId = `usr_sl_${sha256Hex(`${membership.tenant}:${who.uid}`).slice(0, 32)}`
@@ -81,7 +100,10 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
         await tx.run(`INSERT INTO users (id, org_id, email, display_name, password_hash, org_role, disabled, created_at)
           VALUES (?, ?, ?, ?, ?, ?, 0, ?) ON CONFLICT (id) DO UPDATE SET display_name = excluded.display_name, org_role = excluded.org_role`,
           [userId, orgId, `${userId}@song-lab.invalid`, who.name, 'sso-only', membership.role, runtime.clock.isoNow()])
-        await insertRow(tx, 'song_lab_suite_sessions', { token_hash: sha256Hex(tokenValue), user_id: userId, org_id: orgId, tenant_uid: membership.tenant, email: who.email, display_name: who.name, access_mode: membership.access, expires_at: expiresAt })
+        const stageOnly = liveEntry && membership.role === 'member' && who.seat?.rooms !== 'all' && !who.seat?.rooms.includes('studio')
+        const sourceLibrary = !stageOnly || who.seat?.rooms === 'all' || who.seat?.rooms?.includes('releases')
+        const accessMode = stageOnly ? `live-${membership.access}${sourceLibrary ? ':source' : ''}` : membership.access
+        await insertRow(tx, 'song_lab_suite_sessions', { token_hash: sha256Hex(tokenValue), user_id: userId, org_id: orgId, tenant_uid: membership.tenant, email: who.email, display_name: who.name, access_mode: accessMode, expires_at: expiresAt })
       })
     } catch { return refusal(reply, 401) }
     // Ordinary capabilities only. Internal A&R and proprietary cohorts still require explicit grants.
@@ -89,7 +111,7 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
     void reply.clearCookie(STATE_COOKIE, { path: '/' })
     void reply.setCookie(SESSION_COOKIE, tokenValue, { ...cookieOptions(runtime), maxAge: SESSION_SECONDS })
     issueCsrfCookie(runtime, reply, tokenValue)
-    return reply.code(303).redirect('/#/song-lab')
+    return reply.code(303).redirect(liveEntry ? '/#/live-lab' : '/#/song-lab')
   }
   app.post('/auth/street-banker', receive)
   app.get('/auth/street-banker', async (_req, reply) => reply.redirect('/login'))
@@ -105,7 +127,17 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
     }
     const row = await runtime.db.get('SELECT s.*, u.disabled, u.org_role FROM song_lab_suite_sessions s JOIN users u ON u.id = s.user_id WHERE token_hash = ?', [sha256Hex(request.cookies[SESSION_COOKIE] ?? '')])
     if (!row || row.disabled || Date.parse(toStr(row.expires_at)) <= runtime.clock.now()) throw new AppError({ kind: 'unauthorized', code: 'song_lab_suite.signin', message: 'Sign in through Street Banker.' })
-    if (row.access_mode === 'read' && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) throw denied('This team seat is read-only.')
+    const liveOnly = toStr(row.access_mode).startsWith('live-')
+    if (liveOnly) {
+      const liveApi = path.startsWith('/api/live-lab/') || path === '/api/live-lab'
+      const identityApi = ['/api/auth/me', '/api/auth/logout', '/api/song-lab-suite'].includes(path)
+      const sourceLibraryAllowed = toStr(row.access_mode).endsWith(':source')
+      const sourceLibrary = sourceLibraryAllowed && (path === '/api/projects' || /^\/api\/projects\/[^/]+$/.test(path))
+      const releaseImport = /^\/api\/live-lab\/projects\/[^/]+\/import-release$/.test(path)
+      if (releaseImport && !sourceLibraryAllowed) throw denied('This Stage seat does not include the Releases room.')
+      if (!(liveApi || identityApi || (sourceLibrary && ['GET', 'HEAD', 'OPTIONS'].includes(request.method)))) throw denied('This Stage seat is scoped to Live Lab.')
+    }
+    if ((['read'].includes(toStr(row.access_mode)) || toStr(row.access_mode).startsWith('live-read')) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) throw denied('This team seat is read-only.')
     request.auth = { userId: toStr(row.user_id), orgId: toStr(row.org_id), email: toStr(row.email), displayName: toStr(row.display_name), orgRole: toStr(row.org_role), ...(row.org_role === 'member' ? { suiteSeatAccess: toStr(row.access_mode) as 'read' | 'edit' } : {}) }
   })
 }

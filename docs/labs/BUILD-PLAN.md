@@ -1,9 +1,9 @@
 # Street Banker Song Lab — build plan
 
-This is documentation/static mockups only. **No app code until Claude reviews
-the plan and LJ explicitly approves it.** The PR targets masterclip-os `main`;
-no merge, deploy, Render/account change or preview-route replacement is authorized
-by Phase 0. Keep the existing Song Lab, Studio and Live Lab working throughout.
+This plan records the staged Song Lab implementation. The owner has separately
+authorized each numbered job; each remains on its own review branch and PR. Keep
+the existing Song Lab, Studio and Live Lab working throughout. No merge, deploy,
+Render/account change or production-route replacement is authorized here.
 
 ## Phase 1 service and membership proposal
 
@@ -34,7 +34,7 @@ New paths and variables are explicitly proposals, not claims they already exist.
 | 1. Shell, suite sign-in, access and service | Existing `apps/web/src/App.tsx`, `SuiteChrome.tsx`, `styles.css`; `apps/api/src/server.ts`; `packages/auth/src/index.ts`; `packages/shared/src/env.ts`; Song/Studio access services and API helpers. Proposed `apps/web/src/song-journey/` and a server-side suite identity adapter. Reuse the verified Motion suite-SSO adapter and V1 `sb_suite_sso.py` contract; proposed own Render service, Pro/Label policy and a V1 suite-strip door (`hubs.py::tool_suites`, `templates/base.html` suite strip/marks, `app.py` suite access, and `sb_suite_sso.py::SUITES`; reinspect current base before editing). | Existing api, motion-suite-chrome, song-lab and studio tests; new forged/expired/replayed/wrong-suite sign-in, tenant, entitlement and reviewer isolation tests; browser 375px/keyboard/deep-link/back tests. Flag off retains exact old entry points. No secret or identity token in browser storage. |
 | 2. One song journey | Existing SongLabHome/Project, StudioHome/Project/Workflow and both engine/domain packages; proposed linked-record repository/API under `packages/song-journey-domain/src` and `packages/song-journey-engine/src`; additive migration in `packages/database/src/migrations.ts`. Link both existing IDs; do not rewrite their source histories. New upload/save paths use V1 Vault, with local analysis scratch treated only as temporary work. Keep every inventory item mapped to a named reachable destination before any later replacement. | Song Lab, Studio and database suites; fixtures with separate IDs, conflicting titles, duplicate uploads, analyzer versions, comments and approvals; mapping rollback/export; manual input, missing/partial/failed analysis and cancellation. Original checksums, records and preview hashes unchanged. |
 | 3. Rack / Vault handoffs | Existing `packages/song-lab-engine/src/integrations.ts`, Studio processing/versions/deliver services and asset storage. Proposed versioned handoff/receipt adapter and authorization routes. Counterpart V1: inspect current `app.py`, `vault_doors_api.py`, `vault_versions.py`, Rack routes/templates/JS, `sb_suite_sso.py`; do not assume Studio's intent Rack is V1 DSP. | Fake peers only: signed expiry/tenant ownership, explicit cost consent, duplicate/retried/out-of-order/forged callbacks, source checksum, output bytes/hash and cancellation/refund. V1 app alone then focused Vault/Rack/SSO tests separately; masterclip engine/API suites. Off flag offers manual verified result attach, never fabricated completion. |
-| 4. Live in Stage | Add a Stage entry and suite-authenticated integration in V1; preserve Stage Control performer-link panel and security. Reuse current `apps/web/src/live`, `apps/api/src/routes/live-lab.ts`, `packages/live-engine`, `midi-engine`, `performance-project`, `performance-cache`, `packages/runtime/src/live-lab.ts`. Packaging may remain a service rather than copying TypeScript into Flask; decide after auth/storage contract review. | Existing live-lab, platform-wiring, e2e live-lab-browser/offline suites; actual device browser/audio/MIDI tests; package checksum/quota/decode, no network during playback, lock, accidental navigation, reload restoration without autoplay, emergency stop, lost controller and access expiry. V1 Stage/passport/lights/live/fold guards. No Stage text, navigation, help, sample title or destination may name/link the travel suite; scan rendered pages and templates. Disable new entry to roll back; preserve old preview and all records/cache. |
+| 4. Live in Stage | Add a flag-gated Stage entry in V1 and use the existing Song Lab TypeScript service through its verified Street Banker SSO contract. Do not copy Live Lab code into Flask or create a second service. Keep Stage-only seats in a Live-only tenant boundary. Preserve Stage Control performer links and security. | Existing live-lab, platform-wiring, e2e live-lab-browser/offline suites; checksum/decode, no network during playback, reload without autoplay, emergency stop and controller disconnect. V1 Stage/passport/lights/live/fold guards plus a rendered Stage/Live Lab copy and link scan. A real venue device rehearsal remains a release gate. Disable new entry to roll back; preserve old preview, records and cache. |
 | 5. Approved feature upgrades | One bounded PR for each selected proposal from FEATURE-RESEARCH.md, using existing analysis, comments, rights and provider seams. New external adapters only in the owning Rack/Room service with terms approval. No bulk “ten features” commit. | Per-feature fixtures/evaluation and opt-in pilot; measured error rate, user task success, spend/retry behavior and saved-result integrity. All optional upgrades independently default off. Owner decides rollout after evidence. |
 
 ## Proposed Render variable names and defaults
@@ -54,9 +54,7 @@ implementation lands. The owner supplies values in Render; never commit secrets.
 | SONG_LAB_SUITE_HANDOFF_SIGNING_KEY | blank secret; server-only, rotation/expiry required |
 | SONG_LAB_SUITE_PROVIDER_JOBS_ENABLED | `0`; optional paid provider work in owner service |
 | SONG_LAB_SUITE_PROVIDER_DAILY_CAP | `0`; no spend until owner sets a measured cap |
-| STAGE_LIVE_LAB_ENABLED | `0`; V1 entry only after device-level verification |
-| STAGE_LIVE_LAB_SERVICE_URL | blank; verified HTTPS service origin if separate service retained |
-| STAGE_LIVE_LAB_HANDOFF_ENABLED | `0`; signed set import/receipt contract |
+| STAGE_LIVE_LAB_ENABLED | `0`; V1 Stage entry to the existing Song Lab service |
 
 Each top-ten feature gets an independent default-off switch after selection;
 propose suffixes MAP, VERSION_COMPARE, REFERENCES, TRANSLATION_NOTES, LYRICS,
@@ -66,6 +64,26 @@ Do not turn off or silently repurpose existing `SONG_LAB_ENABLED` or
 names if a verified counterpart contract already defines them; avoid parallel
 secrets for the same boundary. Provider keys belong only to their owning service.
 
+## Phase 4 implementation record — JOB 40
+
+The implementation is on independent review branches in V1 and masterclip-os.
+V1 adds the default-off `/stage/live-set` door and redirects through the existing
+Song Lab SSO route. The service binds the Live intent into its short-lived,
+browser-bound signed state; Stage-only seats receive Live Lab, and the existing
+release picker appears only when the seat also has Releases access. Song Lab,
+Studio and other APIs remain blocked for those seats. Existing all-room and
+Studio seats continue through the full shell.
+Live Lab itself remains the existing TypeScript product and retains its setlist,
+stems, pads, scenes, scene builder, MIDI, show package, Stage Control export,
+performance mode and emergency stop.
+
+The V1 rendered-page test scans Stage, Live, Lights, Passport, Stage Control and
+Stage Plot for visible Tour copy and Tour destinations. The Song Lab shell browser
+test also checks rendered routes and links, including Live Lab. The Stage door
+and integration flag default off. No Render setting or production route was
+changed. Offline browser, reload recovery, emergency stop and MIDI disconnect
+checks pass; real-device rehearsal and audible venue output remain release gates.
+
 ## Owner setup by phase (names only; no values or settings changed)
 
 | Phase | Names the owner supplies/approves in the later Render setup | Default-off boundary |
@@ -73,7 +91,7 @@ secrets for the same boundary. Provider keys belong only to their owning service
 | 1 | STREET_BANKER_URL, PUBLIC_BASE_URL, SUITE_SSO_SECRET_<APPROVED_SUITE_ID>, SUITE_URL_<APPROVED_SUITE_ID>, DATABASE_URL, STORAGE_DRIVER, S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY; reuse then-current deployment equivalents instead of inventing duplicates | SONG_LAB_SUITE_ENABLED and SONG_LAB_SUITE_SUITE_SSO_ENABLED off; parent door locked/off until service health and Pro/Label access pass |
 | 2 | SONG_LAB_SUITE_LINKED_RECORDS_ENABLED; existing analysis/provider configuration remains unchanged | Linked journey and each selected feature off until data-preservation fixtures pass |
 | 3 | SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED, SONG_LAB_SUITE_RACK_HANDOFF_ENABLED, SONG_LAB_SUITE_RACK_URL, SONG_LAB_SUITE_HANDOFF_SIGNING_KEY | Both handoff switches off; no paid job without owner-configured cap |
-| 4 | STAGE_LIVE_LAB_ENABLED, STAGE_LIVE_LAB_SERVICE_URL, STAGE_LIVE_LAB_HANDOFF_ENABLED; existing suite key contract on the actual owning service | All three entry/connection paths off until device rehearsal/security review |
+| 4 | STAGE_LIVE_LAB_ENABLED; the existing SONG_LAB_SUITE_ENABLED, SONG_LAB_SUITE_SUITE_SSO_ENABLED, STREET_BANKER_URL, SUITE_URL_SONG_LAB and SUITE_SSO_SECRET_SONG_LAB contract on their owning services | Stage entry off by default; enable only after an owner-approved device rehearsal and security review |
 | 5 | Selected SONG_LAB_SUITE_FEATURE_* switches; provider credential names only in the owning approved service .env.example | Every optional feature and provider job off; daily cap zero |
 
 The service-specific SSO secret is a placeholder naming pattern, not a literal

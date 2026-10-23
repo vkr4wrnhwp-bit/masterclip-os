@@ -185,6 +185,8 @@ const EnvSchema = z.object({
   SONG_LAB_SUITE_ENABLED: bool(false),
   SONG_LAB_SUITE_SUITE_SSO_ENABLED: bool(false),
   SONG_LAB_SUITE_LINKED_RECORDS_ENABLED: bool(false),
+  /** Stage room entry into the existing Live Lab; off means no door or route. */
+  STAGE_LIVE_LAB_ENABLED: bool(false),
   SUITE_SSO_SECRET_SONG_LAB: z.string().default(''),
   STREET_BANKER_URL: z.string().url().default('https://app.streetbankermusic.com'),
   SONG_LAB_ENABLED: bool(true),

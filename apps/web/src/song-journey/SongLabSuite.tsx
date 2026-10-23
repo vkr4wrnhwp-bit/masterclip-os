@@ -32,13 +32,15 @@ export function SongLabSuite() {
   const [mode, setMode] = React.useState<string | null>(null)
   const [home, setHome] = React.useState('https://app.streetbankermusic.com')
   const [linkedEnabled, setLinkedEnabled] = React.useState(false)
+  const [entryMode, setEntryMode] = React.useState<'full' | 'live' | null>(null)
+  const [sourceLibraryEnabled, setSourceLibraryEnabled] = React.useState(false)
   const [canSeeAr, setCanSeeAr] = React.useState(false)
   const [selectedStep, setSelectedStep] = React.useState(0)
   React.useEffect(() => {
-    fetch('/api/song-lab-suite').then(r => r.json()).then(r => { setHome(r.streetBankerUrl); setLinkedEnabled(r.linkedRecordsEnabled === true) }).catch(() => undefined)
+    fetch('/api/song-lab-suite').then(r => r.json()).then(r => { setHome(r.streetBankerUrl); setLinkedEnabled(r.linkedRecordsEnabled === true); setEntryMode(r.entryMode === 'live' ? 'live' : 'full'); setSourceLibraryEnabled(r.sourceLibraryEnabled === true) }).catch(() => setEntryMode('full'))
     api.health().then(r => setMode(r.mode)).catch(() => undefined)
     api.me().then(r => setUser(r.user)).catch(err => {
-      if (err instanceof ApiError && err.status === 401) window.location.replace('/login')
+      if (err instanceof ApiError && err.status === 401) window.location.replace(entryMode === 'live' || window.location.hash.startsWith('#/live-') ? '/login?entry=live' : '/login')
       else setError('Street Banker sign-in is unavailable. Your files have not changed.')
     })
     songLabApi.capabilities().then(r => setCanSeeAr(r.capabilities.includes('song_lab.ar_view'))).catch(() => undefined)
@@ -62,7 +64,7 @@ export function SongLabSuite() {
   if (route.name === 'song-lab-project') screen = <SongLabProject projectId={song ?? ''} tab={route.params.tab ?? 'overview'} canSeeAr={canSeeAr} />
   if (route.name === 'studio') screen = <StudioHome />
   if (route.name === 'studio-project') screen = <StudioProject projectId={studio ?? ''} tab={(route.params.tab as StudioTab) ?? 'session'} {...(route.params.at ? { at: route.params.at } : {})} />
-  if (route.name === 'live-lab') screen = <LiveLabHome />
+  if (route.name === 'live-lab') screen = <LiveLabHome canImportRelease={entryMode === 'full' || sourceLibraryEnabled} />
   if (route.name === 'live-project') screen = <LiveProject projectId={route.params.liveProjectId ?? ''} />
   if (route.name === 'live-midi') screen = <LiveMidi projectId={route.params.liveProjectId ?? ''} />
   if (route.name === 'live-settings') screen = <LiveSettings />
@@ -70,18 +72,20 @@ export function SongLabSuite() {
   return <div className="sl-suite">
     <header className="sl-header">
       <div className="sl-identity"><span className="sl-mark" aria-label="SL"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M2 18V2H18M46 2H62V18M2 46V62H18M46 62H62V46" /></svg><b>SL</b></span><div><strong>SONG LAB</strong><span>BY STREET BANKER</span></div></div>
-      <div className="sl-header-actions"><a className="sl-parent" href={home + '/command-center'}><StreetBankerLogo /><span>Back to Street Banker</span></a>
-        <details><summary>Walkthrough</summary><ol>{JOURNEY_STEPS.map((name, i) => <li key={name}><b>{name}</b><p>{GUIDANCE[i]}</p></li>)}</ol></details>
-        <details><summary>Feature checklist</summary><p>Existing capabilities retained. These are source statuses, not a claim that every provider is configured. Live Lab stays in the preview until Phase 4.</p><ul>{SONG_LAB_FEATURES.map(f => <li key={f.name}><label><input type="checkbox" />{f.name}</label><span>{f.status}</span><p>{f.description}</p></li>)}</ul></details>
+      <div className="sl-header-actions"><a className="sl-parent" href={entryMode === 'live' ? home + '/rooms/stage' : home + '/command-center'}><StreetBankerLogo /><span>{entryMode === 'live' ? 'Back to Stage' : 'Back to Street Banker'}</span></a>
+        {entryMode === 'full' && <><details><summary>Walkthrough</summary><ol>{JOURNEY_STEPS.map((name, i) => <li key={name}><b>{name}</b><p>{GUIDANCE[i]}</p></li>)}</ol></details>
+        <details><summary>Feature checklist</summary><p>Existing capabilities retained. These are source statuses, not a claim that every provider is configured.</p><ul>{SONG_LAB_FEATURES.map(f => <li key={f.name}><label><input type="checkbox" />{f.name}</label><span>{f.status}</span><p>{f.description}</p></li>)}</ul></details></>}
       </div>
     </header>
+    {entryMode === 'live' && <div className="sl-mode" role="status">LIVE SET · Stage room access</div>}
     <div className="sl-mode" role="status">{mode === 'live' ? 'LIVE MODE · provider work may be billed' : mode === 'sandbox' ? 'SANDBOX MODE · no provider will be billed' : 'Checking provider billing mode…'}</div>
     <main className="sl-workspace">
-      <nav className="sl-steps" aria-label="Song journey">{JOURNEY_STEPS.map((name, i) => <a href={'#' + destination(i)} key={name} aria-current={step === i ? 'step' : undefined} onClick={() => setSelectedStep(i)}><span className="sl-led"/><span className="sl-step-number">0{i + 1}</span><b>{name}</b></a>)}</nav>
+      {entryMode === 'full' && <><nav className="sl-steps" aria-label="Song journey">{JOURNEY_STEPS.map((name, i) => <a href={'#' + destination(i)} key={name} aria-current={step === i ? 'step' : undefined} onClick={() => setSelectedStep(i)}><span className="sl-led"/><span className="sl-step-number">0{i + 1}</span><b>{name}</b></a>)}</nav>
       <div className="sl-guidance"><span>0{step + 1} / {JOURNEY_STEPS[step]}</span><p>{GUIDANCE[step]}</p></div>
-      <nav className="sl-libraries" aria-label="Existing screens">{linkedEnabled && <a href="#/song-journey">One song journey</a>}<a href="#/song-lab/library">Song Lab home</a><a href="#/song-lab/new">New song</a><a href="#/song-lab/projects">All songs</a><a href="#/studio">Studio projects</a><a href="#/live-lab">Live Lab preview</a><a href="#/live-lab/settings">Live settings</a></nav>
+      <nav className="sl-libraries" aria-label="Existing screens">{linkedEnabled && <a href="#/song-journey">One song journey</a>}<a href="#/song-lab/library">Song Lab home</a><a href="#/song-lab/new">New song</a><a href="#/song-lab/projects">All songs</a><a href="#/studio">Studio projects</a><a href="#/live-lab">Live Lab</a><a href="#/live-lab/settings">Live settings</a></nav></>}
+      {entryMode === 'live' && <nav className="sl-libraries" aria-label="Live set controls"><a href="#/live-lab">Setlist and stage setup</a><a href="#/live-lab/settings">Live settings</a></nav>}
       {error ? <section role="alert"><h1>Sign in through Street Banker</h1><p>{error}</p><a className="button" href="/login">Sign in at Street Banker</a></section> : user ? <section className="sl-existing">{screen}</section> : <p role="status">Checking Street Banker access…</p>}
-      <footer><span>Street Banker Song Lab · {user?.displayName ?? 'Street Banker sign-in'}</span>{user && <button onClick={() => void api.logout().then(() => window.location.assign(home + '/command-center'))}>Sign out</button>}<span>Phase 1 · existing screens · Vault / Rack handoffs not connected here yet</span></footer>
+      <footer><span>Song Lab · {user?.displayName ?? 'Street Banker sign-in'}</span>{user && <button onClick={() => void api.logout().then(() => window.location.assign(home + (entryMode === 'live' ? '/rooms/stage' : '/command-center')))}>Sign out</button>}<span>{entryMode === 'live' ? 'Live set · Stage room' : 'Existing Song Lab, Studio and Live Lab tools'}</span></footer>
     </main>
   </div>
 }

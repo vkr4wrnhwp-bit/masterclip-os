@@ -39,6 +39,7 @@ const PRODUCT_FLAGS = new Set([
   'SONG_LAB_SUITE_ENABLED',
   'SONG_LAB_SUITE_SUITE_SSO_ENABLED',
   'SONG_LAB_SUITE_LINKED_RECORDS_ENABLED',
+  'STAGE_LIVE_LAB_ENABLED',
   // Street Banker Studio. Every one of these hides a whole surface: the nav
   // entry, the tab and the routes all disappear together, so nobody meets a
   // refusal partway through a workflow.

@@ -26,6 +26,12 @@ test('Song Lab shell: real session, 375px, steps, disclosures, keyboard and reta
     await page.goto(baseURL + '/#' + hash)
     await expect(page.locator('.sl-existing')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Song journey' }).getByRole('link')).toHaveCount(6)
+    const stageCopy = await page.locator('.sl-suite').evaluate(root => ({
+      text: root.textContent?.toLowerCase() ?? '',
+      links: Array.from(root.querySelectorAll('a[href]')).map(link => (link as HTMLAnchorElement).getAttribute('href')?.toLowerCase() ?? ''),
+    }))
+    expect(stageCopy.text, hash + ' rendered copy must keep the Stage route clear').not.toMatch(/\btour\b/)
+    expect(stageCopy.links.filter(href => href.includes('/tour')), hash + ' rendered links must keep the Stage route clear').toEqual([])
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     const small = await page.locator('.sl-suite').evaluate(root => Array.from(root.querySelectorAll('*')).filter(e => {
       const el = e as HTMLElement, r = el.getBoundingClientRect(), s = getComputedStyle(el)
