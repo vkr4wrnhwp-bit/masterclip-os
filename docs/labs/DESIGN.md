@@ -1,9 +1,9 @@
-# Song Passage — design proposal
+# Street Banker Song Lab — design proposal
 
 **Validate before build.** One Street Banker suite helps an artist understand
 one owned song, decide what to improve, obtain a real Rack result, approve a
-version and prepare a truthful delivery package. “Song Passage” is a working
-name, not approved branding. Live Lab belongs inside V1 Stage.
+version and prepare a truthful delivery package. The owner chose **Street Banker Song Lab**, monogram **SL**. Use the full public
+name in marketing; see NAMES.md for the acknowledged SongLab collisions. Live Lab belongs inside V1 Stage.
 
 ## User, wedge and portfolio fit
 
@@ -39,7 +39,7 @@ Walkthrough is a visible, keyboard-accessible short guide; every section has
 its own “?” help disclosure. Back to Street Banker and the feature checklist
 (Real / Needs a key / Sample / Not built) are available in the chrome. Industry
 terms are explained in brackets on first appearance. Artist copy uses “your song”
-and “your mix”; technical cohort/asset terms stay in evidence/operator details.
+and “your mix”; technical comparison-group/file terms stay in evidence/operator details.
 
 All nineteen old tab destinations remain traceable in the plan: Overview,
 Structure, Hook, Lyrics, Energy, Tempo, Arrangement, Benchmark, Producer and A&R
@@ -62,31 +62,99 @@ active step and selected version. Avoid gold body paragraphs, rainbow status
 badges, fake “pro” meters, stock mixing-console imagery and decorative graphs.
 Status always has words; red appears only for an actual blocker/emergency.
 
-Use a system sans-serif throughout; no monospace, including numbers and metadata.
-Body 16px, supporting text 14px, smallest 12px; a restrained 36–56px headline.
-Give the song title and source/version strong hierarchy. Desktop content max
-1120px with a two-column work/evidence layout, one clearly dominant action and
-adequate whitespace. Thin borders and flat panels carry the layout. Keep technical
-provider diagnostics in section help/operator detail, not the main artist flow.
+### Material, hierarchy and typography
 
-At 375px, use a single column with 16px side padding, wrapped step links and
-stacked full-width controls. No horizontally scrolling tab rail or table. Buttons,
-links styled as controls, form fields and help summaries have at least 44px
-targets. Keep long IDs/file names wrapping, grid children min-width:0, and visible
-focus outlines. Do not hide overflowing content to pass a width check.
+The song is the hero on every screen: original geometric sample artwork, title,
+version and a complete waveform, followed by one obvious next action. Surfaces
+use layered anodized charcoal, restrained gold edge light, inset meter glass,
+soft grain, bevel highlights and deep inner shadows. Warm white section bands
+separate the four tool-page stages. This is an original Street Banker system;
+no competitor branding, layout or copy is borrowed. Red is reserved for a
+blocking delivery example and emergency controls, never decoration or progress.
 
-The mockups demonstrate seven surfaces plus dedicated 375px home/song/Stage
-views. They are labelled **Sample · static design proposal**. Links/disclosures
-work locally; no button claims an upload, analysis, save or performance occurred.
-An unconnected feature displays its status and reason. Real/synthetic readiness
-must be derived from result provenance later, never inferred from page styling.
+Display: **Barlow Condensed**, weight 600–700; UI: **Manrope**, 400–800.
+Google Fonts is optional; Nimbus Sans Narrow/Arial Narrow and Arial are usable
+fallbacks. No monospace. Desktop title 61px, performance title 88px, section
+27px, body 15px, description 14px, supporting text and graph labels at least
+12px. Phone title 38px; performance title 46px. Numbers use tabular figures.
+SVG instrument labels are sized to remain at least 12 screen pixels; the phone
+waveform uses a separate readable HTML section/time legend.
+
+### Instruments tell the truth
+
+All instruments and artwork are original inline SVG/CSS, labelled **Sample** or
+**Example**. Waveform bars, section boundaries, energy envelopes, scatter shapes
+and tonal curves use plausible deterministic shapes; they are not measurements
+of a supplied recording. A later implementation must replace them with actual
+saved analyzer output and its source/version, never infer results from styling.
+
+| Instrument | Purpose and truthful rendering |
+| --- | --- |
+| Complete waveform | Whole-song amplitude shape, section bands, times and section markers; a static sample playhead. |
+| Energy curve | Changes in intensity through the song with a labelled relative scale; human section corrections remain authoritative. |
+| Key and tempo | Readout with separate sample confidence values; musical key and BPM [beats per minute] are explained. |
+| Loudness and peak meters | Stereo bars, numerical values and a -48 to 0 dBFS [digital full-scale level] scale; LUFS [perceived loudness] clearly named. |
+| Stereo field | Correlation [how similarly left and right move] scale from -1 to +1; sample spread is diagnostic context, not an editing control. |
+| Tonal balance | Your mix and reference curves on a frequency scale; no unmeasured pass/fail claim. |
+| A/B players | Exact version identities and **Example matched-level** badges; preview controls select notes only and never play or normalize audio. |
+
+The finishing brief combines Mix Doctor, references, Translation Lab and Artist
+Sonic DNA findings. Actual mix/master processing hands off to The Rack. Rack
+intent chains, presets and history remain a brief and evidence record, not a
+second processor. Rights, record history and engineer requests remain reachable.
+
+### Every feature has a visible home
+
+[FEATURE-MAP.md](FEATURE-MAP.md) maps all 19 principal inventory surfaces,
+77 named capabilities and every one of the 100 existing Card-panel occurrences.
+Each source panel has a named visible subpanel and an HTML anchor. Status badges
+separate **today’s source assessment** (Real / Needs a key / Sample / Stub) from
+**this display** (always Sample). The chrome calls Stub “Not built”. Mixed
+surfaces explain exceptions rather than claiming a provider or handoff works.
+No migration may replace the preview until this crosswalk is satisfied for
+controls, permissions, saved records and the actual counterpart contracts.
+
+The original ten HTML files are all redesigned. Seven additional screens show
+Benchmark/A&R; Experiments/Producer; the finishing brief; Collaborate; handoffs,
+memory and requests; Live MIDI/settings; and full Live performance. The README
+links all 17. A&R remains server permission-gated. Comments, collaborators,
+approvals, Record Passport, rights and provenance are explicit panels, not
+implied future items behind the ten research proposals.
+
+### Phone composition and accessibility
+
+The three dedicated phone views recompose home, the song and Stage around one
+column, a compact artwork/title group, full-width next action, a short step grid,
+and readable stacked instruments. All screens also adapt to 375px. Preparation
+pads become two columns. Tables become labelled blocks; no sideways tab rail.
+Controls, links and help summaries are at least 44px tall; performance controls
+are 72px or larger. Keep long text wrapping and visible keyboard focus. Do not
+hide content overflow to conceal a layout failure. Every section has “?” help,
+with the feature checklist, Walkthrough and Back to Street Banker in the chrome.
+All new external service operations are disabled with a reason in the mockup.
+
+### Motion specification for later implementation
+
+| Element | Normal motion | Reduced-motion / safety behavior |
+| --- | --- | --- |
+| Level meters | 20–50ms attack, 300–700ms decay; optional peak hold about 1s, driven by real audio values. | Remove easing and glow pulses; retain readable numerical values and deliberate updates. Never fabricate activity. |
+| Playhead | Follow actual transport time; interpolate only between measured positions while audio plays. | Discrete position/time updates; no decorative sweep or automatic scrolling. |
+| Panel reveal | 120–180ms opacity and at most 4px movement after deliberate disclosure. | Immediate reveal with no movement. Preserve focus and reading order. |
+| Version choice | Brief border change, persistent selected label and aria-pressed state. | Immediate label/border change, with no flashing. |
+| Performance | No continuous decorative motion, changing layout or delayed emergency feedback. | Same stationary layout; emergency state updates immediately. |
+
+The current static HTML does not simulate playback. CSS honors
+`prefers-reduced-motion`; local interactions change sample notes/state only.
+Future meter animation must stop when the page is hidden or transport stops.
 
 ## Live Lab inside Stage
 
 Stage header: **Street Banker · Stage**. Enter through existing suite sign-in;
 show set identity, current song, prepared scenes, package verification and one
 large rehearsal/performance action. Performance has explicitly distinct selected,
-queued and playing states, visible emergency stop, click and lock controls.
+queued and playing states, a persistent full-width emergency bar, huge current-song readout, click and lock
+controls. The emergency stop remains reachable while inspecting lower panels;
+preparation controls and recovery never start playback implicitly.
 Preparation can be navigated on a phone; performance suitability must be tested
 on the actual browser/device/controller. A ready claim requires local bytes,
 checksums and successful decode, not a server flag alone.
@@ -155,7 +223,7 @@ the rollout. The source inventory is evidence; third-party access and live
 deployment settings remain unverified.
 
 Locked: combined song journey, Rack/Vault reuse, Live in Stage, preserve all three
-preview labs, no creation workstation promise. Recommended but unapproved: name,
+preview labs, no creation workstation promise. Owner-chosen name: Street Banker Song Lab (SL). Recommended but unapproved:
 six-step layout, top-ten selection, linked-record identity and pilot thresholds.
 Before code: Claude reviews this plan, verifies counterpart contracts, and the
 owner explicitly approves the design/scope. Phase 0 ends at that review gate.

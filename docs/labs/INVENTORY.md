@@ -5,6 +5,10 @@ The cached `audit_motion` tree was not treated as authority: 555 copied files
 matched current Git blob hashes; 33 additional current text files were fetched.
 Existing screenshot PNGs were not needed. No production file changes are proposed.
 
+The owner has chosen **Street Banker Song Lab**, monogram **SL**, for the combined
+suite. Source names below preserve the legacy interface as audited. See
+[FEATURE-MAP.md](FEATURE-MAP.md) for every retained destination and mockup.
+
 ## Status meanings and evidence limits
 
 **Real** means a source-traced end-to-end path to an actual local engine or

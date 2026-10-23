@@ -1,26 +1,32 @@
-# Five checked working names
+# Naming decision — Street Banker Song Lab · SL
 
-Checked 2026-10-23 with quoted exact-name searches plus music/app/software terms.
-No clear exact-name well-known music product was identified for these five in
-the returned results. None repeats the supplied Street Banker suite names
-(The Room, Noise Lab, REACH, ARTIFACTS, DRAFT, VOICE, Company, MOTION, Tour,
-Royalty Sweep). This is a preliminary conflict screen, not domain or trademark
-clearance. The owner chooses the name after review; nothing is registered here.
+The owner selected **Song Lab**, monogram **SL**, on 2026-10-23. The full
+public name is **Street Banker Song Lab**. This decision replaces the five
+exploratory candidates in the earlier review packet; naming is not reopened.
 
-| Option / two-letter monogram | One-line reason | Search findings and caution |
+Use the full public name in marketing, page titles, launch copy, public links,
+service descriptions and promotional artwork. SL is the compact suite mark.
+“Song Lab” may identify the internal suite within clearly branded Street Banker
+navigation or quote the legacy source interface in the inventory. Never use the
+short name alone as a standalone marketing headline. Do not concatenate it into
+“SongLab”. New mockup chrome and document titles use the full public name.
+
+## Known collisions and required caution
+
+| Existing product | Evidence | Consequence |
 | --- | --- | --- |
-| **Song Passage · SP** | Keeps your song central while suggesting a clear path to a finished result. | Exact phrase yielded ordinary musical-passage usage rather than a clear matching software product. Preferred working name; test comprehension and distinctiveness. |
-| **Song Waypoint · SW** | A useful decision point for a song, without implying a recording workstation. | No clear exact-name music product returned; Waypoint is common in other software, so always test with the Street Banker parent name. |
-| **Record Passage · RP** | Focuses on carrying an existing record toward release. | Search found ordinary recording/manual language, including a [MOTU manual](https://cdn-data.motu.com/manuals/software/dp/v11/Digital%2BPerformer%2BUser%2BGuide.pdf), rather than a clear exact-name brand. Less instantly plain than Song Passage. |
-| **Song Forth · SF** | Short and active: help your song move forward. | Returned ordinary phrase/lyric usage, without a clear matching app. Distinctive phrasing may need explanation; test it aloud before selection. |
-| **Record Waypoint · RW** | Communicates a controlled stop for decisions, review and release readiness. | No clear exact-name music product returned; slightly administrative and longer. Reserve option for a more professional operations tone. |
+| Hit Songs Deconstructed’s **SongLab** analysis tool | [Official SongLab overview](https://www.hitsongsdeconstructed.com/songlab-overview/) | Closely related music analysis category. Always include Street Banker prominently; do not imply affiliation or copy its branding, interface or claims. |
+| **AI Song & Music Maker: SongLab** on the App Store | [Apple listing](https://apps.apple.com/us/app/ai-song-music-maker-songlab/id6504249228) | Another music app uses the concatenated name. The parent-qualified public name is mandatory. Do not claim the short name is unique or available. |
 
-Queries: `"Song Passage" music software app`, `"Song Waypoint" music software
-app`, `"Record Passage" music software app`, `"Song Forth" music software app`,
-and `"Record Waypoint" music software app`. Song Passage was checked in two
-engines; the other four were checked in the stronger search engine. Search
-absence is not availability, and monograms also need an internal brand-registry
-check. Reject earlier exploratory alternatives Record Arc (near IK Multimedia's
-ARC), Record Path (generic recording terminology) and Release Thread (common
-music-discussion wording) from the shortlist. Before public launch, check relevant
-trademark registries, common-law use, domains, app stores and social handles.
+These collisions are acknowledged in the owner’s naming instruction. Parent
+qualification is a naming rule, not trademark clearance. Before public launch,
+complete the appropriate legal, domain, app-store and handle checks. Phase 0
+registers nothing and changes no deployed service identity.
+
+## Implementation identity
+
+Use **SL** in the proposed suite strip mark. Propose a distinct internal suite
+identifier such as `song_lab_suite`, subject to the existing sign-in registry’s
+format and counterpart contract. Keep the existing Song Lab preview identity,
+project IDs, routes and enabled flags working; naming does not authorize a
+migration. Claude reviews the revised plan, then the owner approves Phase 1.

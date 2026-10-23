@@ -1,4 +1,4 @@
-# Job 34 — Phase 0 review packet
+# Street Banker Song Lab · SL — Phase 0 review packet
 
 Documentation and static HTML only, based on masterclip-os main
 `a4d92e254cca18ff7d5a8c8ca5bc1ee48c6874fb`. Claude reviews this packet, then
@@ -11,7 +11,9 @@ Render setting, workflow, live branch or saved record changes in this PR.
   sources/costs, exactly ten **propose** picks, all other ideas **later** or **no**.
 - [Design](DESIGN.md): one six-step journey, workflow/ease-of-use/graphic audit,
   plain language, Street Banker tokens, state/permissions and migration gates.
-- [Names](NAMES.md): five preliminary checked names and two-letter monograms.
+- [Names](NAMES.md): the owner’s choice, SL, and mandatory full-name collision caution.
+- [Feature map](FEATURE-MAP.md): 77 named capabilities, 100 source-panel occurrences
+  and all 19 principal inventory surfaces, each with status and a visible home.
 - [Build plan](BUILD-PLAN.md): separate later PRs, Pro/Label access proposal,
   existing suite sign-in, V1 strip door, own service, tests and default-off settings.
 - [Validation](VALIDATION.md): actual checks and limits.
@@ -31,6 +33,13 @@ notes only. No upload, provider, save, login or playback operation runs.
 | [Versions and A/B](mockups/versions.html) | Responsive single-column layout |
 | [Ready to release / delivery](mockups/delivery.html) | Responsive single-column layout |
 | [Live Lab in Stage](mockups/live.html) | [Stage](mockups/phone-live.html) |
+| [Benchmark and permission-gated A&R](mockups/benchmarks-ar.html) | Responsive single-column layout |
+| [Experiments and Producer](mockups/experiments-producer.html) | Responsive single-column layout |
+| [Finishing brief: Mix Doctor, references, Translation, Sonic DNA](mockups/finishing-brief.html) | Responsive single-column layout |
+| [Collaborate: comments, collaborators, approvals](mockups/collaborate.html) | Responsive single-column layout |
+| [Handoffs, memory, rights requests, engineer marketplace](mockups/handoffs-records.html) | Responsive single-column layout |
+| [Live MIDI, keyboard zones and settings](mockups/live-midi-settings.html) | Responsive single-column layout |
+| [Live performance and emergency controls](mockups/live-performance.html) | Responsive single-column layout |
 
 Keep the existing Song Lab, Studio and Live Lab on the labs preview working.
 Motion staging (`motion-vault`) and live (`motion-live`) are outside this change.

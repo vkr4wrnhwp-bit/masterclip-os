@@ -1,4 +1,4 @@
-# Build plan — review before implementation
+# Street Banker Song Lab — build plan
 
 This is documentation/static mockups only. **No app code until Claude reviews
 the plan and LJ explicitly approves it.** The PR targets masterclip-os `main`;
@@ -19,8 +19,9 @@ Reuse Motion’s existing TypeScript verifier on `motion-live`,
 `75705ed21a4245459c5870dce6e9c3fc49360d5b`), and V1’s Python
 `sb_suite_sso.py` contract. Review the latest adapter and tests; port the minimal
 verified boundary in a later PR without merging or modifying Motion live.
-Do not make a parallel sign-in system. New suite identifier is an approval
-decision tied to the selected name; never borrow Motion’s accepted suite ID/key.
+Do not make a parallel sign-in system. The owner chose Street Banker Song Lab, monogram SL. Propose `song_lab_suite`
+as the distinct registry identity, subject to counterpart format validation; never
+borrow Motion’s accepted suite ID/key or repurpose the legacy preview identity.
 
 ## Proposed later PRs
 
@@ -44,22 +45,22 @@ implementation lands. The owner supplies values in Render; never commit secrets.
 
 | Proposed name | Default / purpose |
 | --- | --- |
-| SONG_JOURNEY_ENABLED | `0`; combined entry and APIs |
-| SONG_JOURNEY_SUITE_SSO_ENABLED | `0`; verified parent-suite sign-in adapter |
-| SONG_JOURNEY_LINKED_RECORDS_ENABLED | `0`; additive linked identity flow |
-| SONG_JOURNEY_VAULT_HANDOFF_ENABLED | `0`; verified Vault input/result contract |
-| SONG_JOURNEY_RACK_HANDOFF_ENABLED | `0`; authorizable V1 Rack round trip |
-| SONG_JOURNEY_RACK_URL | blank; validated HTTPS origin, never client-selected |
-| SONG_JOURNEY_HANDOFF_SIGNING_KEY | blank secret; server-only, rotation/expiry required |
-| SONG_JOURNEY_PROVIDER_JOBS_ENABLED | `0`; optional paid provider work in owner service |
-| SONG_JOURNEY_PROVIDER_DAILY_CAP | `0`; no spend until owner sets a measured cap |
+| SONG_LAB_SUITE_ENABLED | `0`; combined entry and APIs |
+| SONG_LAB_SUITE_SUITE_SSO_ENABLED | `0`; verified parent-suite sign-in adapter |
+| SONG_LAB_SUITE_LINKED_RECORDS_ENABLED | `0`; additive linked identity flow |
+| SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED | `0`; verified Vault input/result contract |
+| SONG_LAB_SUITE_RACK_HANDOFF_ENABLED | `0`; authorizable V1 Rack round trip |
+| SONG_LAB_SUITE_RACK_URL | blank; validated HTTPS origin, never client-selected |
+| SONG_LAB_SUITE_HANDOFF_SIGNING_KEY | blank secret; server-only, rotation/expiry required |
+| SONG_LAB_SUITE_PROVIDER_JOBS_ENABLED | `0`; optional paid provider work in owner service |
+| SONG_LAB_SUITE_PROVIDER_DAILY_CAP | `0`; no spend until owner sets a measured cap |
 | STAGE_LIVE_LAB_ENABLED | `0`; V1 entry only after device-level verification |
 | STAGE_LIVE_LAB_SERVICE_URL | blank; verified HTTPS service origin if separate service retained |
 | STAGE_LIVE_LAB_HANDOFF_ENABLED | `0`; signed set import/receipt contract |
 
 Each top-ten feature gets an independent default-off switch after selection;
 propose suffixes MAP, VERSION_COMPARE, REFERENCES, TRANSLATION_NOTES, LYRICS,
-RACK_RECEIPTS, REVIEW, DELIVERY, LIVE_PREP, LINEAGE under `SONG_JOURNEY_FEATURE_`.
+RACK_RECEIPTS, REVIEW, DELIVERY, LIVE_PREP, LINEAGE under `SONG_LAB_SUITE_FEATURE_`.
 Do not turn off or silently repurpose existing `SONG_LAB_ENABLED` or
 `STUDIO_ENABLED` defaults to implement a migration. Reuse existing SSO variable
 names if a verified counterpart contract already defines them; avoid parallel
@@ -69,14 +70,14 @@ secrets for the same boundary. Provider keys belong only to their owning service
 
 | Phase | Names the owner supplies/approves in the later Render setup | Default-off boundary |
 | --- | --- | --- |
-| 1 | STREET_BANKER_URL, PUBLIC_BASE_URL, SUITE_SSO_SECRET_<APPROVED_SUITE_ID>, SUITE_URL_<APPROVED_SUITE_ID>, DATABASE_URL, STORAGE_DRIVER, S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY; reuse then-current deployment equivalents instead of inventing duplicates | SONG_JOURNEY_ENABLED and SONG_JOURNEY_SUITE_SSO_ENABLED off; parent door locked/off until service health and Pro/Label access pass |
-| 2 | SONG_JOURNEY_LINKED_RECORDS_ENABLED; existing analysis/provider configuration remains unchanged | Linked journey and each selected feature off until data-preservation fixtures pass |
-| 3 | SONG_JOURNEY_VAULT_HANDOFF_ENABLED, SONG_JOURNEY_RACK_HANDOFF_ENABLED, SONG_JOURNEY_RACK_URL, SONG_JOURNEY_HANDOFF_SIGNING_KEY | Both handoff switches off; no paid job without owner-configured cap |
+| 1 | STREET_BANKER_URL, PUBLIC_BASE_URL, SUITE_SSO_SECRET_<APPROVED_SUITE_ID>, SUITE_URL_<APPROVED_SUITE_ID>, DATABASE_URL, STORAGE_DRIVER, S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY; reuse then-current deployment equivalents instead of inventing duplicates | SONG_LAB_SUITE_ENABLED and SONG_LAB_SUITE_SUITE_SSO_ENABLED off; parent door locked/off until service health and Pro/Label access pass |
+| 2 | SONG_LAB_SUITE_LINKED_RECORDS_ENABLED; existing analysis/provider configuration remains unchanged | Linked journey and each selected feature off until data-preservation fixtures pass |
+| 3 | SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED, SONG_LAB_SUITE_RACK_HANDOFF_ENABLED, SONG_LAB_SUITE_RACK_URL, SONG_LAB_SUITE_HANDOFF_SIGNING_KEY | Both handoff switches off; no paid job without owner-configured cap |
 | 4 | STAGE_LIVE_LAB_ENABLED, STAGE_LIVE_LAB_SERVICE_URL, STAGE_LIVE_LAB_HANDOFF_ENABLED; existing suite key contract on the actual owning service | All three entry/connection paths off until device rehearsal/security review |
-| 5 | Selected SONG_JOURNEY_FEATURE_* switches; provider credential names only in the owning approved service .env.example | Every optional feature and provider job off; daily cap zero |
+| 5 | Selected SONG_LAB_SUITE_FEATURE_* switches; provider credential names only in the owning approved service .env.example | Every optional feature and provider job off; daily cap zero |
 
 The service-specific SSO secret is a placeholder naming pattern, not a literal
-variable to create before the name is approved. Storage names must be reconciled
+variable to create before the registry contract is verified. Storage names must be reconciled
 with the actual runtime configuration during Phase 1; the table proposes required
 settings, not verified live values. No Render workflow or blueprint is added now.
 
@@ -101,7 +102,7 @@ All production controls require an implemented outcome and honest error state.
 ## Test and review sequence
 
 1. Claude reviews inventory/status accuracy, cross-service contracts, the design,
-   top-ten priority and migration strategy; LJ approves a concrete scope/name.
+   top-ten priority and migration strategy; LJ approves the concrete scope and design; the name is already chosen.
 2. Rebase a new implementation branch on its target's current base; capture
    original records/checksums and routing. Preserve old entry points behind tests.
 3. Run relevant unit/API/domain regressions plus typecheck/lint/build. Use only
@@ -114,9 +115,9 @@ All production controls require an implemented outcome and honest error state.
    changes the entry switch, not stored files/history or a completed provider job.
 
 Phase 0 validation includes source/hash inspection, document/link/HTML/CSS checks,
-static JavaScript parsing and rendered Chromium checks of all ten mockups at
+static JavaScript parsing and rendered Chromium checks of all 17 mockups at
 375px and 1440px, with disclosures collapsed and expanded. Home/song/Stage
-keyboard focus and the sample A/B/navigation paths were checked too. See
+keyboard focus and the sample A/B, pad, lock and emergency-state paths were checked too. See
 VALIDATION.md. This does not establish physical iPhone/Safari, hardware playback,
 or runtime correctness of the three apps or the proposed integrations. Those
 checks remain required before an implementation is accepted.
@@ -152,3 +153,20 @@ lineage, old routes, all failure states, 375px/keyboard, and real device offline
 performance. Fail the migration on lost records, leaked assets, wrong-version
 approval, duplicate charges or false completion. Roll back entry flags, never data.
 ```
+
+## Revised feature and visual acceptance gate
+
+The full public name is Street Banker Song Lab, SL. Apply NAMES.md’s collision
+caution to marketing and chrome. FEATURE-MAP.md is the mandatory implementation
+checklist, including 77 capabilities, 100 existing panel occurrences and all
+19 principal inventory surfaces. None may disappear, be left TBD or be confused
+with the ten optional research proposals. Every mapped capability needs its
+real status, permission, retained record and working destination verified before
+any legacy preview replacement. All 17 static mockups are design references,
+not evidence that a service is connected.
+
+Use DESIGN.md’s material/type/instrument and motion specifications. Test 375px
+phone composition, 12px minimum rendered graph text, 44px minimum targets,
+keyboard, reduced motion and the persistent emergency stop. Phase 4 additionally
+requires three-metre stage readability and real-device audio/MIDI/offline safety
+checks. Phase 0 approves no app implementation or deployment.
