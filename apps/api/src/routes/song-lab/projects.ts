@@ -1,3 +1,4 @@
+import { mirrorSongLabUpload } from '../../song-lab-handoffs.js'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError } from '@masterclip/shared'
@@ -137,6 +138,7 @@ export async function registerSongLabProjectRoutes(app: FastifyInstance, runtime
     const actor = await requireSongLab(runtime, request, 'song_lab.analysis')
     const { id } = request.params as { id: string }
     const { bytes, filename, fields } = await readUpload(request)
+    if (parseBool(fields.rightsConfirmed)) await mirrorSongLabUpload(runtime, request, bytes, filename)
     const result = await songLab.projects.attachUpload({
       actor,
       projectId: id,

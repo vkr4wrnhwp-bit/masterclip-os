@@ -60,7 +60,7 @@ const toB64Url = (value: Buffer): string => value.toString('base64').replace(/\+
 export const SUITE_PROOF_SALT = 'street-banker-suite-proof-v1'
 
 export function signSuiteProof(
-  input: { email: string; uid?: string; suite: string; scope: 'read' | 'deliver'; nonce: string },
+  input: { email: string; uid?: string; suite: string; scope: 'read' | 'deliver'; nonce: string; tenantUid?: string },
   secret: string,
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): string {
@@ -72,6 +72,7 @@ export function signSuiteProof(
     scope: input.scope,
     nonce: input.nonce,
     iat: nowSeconds,
+    ...(input.tenantUid ? { tenant_uid: input.tenantUid } : {}),
   }
   const body = toB64Url(Buffer.from(JSON.stringify(payload), 'utf8'))
   const bytes: number[] = []

@@ -2905,4 +2905,16 @@ CREATE INDEX IF NOT EXISTS idx_song_journey_links_studio ON song_journey_links(o
 CREATE UNIQUE INDEX IF NOT EXISTS idx_song_journey_links_active_pair ON song_journey_links(org_id, song_lab_project_id, studio_project_id) WHERE unlinked_at IS NULL;
 `,
   },
+  {
+    id: '0015_song_lab_handoffs',
+    sql: `
+CREATE TABLE IF NOT EXISTS song_lab_vault_receipts (org_id TEXT NOT NULL REFERENCES orgs(id), sha256 TEXT NOT NULL, receipt_json TEXT NOT NULL, PRIMARY KEY(org_id,sha256));
+CREATE TABLE IF NOT EXISTS song_lab_rack_handoffs (
+ id TEXT PRIMARY KEY, org_id TEXT NOT NULL REFERENCES orgs(id), tenant_uid TEXT NOT NULL,
+ actor_email TEXT NOT NULL, link_id TEXT NOT NULL, version_id TEXT NOT NULL, source_sha256 TEXT NOT NULL,
+ brief TEXT NOT NULL, request_json TEXT NOT NULL, state TEXT NOT NULL, sequence INTEGER NOT NULL DEFAULT 0,
+ receipt_json TEXT, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS song_lab_rack_org ON song_lab_rack_handoffs(org_id,link_id);
+`,
+  },
 ]

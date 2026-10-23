@@ -15,6 +15,7 @@ import { registerLiveLabRoutes } from './routes/live-lab.js'
 import { registerSongLabRoutes } from './routes/song-lab/index.js'
 import { registerStudioRoutes } from './routes/studio/index.js'
 import { registerRateLimit, type RateLimitHandle } from './security/rate-limit.js'
+import { registerSongLabHandoffs } from './song-lab-handoffs.js'
 import { registerSongLabSuite } from './song-lab-suite.js'
 import { registerSongJourneyRoutes } from './routes/song-journey.js'
 import { registerCsrf } from './security/csrf.js'
@@ -129,6 +130,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
 
   await registerSongLabSuite(app, runtime)
   await registerSongJourneyRoutes(app, runtime)
+  await registerSongLabHandoffs(app, runtime)
   await registerOpsRoutes(app, runtime, rateLimit)
   await registerProjectRoutes(app, runtime)
   await registerAssetRoutes(app, runtime)

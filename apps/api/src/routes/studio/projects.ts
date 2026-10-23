@@ -1,3 +1,4 @@
+import { SongLabHandoffs, mirrorSongLabUpload } from '../../song-lab-handoffs.js'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import { AppError } from '@masterclip/shared'
@@ -223,6 +224,7 @@ export async function registerStudioProjectRoutes(app: FastifyInstance, runtime:
       usage: { limit: 'studio.max_versions_per_project', current, what: 'version' },
     })
     const { bytes, filename, fields } = await readUpload(request)
+    if (parseBool(fields.rightsConfirmed)) await mirrorSongLabUpload(runtime, request, bytes, filename)
     return studio.projects.attachUpload({
       actor,
       projectId: id,
@@ -320,7 +322,12 @@ export async function registerStudioProjectRoutes(app: FastifyInstance, runtime:
   app.post('/api/studio/projects/:id/uploads/:sessionId/complete', async (request) => {
     const { id, sessionId } = request.params as { id: string; sessionId: string }
     const actor = await requireStudio(runtime, request, 'studio.access', { project: { id, permission: 'upload' } })
-    return studio.uploads.complete({ actor, sessionId })
+    const result = await studio.uploads.complete({ actor, sessionId })
+    if (runtime.config.SONG_LAB_SUITE_ENABLED && runtime.config.SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED && result.session.audioAssetId) {
+      const handoffs = new SongLabHandoffs(runtime)
+      await handoffs.saveAsset(actor.orgId, await handoffs.identity(request), result.session.audioAssetId)
+    }
+    return result
   })
 
   app.delete('/api/studio/projects/:id/uploads/:sessionId', async (request) => {
