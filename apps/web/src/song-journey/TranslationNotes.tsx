@@ -8,14 +8,14 @@ const LABELS: Record<Device, string> = { phone: 'Phone', headphones: 'Headphones
 
 export function TranslationNotes({ linkId, versionId }: { linkId: string; versionId: string }) {
   const [notes, setNotes] = React.useState<Note[]>([])
-  const [measures, setMeasures] = React.useState<Array<{metric_key:string; value:number|null; unit:string; source_asset_id:string; analyzer_set_version:string}>>([])
+  const [measures, setMeasures] = React.useState<Array<{metric_key:string; value:number|null; unit:string; source_file_name:string; analyzer_set_version:string}>>([])
   const [error, setError] = React.useState('')
   const [saving, setSaving] = React.useState<Device | null>(null)
   const base = `/api/song-journey/links/${encodeURIComponent(linkId)}/versions/${encodeURIComponent(versionId)}/translation-notes`
   React.useEffect(() => {
     let active = true
     setNotes([])
-    request<{ notes: Array<{device:Device; checked:number|boolean; note:string}>; measures: Array<{metric_key:string; value:number|null; unit:string; source_asset_id:string; analyzer_set_version:string}> }>(base)
+    request<{ notes: Array<{device:Device; checked:number|boolean; note:string}>; measures: Array<{metric_key:string; value:number|null; unit:string; source_file_name:string; analyzer_set_version:string}> }>(base)
       .then(result => { if (active) { setMeasures(result.measures ?? []); setNotes(DEVICES.map(device => {
         const entry = result.notes.find(note => note.device === device)
         return { device, checked: !!entry?.checked, note: entry?.note ?? '' }
@@ -53,7 +53,7 @@ export function TranslationNotes({ linkId, versionId }: { linkId: string; versio
       return <div className="sl-listening-device" key={key}>
         <strong>{label}</strong>
         <p>{metric?.value == null ? 'Not measured' : `${metric.value} ${metric.unit}`}</p>
-        {metric && <p>Source: {metric.source_asset_id}; analyzer {metric.analyzer_set_version}</p>}
+        {metric && <p>Source: {metric.source_file_name}; analyzer {metric.analyzer_set_version}</p>}
       </div>
     })}</div>
   </section>
