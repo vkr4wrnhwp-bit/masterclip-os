@@ -53,7 +53,7 @@ export function TranslationNotes({ linkId, versionId }: { linkId: string; versio
       return <div className="sl-listening-device" key={key}>
         <strong>{label}</strong>
         <p>{metric?.value == null ? 'Not measured' : `${metric.value} ${metric.unit}`}</p>
-        {metric && <p>Source: {metric.source_file_name}; analyzer {metric.analyzer_set_version}</p>}
+        {metric && <p>Source: {metric.source_file_name||'Filename not recorded'}; analyzer {metric.analyzer_set_version}</p>}
       </div>
     })}</div>
   </section>
