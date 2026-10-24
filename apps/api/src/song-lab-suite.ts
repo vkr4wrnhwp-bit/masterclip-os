@@ -46,6 +46,7 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
       linkedRecordsEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED,
       songMapEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_FEATURE_SONG_MAP,
       referenceCompareEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE,
+      translationNotesEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES,
       signIn: '/login',
       streetBankerUrl: home,
       suiteId: SONG_LAB_SUITE_ID,

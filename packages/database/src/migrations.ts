@@ -2932,4 +2932,21 @@ CREATE TABLE IF NOT EXISTS song_map_corrections (
 CREATE INDEX IF NOT EXISTS idx_song_map_latest ON song_map_corrections(org_id, song_analysis_id, created_at DESC, id DESC);
 `,
   },
+  {
+    id: '0016c_song_translation_notes',
+    sql: `
+CREATE TABLE IF NOT EXISTS song_translation_notes (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id),
+  studio_version_id TEXT NOT NULL REFERENCES studio_versions(id),
+  device TEXT NOT NULL CHECK(device IN ('phone','headphones','car','mono')),
+  checked INTEGER NOT NULL DEFAULT 0 CHECK(checked IN (0,1)),
+  note TEXT NOT NULL DEFAULT '' CHECK(length(note) <= 500),
+  created_by TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(org_id, studio_version_id, device)
+);
+CREATE INDEX IF NOT EXISTS idx_song_translation_notes_version ON song_translation_notes(org_id, studio_version_id);
+`,
+  },
 ]

@@ -398,5 +398,10 @@ export const SONG_LAB_FEATURES = [
     "name": "Owned-reference tonal comparison",
     "description": "Compare existing Studio measurements against an earlier song in this workspace, with source versions and measurement warnings.",
     "status": "Real"
+  },
+  {
+    "name": "Version-bound translation notes",
+    "description": "Save phone, headphones, car and mono listening notes on an exact Studio version, apart from measured file facts.",
+    "status": "Real"
   }
 ] as const

@@ -50,6 +50,7 @@ implementation lands. The owner supplies values in Render; never commit secrets.
 | SONG_LAB_SUITE_LINKED_RECORDS_ENABLED | `0`; additive linked identity flow |
 | SONG_LAB_SUITE_FEATURE_SONG_MAP | `0`; Song map Phase 5 upgrade, independently disabled |
 | SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE | `0`; Owned-reference comparison Phase 5 upgrade, independently disabled |
+| SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES | `0`; Translation listening notes Phase 5 upgrade, independently disabled |
 | SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED | `0`; verified Vault input/result contract |
 | SONG_LAB_SUITE_RACK_HANDOFF_ENABLED | `0`; authorizable V1 Rack round trip |
 | SONG_LAB_SUITE_RACK_URL | blank; validated HTTPS origin, never client-selected |
@@ -193,3 +194,5 @@ checks. Phase 0 approves no app implementation or deployment.
 
 Phase 5 implementation record — Song map: SONG_LAB_SUITE_FEATURE_SONG_MAP defaults OFF; additive corrections, a protected API, editable Understand screen, measured-only actions and validation tests added in draft PR #74. CI acceptance must be verified on the final commit.
 Phase 5 implementation record — Owned-reference comparison: SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE defaults OFF; owned-song picker, saved Studio mix comparisons, provenance, mismatch warning, Decide screen and isolation tests added in draft PR #75. CI acceptance must be verified on the final commit.
+
+Phase 5 implementation record — Translation listening notes: SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES defaults OFF; version-bound notes, measured Studio facts, protected GET/PUT API, Finish screen and isolation tests added in draft PR #76. CI acceptance must be verified on the final commit.

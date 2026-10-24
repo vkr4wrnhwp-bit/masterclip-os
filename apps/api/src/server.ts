@@ -107,7 +107,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
     }
     const indexPath = opts.webRoot ? join(opts.webRoot, 'index.html') : null
     if (indexPath && existsSync(indexPath)) {
-      void reply.type('text/html').send(shellIndex(indexPath, runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED, runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP, runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE))
+      void reply.type('text/html').send(shellIndex(indexPath, runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED, runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP, runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE, runtime.config.SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES))
       return
     }
     void reply.status(404).send({ error: { kind: 'not_found', code: 'route', message: 'not found' } })
@@ -141,7 +141,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerLiveLabRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
-    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED, runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP, runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE)))
+    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED, runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP, runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE, runtime.config.SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES)))
     await app.register(fastifyStatic, { root: resolve(opts.webRoot), prefix: '/' })
   }
 
@@ -190,6 +190,6 @@ export function sendError(reply: FastifyReply, error: AppError): void {
 }
 
 /** Cache the correct entry choice with the HTML, including an offline Live Lab reload. */
-function shellIndex(path: string, enabled: boolean, linkedRecordsEnabled: boolean, songMapEnabled: boolean, referenceCompareEnabled: boolean): string {
-  return readFileSync(path, 'utf8').replace('<head>', `<head><script>window.__SONG_LAB_SUITE_ENABLED__=${enabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_LINKED_RECORDS_ENABLED__=${enabled && linkedRecordsEnabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_FEATURE_SONG_MAP__=${enabled && songMapEnabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE__=${enabled && referenceCompareEnabled ? 'true' : 'false'}</script>`)
+function shellIndex(path: string, enabled: boolean, linkedRecordsEnabled: boolean, songMapEnabled: boolean, referenceCompareEnabled: boolean, translationNotesEnabled: boolean): string {
+  return readFileSync(path, 'utf8').replace('<head>', `<head><script>window.__SONG_LAB_SUITE_ENABLED__=${enabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_LINKED_RECORDS_ENABLED__=${enabled && linkedRecordsEnabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_FEATURE_SONG_MAP__=${enabled && songMapEnabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE__=${enabled && referenceCompareEnabled ? 'true' : 'false'};window.__SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES__=${enabled && translationNotesEnabled ? 'true' : 'false'}</script>`)
 }
