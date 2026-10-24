@@ -388,5 +388,10 @@ export const SONG_LAB_FEATURES = [
     "name": "Per-stem output-device routing",
     "description": "Existing web code does not provide per-stem hardware outputs.",
     "status": "Stub"
+  },
+  {
+    "name": "Owned-reference tonal comparison",
+    "description": "Compare existing Studio measurements against an earlier song in this workspace, with source versions and measurement warnings.",
+    "status": "Real"
   }
 ] as const
