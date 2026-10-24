@@ -8,6 +8,7 @@ import { StudioProject } from '../studio/StudioProject.js'
 import { songJourneyApi, type JourneyLinkRow } from './api.js'
 import { SuiteHandoffs } from './SuiteHandoffs.js'
 import { InstrumentDeck } from './InstrumentDeck.js'
+import { SongMapEditor } from './SongMapEditor.js'
 import './song-journey.css'
 
 const STEPS = ['Choose', 'Understand', 'Decide', 'Finish', 'Approve', 'Deliver'] as const
@@ -116,7 +117,7 @@ export function SongJourneyPage() {
         {!ready && <Callout tone="info" title="Choose both versions before entering the journey">No current version is selected automatically. Until both exact versions are chosen, analysis panels stay closed.</Callout>}
       </section>
       {ready ? <>
-        <section id="journey-step-1" className="sl-journey-step"><div className="sl-step-heading"><span>02</span><div><p>MEASURED FROM THE SELECTED SONG VERSION</p><h2>Understand</h2></div></div><InstrumentDeck songId={song.id} songVersionId={songVersionId} studioId={studio.id} studioVersionId={studioVersionId} /><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="understand" /></section>
+        <section id="journey-step-1" className="sl-journey-step"><div className="sl-step-heading"><span>02</span><div><p>MEASURED FROM THE SELECTED SONG VERSION</p><h2>Understand</h2></div></div><InstrumentDeck songId={song.id} songVersionId={songVersionId} studioId={studio.id} studioVersionId={studioVersionId} /><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="understand" />{(window as Window & { __SONG_LAB_SUITE_FEATURE_SONG_MAP__?: boolean }).__SONG_LAB_SUITE_FEATURE_SONG_MAP__ === true && <SongMapEditor linkId={active.link.id} />}</section>
         <section id="journey-step-2" className="sl-journey-step"><div className="sl-step-heading"><span>03</span><div><p>CHOOSE WHAT TO TEST</p><h2>Decide</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="decide" /></section>
         <section id="journey-step-3" className="sl-journey-step"><div className="sl-step-heading"><span>04</span><div><p>STUDIO MEASUREMENTS · SELECTED VERSION</p><h2>Finish</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="finish" /><SuiteHandoffs linkId={active.link.id} versionId={songVersionId} /></section>
         <section id="journey-step-4" className="sl-journey-step"><div className="sl-step-heading"><span>05</span><div><p>COMPARE THE EXACT VERSIONS</p><h2>Approve</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="approve" /><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="approve" /></section>
