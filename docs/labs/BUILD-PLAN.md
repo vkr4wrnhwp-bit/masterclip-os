@@ -190,4 +190,4 @@ keyboard, reduced motion and the persistent emergency stop. Phase 4 additionally
 requires three-metre stage readability and real-device audio/MIDI/offline safety
 checks. Phase 0 approves no app implementation or deployment.
 
-Phase 5 implementation record — Translation listening notes: SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES is independently default OFF; implementation and CI acceptance remain pending on codex/songlab-translation-notes-20261023.
+Phase 5 implementation record — Translation listening notes: SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES defaults OFF; version-bound notes, measured Studio facts, protected GET/PUT API, Finish screen and isolation tests added in draft PR #76. CI acceptance must be verified on the final commit.
