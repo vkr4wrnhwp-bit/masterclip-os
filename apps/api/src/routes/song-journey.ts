@@ -84,7 +84,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         warning: mismatch ? 'These were measured differently, so small differences may not be real.' : '',
         provenance: {
           current: { analysisId: mine.analysis['id'], versionId: current.selectedStudioVersionId,
-            sourceFile: mine.analysis['source_file_name'] ?? mine.analysis['source_asset_id'], analyzerVersion: mine.analysis['analyzer_set_version'],
+            sourceFile: mine.analysis['source_file_name'] ?? 'Filename not recorded', analyzerVersion: mine.analysis['analyzer_set_version'],
             sampleRate: mine.analysis['sample_rate'], measuredAt: mine.analysis['created_at'] },
           reference: { analysisId: theirs.analysis['id'], versionId: reference.selectedStudioVersionId,
             sourceFile: theirs.analysis['source_file_name'] ?? theirs.analysis['source_asset_id'], analyzerVersion: theirs.analysis['analyzer_set_version'],
