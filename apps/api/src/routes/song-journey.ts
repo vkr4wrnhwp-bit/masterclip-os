@@ -3,7 +3,7 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { SongJourneyService } from '@masterclip/song-journey-engine'
-import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo } from '@masterclip/song-lab-domain'
+import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
 import { requireSongLab } from './song-lab/helpers.js'
@@ -28,6 +28,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
   if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {
     const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
     const sections = new SongSectionRepo(runtime.db, runtime.clock)
+    const corrections = new SongMapCorrectionRepo(runtime.db, runtime.clock)
     const editSchema = z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('rename'), id: z.string().min(1), label: z.string().trim().min(1).max(80) }),
       z.object({ kind: z.literal('boundary'), id: z.string().min(1), endMs: z.number().int().nonnegative() }),
@@ -44,11 +45,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const features = await sections.features(orgId, analysis.id)
       const original = raw.map(row => ({ id: row.id, label: row.label, startMs: row.startMs,
         endMs: row.endMs, confidence: row.confidence }))
-      const latest = await runtime.db.get(
-        'SELECT edits_json FROM song_map_corrections WHERE org_id = ? AND song_analysis_id = ? ORDER BY created_at DESC, id DESC LIMIT 1',
-        [orgId, analysis.id],
-      )
-      const edits = latest ? JSON.parse(String(latest['edits_json'])) as MapEdit[] : []
+      const latest = await corrections.latest(orgId, analysis.id)
+      const edits = (latest?.edits ?? []) as MapEdit[]
       return { analysis, versionId, original, edits, raw, features }
     }
     app.get('/api/song-journey/links/:id/song-map', async (request, reply) => {
@@ -77,11 +75,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const updated = applySongMapEdits(loaded.original, edits)
       if (loaded.analysis.durationMs != null && updated.some(row => row.endMs > loaded.analysis.durationMs!))
         return reply.code(400).send({ error: 'Section boundary exceeds song length.' })
-      await runtime.db.run(
-        'INSERT INTO song_map_corrections (id, org_id, song_analysis_id, song_version_id, edits_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [`smc_${runtime.clock.now()}_${Math.random().toString(36).slice(2)}`, actor.orgId,
-          loaded.analysis.id, loaded.versionId, JSON.stringify(edits), actor.userId, runtime.clock.isoNow()],
-      )
+      await corrections.save({orgId: actor.orgId, analysisId: loaded.analysis.id,
+        versionId: loaded.versionId, edits, actorId: actor.userId})
       return { sections: updated, saved: true }
     })
   }
