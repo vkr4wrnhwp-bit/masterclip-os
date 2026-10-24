@@ -190,4 +190,4 @@ keyboard, reduced motion and the persistent emergency stop. Phase 4 additionally
 requires three-metre stage readability and real-device audio/MIDI/offline safety
 checks. Phase 0 approves no app implementation or deployment.
 
-Phase 5 implementation record — Song map: SONG_LAB_SUITE_FEATURE_SONG_MAP is independently default OFF; implementation and CI acceptance remain pending on codex/songlab-song-map-20261023.
+Phase 5 implementation record — Song map: SONG_LAB_SUITE_FEATURE_SONG_MAP defaults OFF; additive corrections, a protected API, editable Understand screen, measured-only actions and validation tests added in draft PR #74. CI acceptance must be verified on the final commit.
