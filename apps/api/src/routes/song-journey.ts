@@ -75,6 +75,9 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       await corrections.save({orgId: actor.orgId, analysisId: loaded.analysis.id,
         versionId: loaded.versionId, edits, actorId: actor.userId})
       return { sections: updated, saved: true }
+    })
+  }
+
   if (runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE) {
     const getAnalysis = async (orgId: string, studioVersionId: string) => {
       const row = await runtime.db.get(
