@@ -23,7 +23,7 @@ export function validateListeningNotes(record: VersionListeningNotes): VersionLi
   if (record.notes.length !== LISTENING_DEVICES.length ||
       new Set(record.notes.map(x => x.device)).size !== LISTENING_DEVICES.length ||
       record.notes.some(x => !LISTENING_DEVICES.includes(x.device) || typeof x.checked !== 'boolean' ||
-        typeof x.note !== 'string' || x.note.length > 400))
+        typeof x.note !== 'string' || x.note.length > 500))
     throw new Error('Provide one checked state and a short note for each listening device.')
   return { ...record, notes: record.notes.map(note => ({ ...note })) }
 }
