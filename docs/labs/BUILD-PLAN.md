@@ -48,6 +48,7 @@ implementation lands. The owner supplies values in Render; never commit secrets.
 | SONG_LAB_SUITE_ENABLED | `0`; combined entry and APIs |
 | SONG_LAB_SUITE_SUITE_SSO_ENABLED | `0`; verified parent-suite sign-in adapter |
 | SONG_LAB_SUITE_LINKED_RECORDS_ENABLED | `0`; additive linked identity flow |
+| SONG_LAB_SUITE_FEATURE_SONG_MAP | `0`; Song map Phase 5 upgrade, independently disabled |
 | SONG_LAB_SUITE_VAULT_HANDOFF_ENABLED | `0`; verified Vault input/result contract |
 | SONG_LAB_SUITE_RACK_HANDOFF_ENABLED | `0`; authorizable V1 Rack round trip |
 | SONG_LAB_SUITE_RACK_URL | blank; validated HTTPS origin, never client-selected |
@@ -188,3 +189,5 @@ phone composition, 12px minimum rendered graph text, 44px minimum targets,
 keyboard, reduced motion and the persistent emergency stop. Phase 4 additionally
 requires three-metre stage readability and real-device audio/MIDI/offline safety
 checks. Phase 0 approves no app implementation or deployment.
+
+Phase 5 implementation record — Song map: SONG_LAB_SUITE_FEATURE_SONG_MAP is independently default OFF; implementation and CI acceptance remain pending on codex/songlab-song-map-20261023.
