@@ -32,7 +32,8 @@ describe('owned reference choices remain inside one workspace',()=>{
         'content-type':'application/x-www-form-urlencoded','sec-fetch-site':'cross-site'},payload:new URLSearchParams({token}).toString()})
       expect(auth.statusCode).toBe(303)
       const session=auth.cookies.find(c=>c.name==='masterclip_session')!
-      const owner=await db.get('SELECT org_id FROM users WHERE email = ?',['phase5@example.com'])
+      const owner=await db.get('SELECT org_id FROM song_lab_suite_sessions WHERE tenant_uid = ?',['phase5-owner'])
+      expect(owner?.['org_id']).toBeTruthy()
       const ownerOrg=String(owner?.['org_id'])
       const now=new Date().toISOString()
       await db.run('INSERT INTO orgs(id,name,created_at) VALUES(?,?,?)',['foreign-org','Foreign workspace',now])
