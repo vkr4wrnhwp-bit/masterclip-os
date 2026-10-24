@@ -190,4 +190,4 @@ keyboard, reduced motion and the persistent emergency stop. Phase 4 additionally
 requires three-metre stage readability and real-device audio/MIDI/offline safety
 checks. Phase 0 approves no app implementation or deployment.
 
-Phase 5 implementation record — Owned-reference comparison: SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE is independently default OFF; implementation and CI acceptance remain pending on codex/songlab-reference-compare-20261023.
+Phase 5 implementation record — Owned-reference comparison: SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE defaults OFF; owned-song picker, saved Studio mix comparisons, provenance, mismatch warning, Decide screen and isolation tests added in draft PR #75. CI acceptance must be verified on the final commit.
