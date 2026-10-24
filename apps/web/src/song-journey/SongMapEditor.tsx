@@ -14,6 +14,7 @@ export function SongMapEditor({linkId}:{linkId:string}) {
   const [busy,setBusy]=React.useState(false)
   const url=`/api/song-journey/links/${encodeURIComponent(linkId)}/song-map`
   const load=React.useCallback(async()=>{
+    setData(null); setEdits([])
     try{
       const found=await request<MapData>(url)
       setData(found);setEdits(found.edits||[]);setNotice('')
