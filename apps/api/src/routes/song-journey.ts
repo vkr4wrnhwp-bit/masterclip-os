@@ -48,8 +48,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       )
       const measures = await runtime.db.query(
         `SELECT m.metric_key, m.value, m.unit, m.confidence, a.id AS analysis_id,
-                a.analyzer_set_version, a.source_asset_id, a.created_at
-           FROM studio_mix_metrics m JOIN studio_mix_analyses a ON a.id = m.analysis_id
+                a.analyzer_set_version, a.source_asset_id, aa.file_name AS source_file_name, a.created_at
+           FROM studio_mix_metrics m JOIN studio_mix_analyses a ON a.id = m.analysis_id LEFT JOIN audio_assets aa ON aa.id = a.source_asset_id AND aa.org_id = a.org_id
           WHERE a.org_id = ? AND m.org_id = ? AND a.studio_version_id = ?
             AND a.status = 'ready' AND m.metric_key IN ('true_peak_dbtp', 'phase_correlation', 'mono_fold_loss_db', 'sub_energy_pct')
             AND a.id = (SELECT id FROM studio_mix_analyses WHERE org_id = ? AND studio_version_id = ? AND status = 'ready' ORDER BY created_at DESC, id DESC LIMIT 1)`,
