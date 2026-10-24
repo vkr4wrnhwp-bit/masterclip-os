@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
+import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
 import { SongJourneyService } from '@masterclip/song-journey-engine'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
@@ -74,6 +75,75 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       await corrections.save({orgId: actor.orgId, analysisId: loaded.analysis.id,
         versionId: loaded.versionId, edits, actorId: actor.userId})
       return { sections: updated, saved: true }
+    })
+  }
+
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE) {
+    const getAnalysis = async (orgId: string, studioVersionId: string) => {
+      const row = await runtime.db.get(
+        "SELECT a.*, aa.file_name AS source_file_name FROM studio_mix_analyses a LEFT JOIN audio_assets aa ON aa.id = a.source_asset_id AND aa.org_id = a.org_id WHERE a.org_id = ? AND a.studio_version_id = ? AND a.status = 'ready' ORDER BY a.created_at DESC, a.id DESC LIMIT 1",
+        [orgId, studioVersionId],
+      )
+      if (!row) return null
+      const metrics = await runtime.db.query(
+        'SELECT * FROM studio_mix_metrics WHERE org_id = ? AND analysis_id = ?',
+        [orgId, String(row['id'])],
+      )
+      return { analysis: row, metrics: metrics.map(m => ({
+        key: String(m['metric_key']), value: m['value'] == null ? null : Number(m['value']),
+        unit: String(m['unit']), confidence: Number(m['confidence']),
+        analysisMethod: String(m['analysis_method']), provider: String(m['provider']), note: String(m['note']),
+      })) as MixMetric[] }
+    }
+    app.get('/api/song-journey/links/:id/reference-candidates', async request => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const currentLink = await journey.links.get(actor.orgId, id)
+      const options = await journey.links.list(actor.orgId)
+      const candidates = []
+      for (const link of options) {
+        if (link.id === id || link.songLabProjectId === currentLink.songLabProjectId || !link.selectedStudioVersionId) continue
+        const match = await getAnalysis(actor.orgId, link.selectedStudioVersionId)
+        if (!match) continue
+        const song = await songs.get(actor.orgId, link.songLabProjectId)
+        candidates.push({ linkId: link.id, title: song.title, studioVersionId: link.selectedStudioVersionId })
+      }
+      return { candidates }
+    })
+    app.get('/api/song-journey/links/:id/reference-compare', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const { with: otherId } = z.object({ with: z.string().min(1).max(128) }).parse(request.query)
+      const current = await journey.links.get(actor.orgId, id)
+      const reference = await journey.links.get(actor.orgId, otherId)
+      if (current.id === reference.id || current.songLabProjectId === reference.songLabProjectId || !current.selectedStudioVersionId || !reference.selectedStudioVersionId)
+        return reply.code(400).send({ error: 'Choose two different versions from your own saved songs.' })
+      const [mine, theirs] = await Promise.all([
+        getAnalysis(actor.orgId, current.selectedStudioVersionId),
+        getAnalysis(actor.orgId, reference.selectedStudioVersionId),
+      ])
+      if (!mine || !theirs) return { state: 'missing', message: 'Not enough information: both songs need completed mix measurements.' }
+      const refSong = await songs.get(actor.orgId, reference.songLabProjectId)
+      const result = compareToReferences(mine.metrics, [{
+        referenceId: reference.id, label: refSong.title, metrics: theirs.metrics,
+      }])
+      const broadKeys = new Set(['low_energy_pct', 'low_mid_energy_pct', 'mid_energy_pct',
+        'high_mid_energy_pct', 'high_energy_pct', 'integrated_lufs', 'stereo_width'])
+      result.rows = result.rows.filter(row => broadKeys.has(row.metricKey))
+      const mismatch = mine.analysis['analyzer_set_version'] !== theirs.analysis['analyzer_set_version']
+        || mine.analysis['sample_rate'] !== theirs.analysis['sample_rate']
+      return {
+        state: 'ready', title: refSong.title, ...result,
+        warning: mismatch ? 'These were measured differently, so small differences may not be real.' : '',
+        provenance: {
+          current: { analysisId: mine.analysis['id'], versionId: current.selectedStudioVersionId,
+            sourceFile: mine.analysis['source_file_name'] ?? 'Filename not recorded', analyzerVersion: mine.analysis['analyzer_set_version'],
+            sampleRate: mine.analysis['sample_rate'], measuredAt: mine.analysis['created_at'] },
+          reference: { analysisId: theirs.analysis['id'], versionId: reference.selectedStudioVersionId,
+            sourceFile: theirs.analysis['source_file_name'] ?? 'Filename not recorded', analyzerVersion: theirs.analysis['analyzer_set_version'],
+            sampleRate: theirs.analysis['sample_rate'], measuredAt: theirs.analysis['created_at'] },
+        },
+      }
     })
   }
 
