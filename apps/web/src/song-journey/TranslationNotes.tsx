@@ -15,6 +15,8 @@ export function TranslationNotes({ linkId, versionId }: { linkId: string; versio
   React.useEffect(() => {
     let active = true
     setNotes([])
+    setMeasures([])
+    setError('')
     request<{ notes: Array<{device:Device; checked:number|boolean; note:string}>; measures: Array<{metric_key:string; value:number|null; unit:string; source_file_name:string; analyzer_set_version:string}> }>(base)
       .then(result => { if (active) { setMeasures(result.measures ?? []); setNotes(DEVICES.map(device => {
         const entry = result.notes.find(note => note.device === device)
