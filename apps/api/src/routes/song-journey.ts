@@ -46,7 +46,16 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         'SELECT device, checked, note, updated_at FROM song_translation_notes WHERE org_id = ? AND studio_version_id = ?',
         [actor.orgId, versionId],
       )
-      return { versionId, notes, meaning: 'These ticks are your notes, not a device test.' }
+      const measures = await runtime.db.all(
+        `SELECT m.metric_key, m.value, m.unit, m.confidence, a.id AS analysis_id,
+                a.analyzer_set_version, a.source_asset_id, a.created_at
+           FROM studio_mix_metrics m JOIN studio_mix_analyses a ON a.id = m.analysis_id
+          WHERE a.org_id = ? AND m.org_id = ? AND a.studio_version_id = ?
+            AND a.status = 'ready' AND m.metric_key IN ('true_peak_dbtp', 'phase_correlation', 'mono_fold_loss_db', 'sub_energy_pct')
+            AND a.id = (SELECT id FROM studio_mix_analyses WHERE org_id = ? AND studio_version_id = ? AND status = 'ready' ORDER BY created_at DESC, id DESC LIMIT 1)`,
+        [actor.orgId, actor.orgId, versionId, actor.orgId, versionId],
+      )
+      return { versionId, notes, measures, meaning: 'These ticks are your notes, not a device test.' }
     })
     app.put('/api/song-journey/links/:id/versions/:versionId/translation-notes', async (request, reply) => {
       const actor = await authorize(request)
