@@ -28,7 +28,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
   if (runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE) {
     const getAnalysis = async (orgId: string, studioVersionId: string) => {
       const row = await runtime.db.get(
-        "SELECT * FROM studio_mix_analyses WHERE org_id = ? AND studio_version_id = ? AND status = 'ready' ORDER BY created_at DESC, id DESC LIMIT 1",
+        "SELECT a.*, aa.file_name AS source_file_name FROM studio_mix_analyses a LEFT JOIN audio_assets aa ON aa.id = a.source_asset_id AND aa.org_id = a.org_id WHERE a.org_id = ? AND a.studio_version_id = ? AND a.status = 'ready' ORDER BY a.created_at DESC, a.id DESC LIMIT 1",
         [orgId, studioVersionId],
       )
       if (!row) return null
@@ -81,10 +81,10 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         warning: mismatch ? 'These were measured differently, so small differences may not be real.' : '',
         provenance: {
           current: { analysisId: mine.analysis['id'], versionId: current.selectedStudioVersionId,
-            sourceAssetId: mine.analysis['source_asset_id'], analyzerVersion: mine.analysis['analyzer_set_version'],
+            sourceFile: mine.analysis['source_file_name'] ?? mine.analysis['source_asset_id'], analyzerVersion: mine.analysis['analyzer_set_version'],
             sampleRate: mine.analysis['sample_rate'], measuredAt: mine.analysis['created_at'] },
           reference: { analysisId: theirs.analysis['id'], versionId: reference.selectedStudioVersionId,
-            sourceAssetId: theirs.analysis['source_asset_id'], analyzerVersion: theirs.analysis['analyzer_set_version'],
+            sourceFile: theirs.analysis['source_file_name'] ?? theirs.analysis['source_asset_id'], analyzerVersion: theirs.analysis['analyzer_set_version'],
             sampleRate: theirs.analysis['sample_rate'], measuredAt: theirs.analysis['created_at'] },
         },
       }
