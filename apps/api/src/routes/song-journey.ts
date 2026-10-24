@@ -65,7 +65,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         checked: z.boolean(), note: z.string().max(500) }).parse(request.body)
       const now = runtime.clock.isoNow()
       await runtime.db.run(
-        'INSERT INTO song_translation_notes (id, org_id, studio_version_id, device, checked, note, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id, studio_version_id, device) DO UPDATE SET checked = excluded.checked, note = excluded.note, created_by = excluded.created_by, updated_at = excluded.updated_at',
+        'INSERT INTO song_translation_notes (id, org_id, studio_version_id, device, checked, note, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id, studio_version_id, device) DO UPDATE SET checked = excluded.checked, note = excluded.note, updated_at = excluded.updated_at',
         [`stn_${actor.orgId}_${versionId}_${body.device}`, actor.orgId, versionId, body.device, body.checked ? 1 : 0, body.note, actor.userId, now],
       )
       return { ok: true, versionId }
