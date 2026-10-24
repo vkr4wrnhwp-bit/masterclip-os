@@ -8,6 +8,7 @@ import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/so
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
 import { requireSongLab } from './song-lab/helpers.js'
 import { requireStudio } from './studio/helpers.js'
+import { songMapSaveSchema } from './song-map-validation.js'
 
 export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
   const enabled = runtime.config.SONG_LAB_SUITE_ENABLED && runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED
@@ -29,12 +30,6 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
     const sections = new SongSectionRepo(runtime.db, runtime.clock)
     const corrections = new SongMapCorrectionRepo(runtime.db, runtime.clock)
-    const editSchema = z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('rename'), id: z.string().min(1), label: z.string().trim().min(1).max(80) }),
-      z.object({ kind: z.literal('boundary'), id: z.string().min(1), endMs: z.number().int().nonnegative() }),
-      z.object({ kind: z.literal('merge'), leftId: z.string().min(1), rightId: z.string().min(1), label: z.string().trim().min(1).max(80) }),
-      z.object({ kind: z.literal('split'), id: z.string().min(1), atMs: z.number().int().nonnegative(), newId: z.string().min(1), label: z.string().trim().min(1).max(80) }),
-    ])
     const read = async (orgId: string, linkId: string) => {
       const link = await journey.links.get(orgId, linkId)
       const versionId = link.selectedSongVersionId
@@ -70,7 +65,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     app.post('/api/song-journey/links/:id/song-map', async (request, reply) => {
       const actor = await authorize(request)
       const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
-      const { edits } = z.object({ edits: z.array(editSchema).max(200) }).parse(request.body)
+      const { edits } = songMapSaveSchema.parse(request.body)
       const loaded = await read(actor.orgId, id)
       if (!loaded || loaded.analysis.status !== 'complete') return reply.code(400).send({ error: 'Not enough information: no completed analysis to correct.' })
       const updated = applySongMapEdits(loaded.original, edits)
