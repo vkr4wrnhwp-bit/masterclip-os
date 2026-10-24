@@ -42,11 +42,11 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const actor = await authorize(request)
       const { id, versionId } = paramsSchema.parse(request.params)
       if (!await recordFor(actor.orgId, id, versionId)) return reply.code(404).send({ error: 'Version not found' })
-      const notes = await runtime.db.all(
+      const notes = await runtime.db.query(
         'SELECT device, checked, note, updated_at FROM song_translation_notes WHERE org_id = ? AND studio_version_id = ?',
         [actor.orgId, versionId],
       )
-      const measures = await runtime.db.all(
+      const measures = await runtime.db.query(
         `SELECT m.metric_key, m.value, m.unit, m.confidence, a.id AS analysis_id,
                 a.analyzer_set_version, a.source_asset_id, a.created_at
            FROM studio_mix_metrics m JOIN studio_mix_analyses a ON a.id = m.analysis_id
