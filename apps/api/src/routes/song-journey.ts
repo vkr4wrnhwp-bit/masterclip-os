@@ -34,7 +34,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       if (!row) return null
       const metrics = await runtime.db.query(
         'SELECT * FROM studio_mix_metrics WHERE org_id = ? AND analysis_id = ?',
-        [orgId, row['id']],
+        [orgId, String(row['id'])],
       )
       return { analysis: row, metrics: metrics.map(m => ({
         key: String(m['metric_key']), value: m['value'] == null ? null : Number(m['value']),
