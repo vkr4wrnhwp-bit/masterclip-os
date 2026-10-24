@@ -55,3 +55,13 @@
 .sl-handoffs{margin-top:28px;padding:24px;border:1px solid #C9A24A;border-radius:10px;background:#000;color:#fff;font-family:Archivo,Arial,sans-serif;font-size:14px}.sl-handoff-head{display:flex;justify-content:space-between;gap:20px;align-items:start}.sl-handoffs h3{font-size:26px}.sl-handoffs h4{font-size:16px}.sl-cost{color:#E8B950;font-size:12px;white-space:nowrap}.sl-handoffs form,.sl-handoffs label{display:grid;gap:10px}.sl-handoffs form{gap:16px;margin:20px 0}.sl-handoffs textarea{background:#111;color:#fff;border:1px solid #666;border-radius:6px;min-height:120px;padding:14px;font:inherit}.sl-handoffs .sl-consent{display:flex;align-items:center;min-height:44px;gap:12px}.sl-consent input{width:44px;height:44px;flex:none;accent-color:#E8B950}.sl-handoffs button,.sl-handoffs a{min-height:44px;display:inline-flex;align-items:center;padding:10px 16px;font-size:14px}.sl-receipt-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:24px}.sl-receipts{background:#111;border:1px solid #444;border-radius:6px;padding:16px;min-width:0}.sl-receipts-completed{border-color:#C9A24A}.sl-receipts article{border-top:1px solid #444;padding:14px 0}.sl-handoff-message,.sl-checksum{overflow-wrap:anywhere;font-size:12px}.sl-handoffs small{font-size:12px;color:#bbb}.sl-handoffs :focus-visible{outline:2px solid #E8B950;outline-offset:4px}@media(max-width:600px){.sl-handoffs{padding:16px}.sl-handoff-head{display:block}.sl-cost{display:block;margin:12px 0}.sl-receipt-grid{grid-template-columns:1fr}.sl-handoffs button,.sl-handoffs a{width:100%;justify-content:center;margin-top:8px}.sl-handoffs textarea{width:100%;box-sizing:border-box}}
 
 .sl-handoffs audio{display:block;width:100%;min-width:0;margin:12px 0}
+
+.sl-owned-compare{margin-top:20px;padding:16px;max-width:100%;min-width:0;border:1px solid #C9A24A;border-radius:12px;background:#000;color:#fff;font-family:Archivo,Arial,sans-serif}
+.sl-owned-compare h3{color:#E8B950;font-size:20px}
+.sl-owned-compare p,.sl-owned-compare label{font-size:14px}
+.sl-owned-compare select{display:block;min-width:0;width:100%;min-height:44px;color:#fff;background:#111;border:1px solid #888}
+.sl-owned-compare button{min-height:44px;padding:10px 16px;background:#C9A24A;color:#000;font:600 14px Archivo,Arial,sans-serif;margin-top:10px}
+.sl-owned-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin-top:12px}
+.sl-owned-compare-grid article{min-width:0;overflow-wrap:anywhere;padding:12px;background:#111;border:1px solid #555}
+.sl-owned-compare-grid h4{font-size:15px;color:#E8B950}
+.sl-owned-compare-provenance p{overflow-wrap:anywhere;font-size:12px}
