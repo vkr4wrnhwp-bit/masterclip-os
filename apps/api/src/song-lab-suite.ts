@@ -44,6 +44,7 @@ export async function registerSongLabSuite(app: FastifyInstance, runtime: Runtim
       entryMode: accessMode.startsWith('live-') ? 'live' : 'full',
       sourceLibraryEnabled: !accessMode.startsWith('live-') || accessMode.endsWith(':source'),
       linkedRecordsEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED,
+      translationNotesEnabled: config.SONG_LAB_SUITE_ENABLED && config.SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES,
       signIn: '/login',
       streetBankerUrl: home,
       suiteId: SONG_LAB_SUITE_ID,
