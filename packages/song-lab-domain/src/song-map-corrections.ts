@@ -19,7 +19,7 @@ function fromRow(row: Row): SongMapCorrection {
 export class SongMapCorrectionRepo {
   constructor(private readonly db: Db, private readonly clock: Clock = systemClock) {}
   async save(input: {orgId:string;analysisId:string;versionId:string;edits:unknown[];actorId:string}): Promise<SongMapCorrection> {
-    const id = newId('smc', this.clock.now())
+    const id = newId('sa', this.clock.now())
     await insertRow(this.db, 'song_map_corrections', {
       id, org_id:input.orgId, song_analysis_id:input.analysisId,
       song_version_id:input.versionId, edits_json:JSON.stringify(input.edits),
