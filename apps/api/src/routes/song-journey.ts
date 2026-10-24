@@ -87,7 +87,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
             sourceFile: mine.analysis['source_file_name'] ?? 'Filename not recorded', analyzerVersion: mine.analysis['analyzer_set_version'],
             sampleRate: mine.analysis['sample_rate'], measuredAt: mine.analysis['created_at'] },
           reference: { analysisId: theirs.analysis['id'], versionId: reference.selectedStudioVersionId,
-            sourceFile: theirs.analysis['source_file_name'] ?? theirs.analysis['source_asset_id'], analyzerVersion: theirs.analysis['analyzer_set_version'],
+            sourceFile: theirs.analysis['source_file_name'] ?? 'Filename not recorded', analyzerVersion: theirs.analysis['analyzer_set_version'],
             sampleRate: theirs.analysis['sample_rate'], measuredAt: theirs.analysis['created_at'] },
         },
       }
