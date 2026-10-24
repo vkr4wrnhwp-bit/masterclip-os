@@ -24,6 +24,45 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     return songActor
   }
 
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES) {
+    const paramsSchema = z.object({
+      id: z.string().min(1).max(128),
+      versionId: z.string().min(1).max(128),
+    })
+    const recordFor = async (orgId: string, id: string, versionId: string) => {
+      const link = await journey.links.get(orgId, id)
+      const version = await runtime.db.get(
+        'SELECT id FROM studio_versions WHERE org_id = ? AND id = ? AND studio_project_id = ?',
+        [orgId, versionId, link.studioProjectId],
+      )
+      if (!version) return null
+      return version
+    }
+    app.get('/api/song-journey/links/:id/versions/:versionId/translation-notes', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id, versionId } = paramsSchema.parse(request.params)
+      if (!await recordFor(actor.orgId, id, versionId)) return reply.code(404).send({ error: 'Version not found' })
+      const notes = await runtime.db.all(
+        'SELECT device, checked, note, updated_at FROM song_translation_notes WHERE org_id = ? AND studio_version_id = ?',
+        [actor.orgId, versionId],
+      )
+      return { versionId, notes, meaning: 'These ticks are your notes, not a device test.' }
+    })
+    app.put('/api/song-journey/links/:id/versions/:versionId/translation-notes', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id, versionId } = paramsSchema.parse(request.params)
+      if (!await recordFor(actor.orgId, id, versionId)) return reply.code(404).send({ error: 'Version not found' })
+      const body = z.object({ device: z.enum(['phone', 'headphones', 'car', 'mono']),
+        checked: z.boolean(), note: z.string().max(500) }).parse(request.body)
+      const now = runtime.clock.isoNow()
+      await runtime.db.run(
+        'INSERT INTO song_translation_notes (id, org_id, studio_version_id, device, checked, note, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id, studio_version_id, device) DO UPDATE SET checked = excluded.checked, note = excluded.note, created_by = excluded.created_by, updated_at = excluded.updated_at',
+        [`stn_${actor.orgId}_${versionId}_${body.device}`, actor.orgId, versionId, body.device, body.checked ? 1 : 0, body.note, actor.userId, now],
+      )
+      return { ok: true, versionId }
+    })
+  }
+
   app.get('/api/song-journey/links', async request => {
     const actor = await authorize(request)
     const links = await journey.links.list(actor.orgId)
