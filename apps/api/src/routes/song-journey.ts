@@ -41,6 +41,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const analysis = await analyses.latestForVersion(orgId, versionId)
       if (!analysis) return null
       const raw = await sections.list(orgId, analysis.id)
+      const features = await sections.features(orgId, analysis.id)
       const original = raw.map(row => ({ id: row.id, label: row.label, startMs: row.startMs,
         endMs: row.endMs, confidence: row.confidence }))
       const latest = await runtime.db.get(
@@ -48,7 +49,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         [orgId, analysis.id],
       )
       const edits = latest ? JSON.parse(String(latest['edits_json'])) as MapEdit[] : []
-      return { analysis, versionId, original, edits }
+      return { analysis, versionId, original, edits, raw, features }
     }
     app.get('/api/song-journey/links/:id/song-map', async (request, reply) => {
       const actor = await authorize(request)
@@ -58,10 +59,14 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const mapped = applySongMapEdits(loaded.original, loaded.edits)
       return { ...songMapEvidence({
         status: loaded.analysis.status,
+        analysisVersion: loaded.analysis.analysisVersion,
         engineVersion: loaded.analysis.engineVersion,
         bpm: loaded.analysis.bpm, bpmConfidence: loaded.analysis.bpmConfidence,
         key: loaded.analysis.key, keyConfidence: loaded.analysis.keyConfidence,
-      }, mapped), analysisId: loaded.analysis.id, versionId: loaded.versionId, edits: loaded.edits }
+      }, mapped, loaded.raw.map(section => ({
+        id: section.id, label: section.label, sectionType: section.sectionType,
+        energy: loaded.features.get(section.id)?.energy ?? null,
+      }))), analysisId: loaded.analysis.id, versionId: loaded.versionId, edits: loaded.edits }
     })
     app.post('/api/song-journey/links/:id/song-map', async (request, reply) => {
       const actor = await authorize(request)
