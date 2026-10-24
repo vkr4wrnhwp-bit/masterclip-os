@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
+import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
 import { SongJourneyService } from '@masterclip/song-journey-engine'
 import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -22,6 +23,72 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     const studioActor = await requireStudio(runtime, request, 'studio.access')
     if (songActor.orgId !== studioActor.orgId) throw forbidden('Both journey records must belong to the same workspace.')
     return songActor
+  }
+
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE) {
+    const getAnalysis = async (orgId: string, studioVersionId: string) => {
+      const row = await runtime.db.get(
+        "SELECT * FROM studio_mix_analyses WHERE org_id = ? AND studio_version_id = ? AND status = 'ready' ORDER BY created_at DESC, id DESC LIMIT 1",
+        [orgId, studioVersionId],
+      )
+      if (!row) return null
+      const metrics = await runtime.db.query(
+        'SELECT * FROM studio_mix_metrics WHERE org_id = ? AND analysis_id = ?',
+        [orgId, row['id']],
+      )
+      return { analysis: row, metrics: metrics.map(m => ({
+        key: String(m['metric_key']), value: m['value'] == null ? null : Number(m['value']),
+        unit: String(m['unit']), confidence: Number(m['confidence']),
+        analysisMethod: String(m['analysis_method']), provider: String(m['provider']), note: String(m['note']),
+      })) as MixMetric[] }
+    }
+    app.get('/api/song-journey/links/:id/reference-candidates', async request => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      await journey.links.get(actor.orgId, id)
+      const options = await journey.links.list(actor.orgId)
+      const candidates = []
+      for (const link of options) {
+        if (link.id === id || !link.selectedStudioVersionId) continue
+        const match = await getAnalysis(actor.orgId, link.selectedStudioVersionId)
+        if (!match) continue
+        const song = await songs.get(actor.orgId, link.songLabProjectId)
+        candidates.push({ linkId: link.id, title: song.title, studioVersionId: link.selectedStudioVersionId })
+      }
+      return { candidates }
+    })
+    app.get('/api/song-journey/links/:id/reference-compare', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const { with: otherId } = z.object({ with: z.string().min(1).max(128) }).parse(request.query)
+      const current = await journey.links.get(actor.orgId, id)
+      const reference = await journey.links.get(actor.orgId, otherId)
+      if (current.id === reference.id || !current.selectedStudioVersionId || !reference.selectedStudioVersionId)
+        return reply.code(400).send({ error: 'Choose two different versions from your own saved songs.' })
+      const [mine, theirs] = await Promise.all([
+        getAnalysis(actor.orgId, current.selectedStudioVersionId),
+        getAnalysis(actor.orgId, reference.selectedStudioVersionId),
+      ])
+      if (!mine || !theirs) return { state: 'missing', message: 'Not enough information: both songs need completed mix measurements.' }
+      const refSong = await songs.get(actor.orgId, reference.songLabProjectId)
+      const result = compareToReferences(mine.metrics, [{
+        referenceId: reference.id, label: refSong.title, metrics: theirs.metrics,
+      }])
+      const mismatch = mine.analysis['analyzer_set_version'] !== theirs.analysis['analyzer_set_version']
+        || mine.analysis['sample_rate'] !== theirs.analysis['sample_rate']
+      return {
+        state: 'ready', title: refSong.title, ...result,
+        warning: mismatch ? 'These were measured differently, so small differences may not be real.' : '',
+        provenance: {
+          current: { analysisId: mine.analysis['id'], versionId: current.selectedStudioVersionId,
+            sourceAssetId: mine.analysis['source_asset_id'], analyzerVersion: mine.analysis['analyzer_set_version'],
+            sampleRate: mine.analysis['sample_rate'], measuredAt: mine.analysis['created_at'] },
+          reference: { analysisId: theirs.analysis['id'], versionId: reference.selectedStudioVersionId,
+            sourceAssetId: theirs.analysis['source_asset_id'], analyzerVersion: theirs.analysis['analyzer_set_version'],
+            sampleRate: theirs.analysis['sample_rate'], measuredAt: theirs.analysis['created_at'] },
+        },
+      }
+    })
   }
 
   app.get('/api/song-journey/links', async request => {
