@@ -40,7 +40,7 @@ export function OwnedReferenceCompare({ linkId }: {linkId:string}) {
     {comparison?.warning&&<p role="status">{comparison.warning}</p>}
     {comparison?.caveat&&<p>{comparison.caveat}</p>}
     {comparison?.provenance&&<div className="sl-owned-compare-provenance">{(['current','reference'] as const).map(key=>
-      <p key={key}>{key==='current'?'Your song':'Earlier song'}: version {comparison.provenance?.[key]?.versionId}; source {comparison.provenance?.[key]?.sourceAssetId}; analysis {comparison.provenance?.[key]?.analysisId}; analyzer {comparison.provenance?.[key]?.analyzerVersion}; sample rate {comparison.provenance?.[key]?.sampleRate}; measured {comparison.provenance?.[key]?.measuredAt}</p>
+      <p key={key}>{key==='current'?'Your song':'Earlier song'}: version {comparison.provenance?.[key]?.versionId}; source {comparison.provenance?.[key]?.sourceFile}; analysis {comparison.provenance?.[key]?.analysisId}; analyzer {comparison.provenance?.[key]?.analyzerVersion}; sample rate {comparison.provenance?.[key]?.sampleRate}; measured {comparison.provenance?.[key]?.measuredAt}</p>
     )}</div>}
     <div className="sl-owned-compare-grid">{comparison?.rows?.map(row=><article key={row.metricKey}>
       <h4>{row.label}</h4><p>{row.yours==null||row.referenceMedian==null?'Not enough information':row.observation}</p>
