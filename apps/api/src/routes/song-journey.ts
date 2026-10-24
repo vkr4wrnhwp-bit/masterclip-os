@@ -4,10 +4,12 @@ import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
 import { SongJourneyService } from '@masterclip/song-journey-engine'
-import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
+import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
+import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
 import { requireSongLab } from './song-lab/helpers.js'
 import { requireStudio } from './studio/helpers.js'
+import { songMapSaveSchema } from './song-map-validation.js'
 
 export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: Runtime): Promise<void> {
   const enabled = runtime.config.SONG_LAB_SUITE_ENABLED && runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED
@@ -25,6 +27,54 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     return songActor
   }
 
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {
+    const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
+    const sections = new SongSectionRepo(runtime.db, runtime.clock)
+    const corrections = new SongMapCorrectionRepo(runtime.db, runtime.clock)
+    const read = async (orgId: string, linkId: string) => {
+      const link = await journey.links.get(orgId, linkId)
+      const versionId = link.selectedSongVersionId
+      if (!versionId) return null
+      const analysis = await analyses.latestForVersion(orgId, versionId)
+        ?? (await analyses.listForProject(orgId, link.songLabProjectId)).find(item => item.songVersionId === versionId)
+      if (!analysis) return null
+      const raw = await sections.list(orgId, analysis.id)
+      const features = await sections.features(orgId, analysis.id)
+      const original = raw.map(row => ({ id: row.id, label: row.label, startMs: row.startMs,
+        endMs: row.endMs, confidence: row.confidence }))
+      const latest = await corrections.latest(orgId, analysis.id)
+      const edits = (latest?.edits ?? []) as MapEdit[]
+      return { analysis, versionId, original, edits, raw, features }
+    }
+    app.get('/api/song-journey/links/:id/song-map', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const loaded = await read(actor.orgId, id)
+      if (!loaded) return { ...songMapEvidence(null, []), analysisId: null, versionId: null, edits: [] }
+      const mapped = applySongMapEdits(loaded.original, loaded.edits)
+      return { ...songMapEvidence({
+        status: loaded.analysis.status,
+        analysisVersion: loaded.analysis.analysisVersion,
+        engineVersion: loaded.analysis.engineVersion,
+        bpm: loaded.analysis.bpm, bpmConfidence: loaded.analysis.bpmConfidence,
+        key: loaded.analysis.key, keyConfidence: loaded.analysis.keyConfidence,
+      }, mapped, loaded.raw.map(section => ({
+        id: section.id, label: section.label, sectionType: section.sectionType,
+        energy: loaded.features.get(section.id)?.energy ?? null,
+      }))), analysisId: loaded.analysis.id, versionId: loaded.versionId, edits: loaded.edits }
+    })
+    app.post('/api/song-journey/links/:id/song-map', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const { edits } = songMapSaveSchema.parse(request.body)
+      const loaded = await read(actor.orgId, id)
+      if (!loaded || loaded.analysis.status !== 'complete') return reply.code(400).send({ error: 'Not enough information: no completed analysis to correct.' })
+      const updated = applySongMapEdits(loaded.original, edits)
+      if (loaded.analysis.durationMs != null && updated.some(row => row.endMs > loaded.analysis.durationMs!))
+        return reply.code(400).send({ error: 'Section boundary exceeds song length.' })
+      await corrections.save({orgId: actor.orgId, analysisId: loaded.analysis.id,
+        versionId: loaded.versionId, edits, actorId: actor.userId})
+      return { sections: updated, saved: true }
   if (runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE) {
     const getAnalysis = async (orgId: string, studioVersionId: string) => {
       const row = await runtime.db.get(

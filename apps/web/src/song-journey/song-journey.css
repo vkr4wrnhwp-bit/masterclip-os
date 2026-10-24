@@ -56,6 +56,14 @@
 
 .sl-handoffs audio{display:block;width:100%;min-width:0;margin:12px 0}
 
+.sl-song-map{margin-top:20px;padding:16px;min-width:0;max-width:100%;background:#000;color:#fff;border:1px solid #C9A24A;border-radius:12px;font-family:Archivo,Arial,sans-serif}
+.sl-song-map h3{font-size:20px;color:#E8B950}
+.sl-song-map p{font-size:14px;overflow-wrap:anywhere}
+.sl-song-map-sections{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.sl-song-map-sections article{min-width:0;border:1px solid #555;background:#111;padding:12px}
+.sl-song-map-sections h4{font-size:15px;color:#E8B950}
+.sl-song-map-actions{display:flex;flex-wrap:wrap;gap:8px}
+.sl-song-map button{min-height:44px;padding:10px 12px;background:#C9A24A;color:#000;border:1px solid #000;font:600 14px Archivo,Arial,sans-serif;white-space:normal}
 .sl-owned-compare{margin-top:20px;padding:16px;max-width:100%;min-width:0;border:1px solid #C9A24A;border-radius:12px;background:#000;color:#fff;font-family:Archivo,Arial,sans-serif}
 .sl-owned-compare h3{color:#E8B950;font-size:20px}
 .sl-owned-compare p,.sl-owned-compare label{font-size:14px}

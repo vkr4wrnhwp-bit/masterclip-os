@@ -390,6 +390,8 @@ export const SONG_LAB_FEATURES = [
     "status": "Stub"
   },
   {
+    "name": "One song map",
+    "description": "Edit sections beside the original analysis; read measured tempo, key, confidence and evidence-backed listening actions.",
     "name": "Owned-reference tonal comparison",
     "description": "Compare existing Studio measurements against an earlier song in this workspace, with source versions and measurement warnings.",
     "status": "Real"

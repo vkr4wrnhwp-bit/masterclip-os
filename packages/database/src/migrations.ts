@@ -2917,4 +2917,19 @@ CREATE TABLE IF NOT EXISTS song_lab_rack_handoffs (
 CREATE INDEX IF NOT EXISTS song_lab_rack_org ON song_lab_rack_handoffs(org_id,link_id);
 `,
   },
+  {
+    id: '0016a_song_map_corrections',
+    sql: `
+CREATE TABLE IF NOT EXISTS song_map_corrections (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id),
+  song_analysis_id TEXT NOT NULL REFERENCES song_analyses(id),
+  song_version_id TEXT NOT NULL REFERENCES song_versions(id),
+  edits_json TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_song_map_latest ON song_map_corrections(org_id, song_analysis_id, created_at DESC, id DESC);
+`,
+  },
 ]
