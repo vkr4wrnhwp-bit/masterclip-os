@@ -388,5 +388,10 @@ export const SONG_LAB_FEATURES = [
     "name": "Per-stem output-device routing",
     "description": "Existing web code does not provide per-stem hardware outputs.",
     "status": "Stub"
+  },
+  {
+    "name": "One song map",
+    "description": "Edit sections beside the original analysis; read measured tempo, key, confidence and evidence-backed listening actions.",
+    "status": "Real"
   }
 ] as const
