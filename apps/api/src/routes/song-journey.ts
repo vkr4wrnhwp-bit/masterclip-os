@@ -74,6 +74,9 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const result = compareToReferences(mine.metrics, [{
         referenceId: reference.id, label: refSong.title, metrics: theirs.metrics,
       }])
+      const broadKeys = new Set(['low_energy_pct', 'low_mid_energy_pct', 'mid_energy_pct',
+        'high_mid_energy_pct', 'high_energy_pct', 'integrated_lufs', 'stereo_width'])
+      result.rows = result.rows.filter(row => broadKeys.has(row.metricKey))
       const mismatch = mine.analysis['analyzer_set_version'] !== theirs.analysis['analyzer_set_version']
         || mine.analysis['sample_rate'] !== theirs.analysis['sample_rate']
       return {
