@@ -45,11 +45,11 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     app.get('/api/song-journey/links/:id/reference-candidates', async request => {
       const actor = await authorize(request)
       const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
-      await journey.links.get(actor.orgId, id)
+      const currentLink = await journey.links.get(actor.orgId, id)
       const options = await journey.links.list(actor.orgId)
       const candidates = []
       for (const link of options) {
-        if (link.id === id || !link.selectedStudioVersionId) continue
+        if (link.id === id || link.songLabProjectId === currentLink.songLabProjectId || !link.selectedStudioVersionId) continue
         const match = await getAnalysis(actor.orgId, link.selectedStudioVersionId)
         if (!match) continue
         const song = await songs.get(actor.orgId, link.songLabProjectId)
@@ -63,7 +63,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const { with: otherId } = z.object({ with: z.string().min(1).max(128) }).parse(request.query)
       const current = await journey.links.get(actor.orgId, id)
       const reference = await journey.links.get(actor.orgId, otherId)
-      if (current.id === reference.id || !current.selectedStudioVersionId || !reference.selectedStudioVersionId)
+      if (current.id === reference.id || current.songLabProjectId === reference.songLabProjectId || !current.selectedStudioVersionId || !reference.selectedStudioVersionId)
         return reply.code(400).send({ error: 'Choose two different versions from your own saved songs.' })
       const [mine, theirs] = await Promise.all([
         getAnalysis(actor.orgId, current.selectedStudioVersionId),
