@@ -3,7 +3,8 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { SongJourneyService } from '@masterclip/song-journey-engine'
-import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
+import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo } from '@masterclip/song-lab-domain'
+import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
 import { requireSongLab } from './song-lab/helpers.js'
 import { requireStudio } from './studio/helpers.js'
@@ -22,6 +23,62 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     const studioActor = await requireStudio(runtime, request, 'studio.access')
     if (songActor.orgId !== studioActor.orgId) throw forbidden('Both journey records must belong to the same workspace.')
     return songActor
+  }
+
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {
+    const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
+    const sections = new SongSectionRepo(runtime.db, runtime.clock)
+    const editSchema = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('rename'), id: z.string().min(1), label: z.string().trim().min(1).max(80) }),
+      z.object({ kind: z.literal('boundary'), id: z.string().min(1), endMs: z.number().int().nonnegative() }),
+      z.object({ kind: z.literal('merge'), leftId: z.string().min(1), rightId: z.string().min(1), label: z.string().trim().min(1).max(80) }),
+      z.object({ kind: z.literal('split'), id: z.string().min(1), atMs: z.number().int().nonnegative(), newId: z.string().min(1), label: z.string().trim().min(1).max(80) }),
+    ])
+    const read = async (orgId: string, linkId: string) => {
+      const link = await journey.links.get(orgId, linkId)
+      const versionId = link.selectedSongVersionId
+      if (!versionId) return null
+      const analysis = await analyses.latestForVersion(orgId, versionId)
+      if (!analysis) return null
+      const raw = await sections.list(orgId, analysis.id)
+      const original = raw.map(row => ({ id: row.id, label: row.label, startMs: row.startMs,
+        endMs: row.endMs, confidence: row.confidence }))
+      const latest = await runtime.db.get(
+        'SELECT edits_json FROM song_map_corrections WHERE org_id = ? AND song_analysis_id = ? ORDER BY created_at DESC, id DESC LIMIT 1',
+        [orgId, analysis.id],
+      )
+      const edits = latest ? JSON.parse(String(latest['edits_json'])) as MapEdit[] : []
+      return { analysis, versionId, original, edits }
+    }
+    app.get('/api/song-journey/links/:id/song-map', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const loaded = await read(actor.orgId, id)
+      if (!loaded) return reply.code(404).send({ error: 'Not enough information: no completed analysis for the selected song version.' })
+      const mapped = applySongMapEdits(loaded.original, loaded.edits)
+      return { ...songMapEvidence({
+        status: loaded.analysis.status,
+        engineVersion: loaded.analysis.engineVersion,
+        bpm: loaded.analysis.bpm, bpmConfidence: loaded.analysis.bpmConfidence,
+        key: loaded.analysis.key, keyConfidence: loaded.analysis.keyConfidence,
+      }, mapped), analysisId: loaded.analysis.id, versionId: loaded.versionId, edits: loaded.edits }
+    })
+    app.post('/api/song-journey/links/:id/song-map', async (request, reply) => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
+      const { edits } = z.object({ edits: z.array(editSchema).max(200) }).parse(request.body)
+      const loaded = await read(actor.orgId, id)
+      if (!loaded) return reply.code(404).send({ error: 'Not enough information: no completed analysis.' })
+      const updated = applySongMapEdits(loaded.original, edits)
+      if (loaded.analysis.durationMs != null && updated.some(row => row.endMs > loaded.analysis.durationMs!))
+        return reply.code(400).send({ error: 'Section boundary exceeds song length.' })
+      await runtime.db.run(
+        'INSERT INTO song_map_corrections (id, org_id, song_analysis_id, song_version_id, edits_json, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [`smc_${runtime.clock.now()}_${Math.random().toString(36).slice(2)}`, actor.orgId,
+          loaded.analysis.id, loaded.versionId, JSON.stringify(edits), actor.userId, runtime.clock.isoNow()],
+      )
+      return { sections: updated, saved: true }
+    })
   }
 
   app.get('/api/song-journey/links', async request => {
