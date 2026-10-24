@@ -40,6 +40,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const versionId = link.selectedSongVersionId
       if (!versionId) return null
       const analysis = await analyses.latestForVersion(orgId, versionId)
+        ?? (await analyses.listForProject(orgId, link.songLabProjectId)).find(item => item.songVersionId === versionId)
       if (!analysis) return null
       const raw = await sections.list(orgId, analysis.id)
       const features = await sections.features(orgId, analysis.id)
@@ -53,7 +54,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const actor = await authorize(request)
       const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
       const loaded = await read(actor.orgId, id)
-      if (!loaded) return reply.code(404).send({ error: 'Not enough information: no completed analysis for the selected song version.' })
+      if (!loaded) return { ...songMapEvidence(null, []), analysisId: null, versionId: null, edits: [] }
       const mapped = applySongMapEdits(loaded.original, loaded.edits)
       return { ...songMapEvidence({
         status: loaded.analysis.status,
@@ -71,7 +72,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const { id } = z.object({ id: z.string().min(1) }).parse(request.params)
       const { edits } = z.object({ edits: z.array(editSchema).max(200) }).parse(request.body)
       const loaded = await read(actor.orgId, id)
-      if (!loaded) return reply.code(404).send({ error: 'Not enough information: no completed analysis.' })
+      if (!loaded || loaded.analysis.status !== 'complete') return reply.code(400).send({ error: 'Not enough information: no completed analysis to correct.' })
       const updated = applySongMapEdits(loaded.original, edits)
       if (loaded.analysis.durationMs != null && updated.some(row => row.endMs > loaded.analysis.durationMs!))
         return reply.code(400).send({ error: 'Section boundary exceeds song length.' })
