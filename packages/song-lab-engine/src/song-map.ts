@@ -52,13 +52,36 @@ export function applySongMapEdits(original: readonly MapSection[], edits: readon
   return sections
 }
 
+export interface SectionEnergyReading {
+  id: string
+  label: string
+  sectionType: string
+  energy: number | null
+}
 export function songMapEvidence(
-  analysis: { status?: string; engineVersion?: string; bpm?: number | null; bpmConfidence?: number | null; key?: string | null; keyConfidence?: number | null } | null,
+  analysis: { status?: string; analysisVersion?: string; engineVersion?: string; bpm?: number | null; bpmConfidence?: number | null; key?: string | null; keyConfidence?: number | null } | null,
   sections: readonly MapSection[],
+  readings: readonly SectionEnergyReading[] = [],
 ) {
-  if (!analysis || analysis.status !== 'complete') return { message: 'Not enough information: analysis is missing or unfinished.', sections: [], nextActions: [] }
-  const version = analysis.engineVersion || 'unknown analyzer version'
-  const bpm = analysis.bpm == null ? 'Not enough information: tempo was not measured.' : `${analysis.bpm} BPM (confidence: ${analysis.bpmConfidence ?? 'not recorded'}; analyzer ${version})`
-  const key = !analysis.key ? 'Not enough information: key was not measured.' : `${analysis.key} (confidence: ${analysis.keyConfidence ?? 'not recorded'}; analyzer ${version})`
-  return { message: '', tempo: bpm, key, sections: sections.map(s => ({ ...s })), nextActions: [] }
+  const state = !analysis ? 'missing' : analysis.status === 'failed' ? 'failed'
+    : analysis.status === 'complete' ? 'ready' : 'partial'
+  if (state !== 'ready') return { state, message: 'Not enough information: analysis is missing, incomplete or failed.',
+    sections: [], key: { value: null, confidence: null, analysisVersion: null, note: 'Not sure' },
+    tempo: { value: null, confidence: null, analysisVersion: null, note: 'Not sure' }, nextActions: [] }
+  const analysisVersion = analysis?.analysisVersion ?? analysis?.engineVersion ?? 'not recorded'
+  const confidenceNote = (value: number | null | undefined) =>
+    value == null || value < 0.5 ? 'Not sure: confidence is low or missing.' : ''
+  const tempo = { value: analysis?.bpm ?? null, confidence: analysis?.bpmConfidence ?? null,
+    analysisVersion, note: analysis?.bpm == null ? 'Not enough information: tempo was not measured.' : confidenceNote(analysis?.bpmConfidence) }
+  const key = { value: analysis?.key ?? null, confidence: analysis?.keyConfidence ?? null,
+    analysisVersion, note: !analysis?.key ? 'Not enough information: key was not measured.' : confidenceNote(analysis?.keyConfidence) }
+  const verse = readings.find(r => r.sectionType === 'verse' && r.energy != null && Number.isFinite(r.energy))
+  const chorus = readings.find(r => r.sectionType === 'chorus' && r.energy != null && Number.isFinite(r.energy))
+  const nextActions: Array<{ text: string; source: string }> = []
+  if (verse && chorus && verse.energy !== chorus.energy) {
+    const difference = Math.abs(chorus.energy! - verse.energy!)
+    nextActions.push({ text: `Your chorus energy reading is ${difference.toFixed(2)} ${chorus.energy! > verse.energy! ? 'higher' : 'lower'} than the verse. Listen to the transition.`,
+      source: `From section energy analysis, version ${analysisVersion}` })
+  }
+  return { state, message: '', tempo, key, sections: sections.map(s => ({ ...s })), nextActions: nextActions.slice(0,3) }
 }
