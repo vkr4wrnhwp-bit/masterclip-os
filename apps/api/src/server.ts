@@ -141,7 +141,7 @@ export async function buildServer(opts: ServerOptions): Promise<FastifyInstance>
   await registerLiveLabRoutes(app, runtime)
 
   if (opts.webRoot && existsSync(opts.webRoot)) {
-    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED)))
+    for (const path of ['/', '/index.html']) app.get(path, async (_request, reply) => reply.type('text/html').send(shellIndex(join(opts.webRoot!, 'index.html'), runtime.config.SONG_LAB_SUITE_ENABLED, runtime.config.SONG_LAB_SUITE_LINKED_RECORDS_ENABLED, runtime.config.SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE)))
     await app.register(fastifyStatic, { root: resolve(opts.webRoot), prefix: '/' })
   }
 
