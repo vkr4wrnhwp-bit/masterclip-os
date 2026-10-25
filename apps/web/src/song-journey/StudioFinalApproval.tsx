@@ -17,6 +17,7 @@ type ApprovalEvidence = {
 export function StudioFinalApproval({ linkId, studioVersionId }: { linkId: string; studioVersionId: string }) {
   const [record, setRecord] = React.useState<ApprovalEvidence | null>(null)
   const [error, setError] = React.useState('')
+  const [refresh, setRefresh] = React.useState(0)
   React.useEffect(() => {
     let active = true
     setRecord(null); setError('')
@@ -24,10 +25,11 @@ export function StudioFinalApproval({ linkId, studioVersionId }: { linkId: strin
       .then(data => { if (active) setRecord(data) })
       .catch(() => { if (active) setError('Final approval could not be verified. No approval is implied.') })
     return () => { active = false }
-  }, [linkId, studioVersionId])
+  }, [linkId, studioVersionId, refresh])
   return <section className="sl-final-approval" aria-label="Authoritative Studio final approval">
     <h3>Final audio approval — Studio</h3>
     <p>Studio's exact mix or master is the final authority. Song Lab history remains supporting evidence, not a second sign-off.</p>
+    <button type="button" onClick={() => setRefresh(value => value + 1)}>Refresh approval evidence</button>
     {error && <p role="alert">{error}</p>}
     {!error && !record && <p role="status">Checking the Studio approval record…</p>}
     {record && <div role="status">
