@@ -81,6 +81,15 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     })
   }
 
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    app.get('/api/song-journey/links/:id/final-approval', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
+      return journey.finalApproval(actor.orgId, id)
+    })
+  }
+
   if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {
     const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
     const sections = new SongSectionRepo(runtime.db, runtime.clock)
