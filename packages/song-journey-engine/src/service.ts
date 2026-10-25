@@ -75,6 +75,7 @@ export class SongJourneyService {
       state: approval ? 'approved' as const : 'not_approved' as const,
       studioVersionId: version.id,
       studioChecksum: version.assetChecksum,
+      audioAssetVerified: Boolean(verifiedChecksum),
       approval: approval ? {
         id: approval.id, type: approval.approvalType, approvedBy: approval.approvedBy,
         approvedAt: approval.approvedAt, versionChecksum: approval.versionChecksum,
