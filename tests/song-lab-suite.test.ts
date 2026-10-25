@@ -49,6 +49,8 @@ describe('Song Lab suite server boundary', () => {
     const loudness = await app.inject({ url: '/api/song-journey/links/unknown/version-pair-loudness?left=v1&right=v2', headers })
     expect(pair.statusCode).toBe(404)
     expect(loudness.statusCode).toBe(404)
+    const audio = await app.inject({ url: '/api/song-journey/links/unknown/version-audio/v1', headers })
+    expect(audio.statusCode).toBe(404)
     const approval = await app.inject({ url: '/api/song-journey/links/unknown/final-approval', headers })
     expect(approval.statusCode).toBe(404)
   })
@@ -56,7 +58,7 @@ describe('Song Lab suite server boundary', () => {
     await app.close(); await runtime.close(); if (root) await rm(root, { recursive: true, force: true })
     await boot(true, true, false, true)
     expect((await app.inject({ url: '/api/song-lab-suite' })).json().versionCompareEnabled).toBe(true)
-    for (const path of ['version-pair?left=v1&right=v2', 'version-pair-loudness?left=v1&right=v2', 'final-approval']) {
+    for (const path of ['version-pair?left=v1&right=v2', 'version-pair-loudness?left=v1&right=v2', 'version-audio/v1', 'final-approval']) {
       const url = `/api/song-journey/links/not-owned/${path}`
       expect((await app.inject({ url })).statusCode).toBe(401)
       const { session } = await arrival({ plan: 'pro' })
