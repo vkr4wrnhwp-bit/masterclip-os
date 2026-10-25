@@ -83,20 +83,3 @@
 .sl-listening-device input[type=checkbox] { width:22px; height:22px; accent-color:#C9A24A; }
 .sl-listening-device textarea { display:block; width:100%; min-width:0; min-height:80px; background:#000; color:#fff; border:1px solid #888; padding:10px; font:14px Archivo,Arial,sans-serif; }
 .sl-listening-device button { min-height:44px; width:100%; background:#C9A24A; color:#000; font:600 14px Archivo,Arial,sans-serif; border:0; margin-top:8px; }
-
-/* Job 45 — version history and read-only A/B metadata. */
-.sl-version-compare { margin-top:18px; padding:20px; border:1px solid #484848; background:#0b0b0b; min-width:0; }
-.sl-version-compare h3 { color:#fff; font-size:19px; margin:0 0 8px; }
-.sl-version-compare p { color:#c7c7c7; font-size:14px; line-height:1.55; }
-.sl-version-history { display:grid; gap:6px; margin:14px 0; padding-left:24px; }
-.sl-version-history li { padding:6px 0; color:#e8b950; overflow-wrap:anywhere; }
-.sl-version-history li strong { color:#fff; margin-right:12px; }
-.sl-version-history li span { color:#bcbcbc; font-size:12px; }
-.sl-version-compare-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
-.sl-version-compare-controls label { display:grid; gap:6px; min-width:0; color:#e1e1e1; font-size:13px; }
-.sl-version-compare-controls button { grid-column:1/-1; border:1px solid #ae8b42; background:#241e10; color:#f2d38c; }
-.sl-version-compare-controls button:disabled { opacity:.55; cursor:not-allowed; }
-.sl-version-compare-result { margin-top:14px; padding:12px; border-left:2px solid #e8b950; background:#161616; overflow-wrap:anywhere; }
-.sl-version-compare :focus-visible { outline:2px solid #e8b950; outline-offset:3px; }
-@media (max-width:600px) { .sl-version-compare { padding:14px; } .sl-version-compare-controls { grid-template-columns:minmax(0,1fr); } }
-@media (forced-colors:active) { .sl-version-compare,.sl-version-compare-result { background:Canvas; color:CanvasText; border-color:CanvasText; } }
