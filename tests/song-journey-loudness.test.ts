@@ -21,6 +21,7 @@ import { ffmpeg } from '@masterclip/media-tools'
 import {
   parseEbur128Summary,
   measureSongVersion,
+  verifiedSongAudio,
   SONG_JOURNEY_LOUDNESS_METHOD,
 } from '../apps/api/src/routes/song-journey-loudness.js'
 
@@ -45,18 +46,26 @@ describe('Job 45 exact-asset BS.1770 measurement boundary', () => {
     expect(parseEbur128Summary('Integrated loudness: I: -14 LUFS')).toBeNull()
   })
 
-  it('measures the exact checksum-bound source and offers only an expiring signed URL', async () => {
+  it('measures only the exact checksum-bound original source', async () => {
     const { runtime, signedUrl } = fixture()
     const result = await measureSongVersion(runtime, 'org-a', 'project-a', 'asset-a')
     expect(result).toMatchObject({
       assetId: 'asset-a', sourceChecksum: checksum,
       integratedLufs: -15.7, truePeakDbtp: -2.6,
-      method: SONG_JOURNEY_LOUDNESS_METHOD, audioUrl: '/private/audio/signed',
+      method: SONG_JOURNEY_LOUDNESS_METHOD,
     })
-    expect(signedUrl).toHaveBeenCalledWith('org-a', 'asset-a')
+    expect(signedUrl).not.toHaveBeenCalled()
     expect(vi.mocked(ffmpeg)).toHaveBeenCalled()
   })
 
+
+  it('requires the same checked source for the private browser audio route', async () => {
+    const { runtime } = fixture()
+    const verified = await verifiedSongAudio(runtime, 'org-a', 'project-a', 'asset-a')
+    expect(verified?.asset.checksum).toBe(checksum)
+    expect(Array.from(verified?.bytes ?? [])).toEqual(Array.from(bytes))
+    expect(await verifiedSongAudio(fixture({ projectId: 'another' }).runtime, 'org-a', 'project-a', 'asset-a')).toBeNull()
+  })
   it('refuses altered, deleted, cross-project, oversized and unverifiable sources before FFmpeg', async () => {
     for (const [patch, body] of [
       [{ checksum: '0'.repeat(64) }, bytes],
