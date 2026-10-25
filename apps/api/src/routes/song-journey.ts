@@ -81,8 +81,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
         leftVersionId: pair.left.id, rightVersionId: pair.right.id,
         state: a && b && proposal.available ? 'ready' : 'unavailable',
         measurements: a && b ? {
-          left: { ...a, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.left.id)}` },
-          right: { ...b, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.right.id)}` },
+          left: { ...a, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.left.id)}?checksum=${encodeURIComponent(a.sourceChecksum)}` },
+          right: { ...b, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.right.id)}?checksum=${encodeURIComponent(b.sourceChecksum)}` },
           method: a.method,
         } : null,
         proposal, playbackVerified: false,
@@ -106,6 +106,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const { id, versionId } = z.object({
         id: z.string().min(1).max(128), versionId: z.string().min(1).max(128),
       }).parse(request.params)
+      const { checksum } = z.object({ checksum: z.string().regex(/^[a-f0-9]{64}$/i) }).parse(request.query)
       const actor = await authorizeLink(request, id)
       const link = await journey.links.get(actor.orgId, id)
       const version = await songVersions.get(actor.orgId, versionId)
@@ -115,6 +116,11 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const verified = await verifiedSongAudio(runtime, actor.orgId, link.songLabProjectId, version.sourceAssetId)
       if (!verified) return reply.code(404).send({ error: 'Version audio not available' })
       const { asset, bytes } = verified
+      // An otherwise valid replacement asset is NOT the audio we measured.
+      // A stale A/B must re-measure, never play a new set of bytes with old gain.
+      if (asset.checksum.toLowerCase() !== checksum.toLowerCase()) {
+        return reply.code(409).send({ error: 'The audio has changed. Measure these versions again.' })
+      }
       if (!asset.mimeType.startsWith('audio/') && asset.mimeType !== 'video/mp4') {
         return reply.code(415).send({ error: 'Audio file type unavailable' })
       }
