@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { proposeLevelMatch, type LoudnessEvidence } from './level-match.js'
 
-const evidence = (assetId: string, analysisId: string, integratedLufs: number | null): LoudnessEvidence =>
-  ({ assetId, analysisId, integratedLufs })
+const evidence = (assetId: string, analysisId: string, integratedLufs: number | null, samplePeakDbfs = -12): LoudnessEvidence =>
+  ({ assetId, analysisId, integratedLufs, samplePeakDbfs })
 
 describe('Job 45 bounded loudness proposal', () => {
   it('proposes a correction toward the left reference without claiming playback', () => {
@@ -22,6 +22,14 @@ describe('Job 45 bounded loudness proposal', () => {
     expect(proposeLevelMatch(evidence('left', 'a1', -30), evidence('right', 'a2', -10))).toMatchObject({
       available: true, rightGainDb: -6, limited: true,
     })
+  })
+
+  it('reduces proposed gain when sample-peak headroom is insufficient', () => {
+    expect(proposeLevelMatch(evidence('left', 'a1', -14), evidence('right', 'a2', -18, -2))).toMatchObject({
+      available: true, rightGainDb: 1, limited: true,
+    })
+    expect(proposeLevelMatch(evidence('left', 'a1', -14), evidence('right', 'a2', -18, -0.5)).available).toBe(false)
+    expect(proposeLevelMatch(evidence('left', 'a1', -14), evidence('right', 'a2', -18, Number.NaN)).available).toBe(false)
   })
 
   it('refuses missing, invalid, non-finite and unidentifiable measurements', () => {
