@@ -48,12 +48,20 @@ export async function verifiedSongAudio(
   runtime: Runtime, orgId: string, projectId: string, assetId: string,
 ) {
   try {
+    // Check the database first: a 512 MB asset should never be downloaded
+    // just to discover it exceeds the 64 MB interactive comparison limit.
+    const metadata = await runtime.audio.repos.assets.get(orgId, assetId)
+    if (metadata.projectType !== 'song_lab' || metadata.projectId !== projectId ||
+        metadata.deletedAt !== null || !/^[a-f0-9]{64}$/i.test(metadata.checksum) ||
+        !Number.isSafeInteger(metadata.fileSize) ||
+        metadata.fileSize <= 0 || metadata.fileSize > MAX_A_B_AUDIO_BYTES) {
+      return null
+    }
     const { asset, bytes } = await runtime.audio.assets.materialize(orgId, assetId)
-    if (asset.projectType !== 'song_lab' || asset.projectId !== projectId ||
-        asset.deletedAt !== null || !/^[a-f0-9]{64}$/i.test(asset.checksum) ||
-        bytes.length === 0 || bytes.length > MAX_A_B_AUDIO_BYTES ||
-        bytes.length !== asset.fileSize ||
-        sha256Hex(Buffer.from(bytes)).toLowerCase() !== asset.checksum.toLowerCase()) {
+    if (asset.projectType !== metadata.projectType || asset.projectId !== metadata.projectId ||
+        asset.checksum !== metadata.checksum || asset.fileSize !== metadata.fileSize ||
+        asset.deletedAt !== null || bytes.length !== metadata.fileSize ||
+        sha256Hex(Buffer.from(bytes)).toLowerCase() !== metadata.checksum.toLowerCase()) {
       return null
     }
     return { asset, bytes }
