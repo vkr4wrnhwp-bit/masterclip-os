@@ -111,7 +111,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       void reply.header('accept-ranges', 'bytes')
       const raw = request.headers.range
       if (raw) {
-        const match = /^bytes=(\\d+)-(\\d*)$/.exec(raw)
+        const match = /^bytes=(\d+)-(\d*)$/.exec(raw)
         const start = match ? Number(match[1]) : -1
         const end = match && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1
         if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
