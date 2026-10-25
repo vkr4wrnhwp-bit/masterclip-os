@@ -34,7 +34,8 @@ function fixture(patch: Record<string, unknown> = {}, body = bytes) {
   }
   const materialize = vi.fn(async () => ({ asset, bytes: body }))
   const signedUrl = vi.fn(async () => ({ url: '/private/audio/signed', asset }))
-  const runtime = { audio: { assets: { materialize, signedUrl } } } as unknown as Runtime
+  const metadata = vi.fn(async () => asset)
+  const runtime = { audio: { repos: { assets: { get: metadata } }, assets: { materialize, signedUrl } } } as unknown as Runtime
   return { runtime, materialize, signedUrl }
 }
 
@@ -81,6 +82,12 @@ describe('Job 45 exact-asset BS.1770 measurement boundary', () => {
       expect(signedUrl).not.toHaveBeenCalled()
       expect(ffmpeg).not.toHaveBeenCalled()
     }
+  })
+
+  it('rejects oversized metadata before fetching any storage bytes', async () => {
+    const { runtime, materialize } = fixture({ fileSize: 70 * 1024 * 1024 })
+    expect(await measureSongVersion(runtime, 'org-a', 'project-a', 'asset-a')).toBeNull()
+    expect(materialize).not.toHaveBeenCalled()
   })
 
   it('does not claim a measurement if FFmpeg is missing or errors', async () => {
