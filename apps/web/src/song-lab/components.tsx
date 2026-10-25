@@ -221,27 +221,73 @@ export function ObservationCard({
  * preserving position, so the comparison is between two arrangements rather
  * than between two moments.
  */
-export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string; url: string | null; note?: string | null; gainDb?: number }> }) {
+export function AbPlayer({ tracks }: {
+  tracks: Array<{ id: string; label: string; url: string | null; note?: string | null; gainDb?: number }>
+}) {
   const [active, setActive] = React.useState(tracks[0]?.id ?? '')
+  const [gainError, setGainError] = React.useState('')
   const refs = React.useRef<Record<string, HTMLAudioElement | null>>({})
-
-  // Job 45: only attenuation is applied, through the native audio element.
-  // This preserves the existing player, seek behavior and cross-origin asset
-  // URLs without a second audio engine or a cross-origin Web Audio graph.
-  React.useEffect(() => {
-    for (const track of tracks) {
-      const element = refs.current[track.id]
-      if (element) {
-        const decibels = Number.isFinite(track.gainDb) ? Math.max(-6, Math.min(0, track.gainDb ?? 0)) : 0
-        element.volume = Math.pow(10, decibels / 20)
-      }
-    }
-  }, [tracks])
+  // Only reconstruct the Web Audio graph when actual sources/gains change.
+  const sources = tracks.map(track => `${track.id}:${track.url ?? ''}:${track.gainDb ?? 0}`).join('|')
+  const gainRequired = tracks.some(track => (track.gainDb ?? 0) !== 0)
   React.useEffect(() => {
     if (!tracks.some(track => track.id === active)) setActive(tracks[0]?.id ?? '')
-  }, [active, tracks])
+  }, [active, sources])
+
+  React.useEffect(() => {
+    setGainError('')
+    if (!gainRequired) return
+    if (typeof window.AudioContext !== 'function') {
+      setGainError('This browser cannot apply the level match. No adjusted playback is available.')
+      return
+    }
+    let context: AudioContext
+    const connected: Array<{ element: HTMLAudioElement; listener: () => void; source: MediaElementAudioSourceNode; gain: GainNode }> = []
+    try {
+      context = new window.AudioContext()
+      for (const track of tracks) {
+        const element = refs.current[track.id]
+        if (!element || !track.url || !Number.isFinite(track.gainDb) ||
+            (track.gainDb ?? 0) > 0 || (track.gainDb ?? 0) < -6) {
+          throw new Error('Invalid playback source or gain.')
+        }
+        const source = context.createMediaElementSource(element)
+        const gain = context.createGain()
+        gain.gain.value = Math.pow(10, (track.gainDb ?? 0) / 20)
+        source.connect(gain)
+        gain.connect(context.destination)
+        const listener = () => {
+          void context.resume().catch(() => {
+            element.pause()
+            setGainError('Your browser blocked the audio adjustment. Listening at matched levels is unavailable.')
+          })
+        }
+        element.addEventListener('play', listener)
+        connected.push({ element, listener, source, gain })
+      }
+    } catch {
+      setGainError('Level-matched playback is unavailable on this browser. No volume change is claimed.')
+      for (const item of connected) {
+        item.element.pause()
+        item.element.removeEventListener('play', item.listener)
+        item.source.disconnect()
+        item.gain.disconnect()
+      }
+      if (context!) void context.close()
+      return
+    }
+    return () => {
+      for (const item of connected) {
+        item.element.removeEventListener('play', item.listener)
+        item.source.disconnect()
+        item.gain.disconnect()
+      }
+      void context.close()
+    }
+  }, [sources, gainRequired])
 
   const switchTo = (id: string) => {
+    if (gainError) return
     const current = refs.current[active]
     const next = refs.current[id]
     const position = current?.currentTime ?? 0
@@ -249,32 +295,31 @@ export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string
     if (current) current.pause()
     setActive(id)
     if (next) {
-      // Clamp: an edited version can be shorter than where the original was.
-      next.currentTime = Number.isFinite(next.duration) ? Math.min(position, Math.max(0, next.duration - 0.05)) : position
-      if (playing) void next.play().catch(() => { /* Gesture or audio permission may be required. */ })
+      next.currentTime = Number.isFinite(next.duration)
+        ? Math.min(position, Math.max(0, next.duration - 0.05)) : position
+      if (playing) void next.play().catch(() => { /* A user gesture may be required. */ })
     }
   }
-
-  const current = tracks.find((track) => track.id === active) ?? tracks[0]
+  const current = tracks.find(track => track.id === active) ?? tracks[0]
 
   return (
     <div className="sl-ab">
+      {gainError && <p role="alert">{gainError}</p>}
       <div className="sl-ab-buttons">
-        {tracks.map((track) => (
-          <button key={track.id} className={track.id === active ? 'primary small' : 'small'} onClick={() => switchTo(track.id)} disabled={!track.url}>
+        {tracks.map(track => (
+          <button key={track.id} type="button"
+            className={track.id === active ? 'primary small' : 'small'}
+            onClick={() => switchTo(track.id)} disabled={!track.url || Boolean(gainError)}>
             {track.label.toUpperCase()}
           </button>
         ))}
       </div>
-      {tracks.map((track) => (
-        <audio
-          key={track.id}
-          ref={(element) => {
-            refs.current[track.id] = element
-          }}
+      {tracks.map(track => (
+        <audio key={track.id + ':' + (track.url ?? '')}
+          ref={element => { refs.current[track.id] = element }}
           src={track.url ?? undefined}
-          controls={track.id === active}
-          hidden={track.id !== active}
+          controls={track.id === active && !gainError}
+          hidden={track.id !== active || Boolean(gainError)}
           preload="metadata"
           style={{ width: '100%', marginTop: 8 }}
         />
