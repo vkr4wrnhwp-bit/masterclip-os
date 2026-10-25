@@ -128,9 +128,23 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       void reply.header('accept-ranges', 'bytes')
       const raw = request.headers.range
       if (raw) {
-        const match = /^bytes=(\d+)-(\d*)$/.exec(raw)
-        const start = match ? Number(match[1]) : -1
-        const end = match && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1
+        const match = /^bytes=(\d*)-(\d*)$/.exec(raw)
+        // Safari may request the final bytes of an MP4 using a suffix range.
+        // Support one range only; never assemble unbounded multi-ranges.
+        let start = -1
+        let end = -1
+        if (match && (match[1] || match[2])) {
+          if (match[1]) {
+            start = Number(match[1])
+            end = match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1
+          } else {
+            const suffix = Number(match[2])
+            if (Number.isSafeInteger(suffix) && suffix > 0) {
+              start = Math.max(0, bytes.length - suffix)
+              end = bytes.length - 1
+            }
+          }
+        }
         if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
             start < 0 || start >= bytes.length || end < start) {
           return reply.code(416).header('content-range', `bytes */${bytes.length}`).send()
