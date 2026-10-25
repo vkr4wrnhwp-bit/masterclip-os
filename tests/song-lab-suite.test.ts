@@ -49,6 +49,8 @@ describe('Song Lab suite server boundary', () => {
     const loudness = await app.inject({ url: '/api/song-journey/links/unknown/version-pair-loudness?left=v1&right=v2', headers })
     expect(pair.statusCode).toBe(404)
     expect(loudness.statusCode).toBe(404)
+    const approval = await app.inject({ url: '/api/song-journey/links/unknown/final-approval', headers })
+    expect(approval.statusCode).toBe(404)
   })
   it('only accepts a real parent identity; Pro and Label can use existing libraries', async () => {
     for (const plan of ['pro', 'label']) {
