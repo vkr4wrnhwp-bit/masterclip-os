@@ -221,9 +221,25 @@ export function ObservationCard({
  * preserving position, so the comparison is between two arrangements rather
  * than between two moments.
  */
-export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string; url: string | null; note?: string | null }> }) {
+export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string; url: string | null; note?: string | null; gainDb?: number }> }) {
   const [active, setActive] = React.useState(tracks[0]?.id ?? '')
   const refs = React.useRef<Record<string, HTMLAudioElement | null>>({})
+
+  // Job 45: only attenuation is applied, through the native audio element.
+  // This preserves the existing player, seek behavior and cross-origin asset
+  // URLs without a second audio engine or a cross-origin Web Audio graph.
+  React.useEffect(() => {
+    for (const track of tracks) {
+      const element = refs.current[track.id]
+      if (element) {
+        const decibels = Number.isFinite(track.gainDb) ? Math.max(-6, Math.min(0, track.gainDb ?? 0)) : 0
+        element.volume = Math.pow(10, decibels / 20)
+      }
+    }
+  }, [tracks])
+  React.useEffect(() => {
+    if (!tracks.some(track => track.id === active)) setActive(tracks[0]?.id ?? '')
+  }, [active, tracks])
 
   const switchTo = (id: string) => {
     const current = refs.current[active]
@@ -235,7 +251,7 @@ export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string
     if (next) {
       // Clamp: an edited version can be shorter than where the original was.
       next.currentTime = Number.isFinite(next.duration) ? Math.min(position, Math.max(0, next.duration - 0.05)) : position
-      if (playing) void next.play()
+      if (playing) void next.play().catch(() => { /* Gesture or audio permission may be required. */ })
     }
   }
 
