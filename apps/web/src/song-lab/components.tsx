@@ -225,24 +225,40 @@ export function AbPlayer({ tracks }: {
   tracks: Array<{ id: string; label: string; url: string | null; note?: string | null; gainDb?: number }>
 }) {
   const [active, setActive] = React.useState(tracks[0]?.id ?? '')
+  const [gainReady, setGainReady] = React.useState(false)
   const [gainError, setGainError] = React.useState('')
   const refs = React.useRef<Record<string, HTMLAudioElement | null>>({})
-  // Only reconstruct the Web Audio graph when actual sources/gains change.
+  const graph = React.useRef<{ context: AudioContext; disconnect: () => void } | null>(null)
   const sources = tracks.map(track => `${track.id}:${track.url ?? ''}:${track.gainDb ?? 0}`).join('|')
   const gainRequired = tracks.some(track => (track.gainDb ?? 0) !== 0)
+
   React.useEffect(() => {
     if (!tracks.some(track => track.id === active)) setActive(tracks[0]?.id ?? '')
   }, [active, sources])
 
+  // No graph is constructed during render/effects. In Safari, audio must be
+  // unlocked by a real user gesture; StrictMode also mounts effects twice.
   React.useEffect(() => {
+    setGainReady(false)
     setGainError('')
-    if (!gainRequired) return
+    return () => {
+      const existing = graph.current
+      graph.current = null
+      if (existing) {
+        existing.disconnect()
+        void existing.context.close().catch(() => {})
+      }
+    }
+  }, [sources])
+
+  const prepareGain = () => {
+    if (!gainRequired || graph.current || gainReady) return
     if (typeof window.AudioContext !== 'function') {
       setGainError('This browser cannot apply the level match. No adjusted playback is available.')
       return
     }
+    const connected: Array<{ source: MediaElementAudioSourceNode; gain: GainNode }> = []
     let context: AudioContext | null = null
-    const connected: Array<{ element: HTMLAudioElement; listener: () => void; source: MediaElementAudioSourceNode; gain: GainNode }> = []
     try {
       const ctx = new window.AudioContext()
       context = ctx
@@ -257,38 +273,40 @@ export function AbPlayer({ tracks }: {
         gain.gain.value = Math.pow(10, (track.gainDb ?? 0) / 20)
         source.connect(gain)
         gain.connect(ctx.destination)
-        const listener = () => {
-          void ctx.resume().catch(() => {
-            element.pause()
-            setGainError('Your browser blocked the audio adjustment. Listening at matched levels is unavailable.')
-          })
+        connected.push({ source, gain })
+      }
+      const disconnect = () => {
+        for (const item of connected) {
+          item.source.disconnect()
+          item.gain.disconnect()
         }
-        element.addEventListener('play', listener)
-        connected.push({ element, listener, source, gain })
       }
+      graph.current = { context: ctx, disconnect }
+      void ctx.resume().then(() => {
+        if (graph.current?.context === ctx) {
+          setGainError('')
+          setGainReady(true)
+        }
+      }).catch(() => {
+        if (graph.current?.context === ctx) {
+          graph.current = null
+          disconnect()
+          void ctx.close().catch(() => {})
+          setGainError('The browser blocked the measured audio adjustment. No matched playback is available.')
+        }
+      })
     } catch {
-      setGainError('Level-matched playback is unavailable on this browser. No volume change is claimed.')
       for (const item of connected) {
-        item.element.pause()
-        item.element.removeEventListener('play', item.listener)
         item.source.disconnect()
         item.gain.disconnect()
       }
-      if (context) void context.close()
-      return
+      if (context) void context.close().catch(() => {})
+      setGainError('Level-matched playback is unavailable on this device. No volume change is claimed.')
     }
-    return () => {
-      for (const item of connected) {
-        item.element.removeEventListener('play', item.listener)
-        item.source.disconnect()
-        item.gain.disconnect()
-      }
-      if (context) void context.close()
-    }
-  }, [sources, gainRequired])
+  }
 
   const switchTo = (id: string) => {
-    if (gainError) return
+    if (gainRequired && !gainReady) return
     const current = refs.current[active]
     const next = refs.current[id]
     const position = current?.currentTime ?? 0
@@ -302,15 +320,20 @@ export function AbPlayer({ tracks }: {
     }
   }
   const current = tracks.find(track => track.id === active) ?? tracks[0]
+  const canPlay = !gainRequired || gainReady
 
   return (
     <div className="sl-ab">
+      {gainRequired && !gainReady && !gainError && (
+        <button type="button" className="sl-ab-gain-start" onClick={prepareGain}
+          style={{ minHeight: 44, padding: '10px 14px' }}>Enable matched listening</button>
+      )}
       {gainError && <p role="alert">{gainError}</p>}
       <div className="sl-ab-buttons">
         {tracks.map(track => (
           <button key={track.id} type="button"
             className={track.id === active ? 'primary small' : 'small'}
-            onClick={() => switchTo(track.id)} disabled={!track.url || Boolean(gainError)}>
+            onClick={() => switchTo(track.id)} disabled={!track.url || !canPlay}>
             {track.label.toUpperCase()}
           </button>
         ))}
@@ -319,8 +342,8 @@ export function AbPlayer({ tracks }: {
         <audio key={track.id + ':' + (track.url ?? '')}
           ref={element => { refs.current[track.id] = element }}
           src={track.url ?? undefined}
-          controls={track.id === active && !gainError}
-          hidden={track.id !== active || Boolean(gainError)}
+          controls={track.id === active && canPlay}
+          hidden={track.id !== active || !canPlay}
           preload="metadata"
           style={{ width: '100%', marginTop: 8 }}
         />
