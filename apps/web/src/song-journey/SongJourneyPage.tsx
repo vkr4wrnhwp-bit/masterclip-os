@@ -11,7 +11,6 @@ import { InstrumentDeck } from './InstrumentDeck.js'
 import { SongMapEditor } from './SongMapEditor.js'
 import { OwnedReferenceCompare } from './OwnedReferenceCompare.js'
 import { TranslationNotes } from './TranslationNotes.js'
-import { VersionHistoryCompare } from './VersionHistoryCompare.js'
 import './song-journey.css'
 
 const STEPS = ['Choose', 'Understand', 'Decide', 'Finish', 'Approve', 'Deliver'] as const
@@ -28,15 +27,6 @@ export function SongJourneyPage() {
   const [songVersionId, setSongVersionId] = React.useState('')
   const [studioVersionId, setStudioVersionId] = React.useState('')
   const [step, setStep] = React.useState(0)
-  const [versionCompareEnabled, setVersionCompareEnabled] = React.useState(false)
-  React.useEffect(() => {
-    let active = true
-    fetch('/api/song-lab-suite', { credentials: 'same-origin' })
-      .then(response => response.ok ? response.json() : null)
-      .then((data: { versionCompareEnabled?: boolean } | null) => { if (active) setVersionCompareEnabled(data?.versionCompareEnabled === true) })
-      .catch(() => { if (active) setVersionCompareEnabled(false) })
-    return () => { active = false }
-  }, [])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
 
@@ -132,7 +122,7 @@ export function SongJourneyPage() {
         <section id="journey-step-1" className="sl-journey-step"><div className="sl-step-heading"><span>02</span><div><p>MEASURED FROM THE SELECTED SONG VERSION</p><h2>Understand</h2></div></div><InstrumentDeck songId={song.id} songVersionId={songVersionId} studioId={studio.id} studioVersionId={studioVersionId} /><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="understand" />{(window as Window & { __SONG_LAB_SUITE_FEATURE_SONG_MAP__?: boolean }).__SONG_LAB_SUITE_FEATURE_SONG_MAP__ === true && <SongMapEditor linkId={active.link.id} />}</section>
         <section id="journey-step-2" className="sl-journey-step"><div className="sl-step-heading"><span>03</span><div><p>CHOOSE WHAT TO TEST</p><h2>Decide</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="decide" />{(window as Window & { __SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE__?: boolean }).__SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE__ === true && <OwnedReferenceCompare linkId={active.link.id} />}</section>
         <section id="journey-step-3" className="sl-journey-step"><div className="sl-step-heading"><span>04</span><div><p>STUDIO MEASUREMENTS · SELECTED VERSION</p><h2>Finish</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="finish" /><SuiteHandoffs linkId={active.link.id} versionId={songVersionId} />{(window as Window & { __SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES__?: boolean }).__SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES__ === true && <TranslationNotes linkId={active.link.id} versionId={studioVersionId} />}</section>
-        <section id="journey-step-4" className="sl-journey-step"><div className="sl-step-heading"><span>05</span><div><p>COMPARE THE EXACT VERSIONS</p><h2>Approve</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="approve" /><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="approve" />{versionCompareEnabled && <VersionHistoryCompare linkId={active.link.id} versions={active.songVersions} />}</section>
+        <section id="journey-step-4" className="sl-journey-step"><div className="sl-step-heading"><span>05</span><div><p>COMPARE THE EXACT VERSIONS</p><h2>Approve</h2></div></div><SongLabProject projectId={song.id} tab="journey" canSeeAr={songCapabilities.data?.capabilities.includes('song_lab.ar_view') ?? false} journeyVersionId={songVersionId} journeyOnlyStep="approve" /><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="approve" /></section>
         <section id="journey-step-5" className="sl-journey-step"><div className="sl-step-heading"><span>06</span><div><p>CHECKS AND SOURCE HISTORY</p><h2>Deliver</h2></div></div><StudioProject projectId={studio.id} tab="journey" journeyVersionId={studioVersionId} journeyOnlyStep="deliver" /><div className="sl-vault-truth"><strong>Vault hand-off</strong><p>Save the chosen version through the Vault control in Finish. A completed Rack receipt names the actual saved Vault version and its verified checksum. When the hand-off is off, nothing is sent.</p></div></section>
       </> : <div className="sl-journey-locked">Choose both source versions above to load Understand, Decide, Finish, Approve and Deliver for this record.</div>}
     </>}
