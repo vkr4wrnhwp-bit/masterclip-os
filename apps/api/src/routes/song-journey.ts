@@ -67,7 +67,7 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const [a, b] = await Promise.all([read(pair.left), read(pair.right)])
       return {
         leftVersionId: pair.left.id, rightVersionId: pair.right.id,
-        state: a && b ? 'measured' : 'missing',
+        state: a && b ? 'diagnostic_estimate' : 'missing',
         // Song Lab's current 'loudness' is gated-block RMS (LUFS-like), not
         // K-weighted BS.1770 integrated LUFS. Never feed it into a gain plan.
         measurements: a && b ? { left: a, right: b, method: 'gated_block_rms_estimate' } : null,
