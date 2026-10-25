@@ -1,5 +1,6 @@
 import type { Db } from '@masterclip/database'
 import { selectVersionPair } from './version-compare.js'
+import { authoritativeStudioApproval } from './final-approval.js'
 import { forbidden, AppError, systemClock, type Clock } from '@masterclip/shared'
 import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
 import { StudioProjectRepo, StudioVersionRepo, StudioApprovalRepo } from '@masterclip/studio-domain'
@@ -59,15 +60,7 @@ export class SongJourneyService {
     const version = await this.studioVersions.get(orgId, link.selectedStudioVersionId)
     if (version.studioProjectId !== link.studioProjectId) throw forbidden('Selected Studio version does not belong to this linked project.')
     const approvals = await new StudioApprovalRepo(this.db, this.clock).list(orgId, link.studioProjectId)
-    const matching = approvals.filter(approval =>
-      approval.studioVersionId === version.id &&
-      approval.revokedAt === null &&
-      Boolean(version.assetChecksum) &&
-      approval.versionChecksum === version.assetChecksum &&
-      (approval.approvalType === 'master' || approval.approvalType === 'mix'),
-    )
-    const approval = matching.find(row => row.approvalType === 'master')
-      ?? matching.find(row => row.approvalType === 'mix') ?? null
+    const approval = authoritativeStudioApproval(version.id, version.assetChecksum, approvals)
     return {
       state: approval ? 'approved' as const : 'not_approved' as const,
       studioVersionId: version.id,
