@@ -4,7 +4,7 @@ import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
 import { SongJourneyService, proposeLevelMatch } from '@masterclip/song-journey-engine'
-import { measureSongVersion } from './song-journey-loudness.js'
+import { measureSongVersion, verifiedSongAudio } from './song-journey-loudness.js'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -72,7 +72,11 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       return {
         leftVersionId: pair.left.id, rightVersionId: pair.right.id,
         state: a && b && proposal.available ? 'ready' : 'unavailable',
-        measurements: a && b ? { left: a, right: b, method: a.method } : null,
+        measurements: a && b ? {
+          left: { ...a, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.left.id)}` },
+          right: { ...b, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.right.id)}` },
+          method: a.method,
+        } : null,
         proposal, playbackVerified: false,
         note: proposal.available
           ? (proposal.limited
@@ -80,6 +84,44 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
             : 'The playback controls apply measured, safe attenuation only. Device output is not a certified true-peak measurement.')
           : proposal.reason,
       }
+    })
+
+    // Same-origin, cookie-authorized original bytes for iPhone Web Audio gain.
+    // Do not publish a permanent URL, change the audio, or bypass Song Lab
+    // project ownership. Byte ranges keep native audio seeking available.
+    app.get('/api/song-journey/links/:id/version-audio/:versionId', async (request, reply) => {
+      void reply.header('cache-control', 'private, no-store')
+      void reply.header('x-content-type-options', 'nosniff')
+      const { id, versionId } = z.object({
+        id: z.string().min(1).max(128), versionId: z.string().min(1).max(128),
+      }).parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const link = await journey.links.get(actor.orgId, id)
+      const version = await songVersions.get(actor.orgId, versionId)
+      if (version.songLabProjectId !== link.songLabProjectId || !version.sourceAssetId) {
+        return reply.code(404).send({ error: 'Version audio not available' })
+      }
+      const verified = await verifiedSongAudio(runtime, actor.orgId, link.songLabProjectId, version.sourceAssetId)
+      if (!verified) return reply.code(404).send({ error: 'Version audio not available' })
+      const { asset, bytes } = verified
+      if (!asset.mimeType.startsWith('audio/') && asset.mimeType !== 'video/mp4') {
+        return reply.code(415).send({ error: 'Audio file type unavailable' })
+      }
+      void reply.header('content-type', asset.mimeType)
+      void reply.header('accept-ranges', 'bytes')
+      const raw = request.headers.range
+      if (raw) {
+        const match = /^bytes=(\\d+)-(\\d*)$/.exec(raw)
+        const start = match ? Number(match[1]) : -1
+        const end = match && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+            start < 0 || start >= bytes.length || end < start) {
+          return reply.code(416).header('content-range', `bytes */${bytes.length}`).send()
+        }
+        void reply.header('content-range', `bytes ${start}-${end}/${bytes.length}`)
+        return reply.code(206).send(Buffer.from(bytes.subarray(start, end + 1)))
+      }
+      return reply.send(Buffer.from(bytes))
     })
 
     app.get('/api/song-journey/links/:id/final-approval', async (request, reply) => {
