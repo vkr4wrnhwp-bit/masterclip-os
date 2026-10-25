@@ -3,7 +3,7 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
-import { SongJourneyService, proposeLevelMatch } from '@masterclip/song-journey-engine'
+import { SongJourneyService } from '@masterclip/song-journey-engine'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -66,11 +66,15 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       return {
         leftVersionId: pair.left.id, rightVersionId: pair.right.id,
         state: a && b ? 'measured' : 'missing',
-        proposal: a && b ? proposeLevelMatch(a, b) : {
-          available: false, reason: 'Both versions require completed, checksum-matched analysis of their exact audio assets.',
+        // Song Lab's current 'loudness' is gated-block RMS (LUFS-like), not
+        // K-weighted BS.1770 integrated LUFS. Never feed it into a gain plan.
+        measurements: a && b ? { left: a, right: b, method: 'gated_block_rms_estimate' } : null,
+        proposal: {
+          available: false,
+          reason: 'Song Lab loudness is an approximation, not verified integrated LUFS. Use exact-asset standards-based measurements before enabling gain.',
         },
         playbackVerified: false,
-        note: 'Sample-peak gain proposal only. No audible level matching or true-peak validation has occurred.',
+        note: 'Diagnostic comparison only. No audible level matching or true-peak validation has occurred.',
       }
     })
   }
