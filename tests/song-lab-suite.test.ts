@@ -39,6 +39,17 @@ afterEach(async () => { await app?.close(); await runtime?.close(); if(root) awa
 
 describe('Song Lab suite server boundary', () => {
   beforeEach(() => boot())
+  it('keeps Job 45 version comparison unavailable by default', async () => {
+    const config = await app.inject({ url: '/api/song-lab-suite' })
+    expect(config.statusCode).toBe(200)
+    expect(config.json().versionCompareEnabled).toBe(false)
+    const { session } = await arrival({ plan: 'pro' })
+    const headers = { cookie: `masterclip_session=${session}` }
+    const pair = await app.inject({ url: '/api/song-journey/links/unknown/version-pair?left=v1&right=v2', headers })
+    const loudness = await app.inject({ url: '/api/song-journey/links/unknown/version-pair-loudness?left=v1&right=v2', headers })
+    expect(pair.statusCode).toBe(404)
+    expect(loudness.statusCode).toBe(404)
+  })
   it('only accepts a real parent identity; Pro and Label can use existing libraries', async () => {
     for (const plan of ['pro', 'label']) {
       const { result, session } = await arrival({ plan })
