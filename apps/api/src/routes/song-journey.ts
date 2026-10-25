@@ -106,8 +106,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const { id, versionId } = z.object({
         id: z.string().min(1).max(128), versionId: z.string().min(1).max(128),
       }).parse(request.params)
-      const { checksum } = z.object({ checksum: z.string().regex(/^[a-f0-9]{64}$/i) }).parse(request.query)
       const actor = await authorizeLink(request, id)
+      const { checksum } = z.object({ checksum: z.string().regex(/^[a-f0-9]{64}$/i) }).parse(request.query)
       const link = await journey.links.get(actor.orgId, id)
       const version = await songVersions.get(actor.orgId, versionId)
       if (version.songLabProjectId !== link.songLabProjectId || !version.sourceAssetId) {
