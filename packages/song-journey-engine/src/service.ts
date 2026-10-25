@@ -2,7 +2,7 @@ import type { Db } from '@masterclip/database'
 import { selectVersionPair } from './version-compare.js'
 import { forbidden, AppError, systemClock, type Clock } from '@masterclip/shared'
 import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
-import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
+import { StudioProjectRepo, StudioVersionRepo, StudioApprovalRepo } from '@masterclip/studio-domain'
 import { SongJourneyLinkRepo, type SongJourneyLink, type SongJourneySource } from '@masterclip/song-journey-domain'
 
 export class SongJourneyService {
@@ -47,6 +47,37 @@ export class SongJourneyService {
     const link = await this.links.get(orgId, linkId)
     const versions = await this.songVersions.list(orgId, link.songLabProjectId)
     return selectVersionPair(orgId, link.songLabProjectId, versions, leftId, rightId)
+  }
+
+  /** Studio's exact audio version is the final authority; Song Lab remains evidence. */
+  async finalApproval(orgId: string, linkId: string) {
+    const link = await this.links.get(orgId, linkId)
+    if (!link.selectedStudioVersionId) return {
+      state: 'not_selected' as const, studioVersionId: null, approval: null,
+      songLabEvidenceVersionId: link.selectedSongVersionId,
+    }
+    const version = await this.studioVersions.get(orgId, link.selectedStudioVersionId)
+    if (version.studioProjectId !== link.studioProjectId) throw forbidden('Selected Studio version does not belong to this linked project.')
+    const approvals = await new StudioApprovalRepo(this.db, this.clock).list(orgId, link.studioProjectId)
+    const matching = approvals.filter(approval =>
+      approval.studioVersionId === version.id &&
+      approval.revokedAt === null &&
+      Boolean(version.assetChecksum) &&
+      approval.versionChecksum === version.assetChecksum &&
+      (approval.approvalType === 'master' || approval.approvalType === 'mix'),
+    )
+    const approval = matching.find(row => row.approvalType === 'master')
+      ?? matching.find(row => row.approvalType === 'mix') ?? null
+    return {
+      state: approval ? 'approved' as const : 'not_approved' as const,
+      studioVersionId: version.id,
+      studioChecksum: version.assetChecksum,
+      approval: approval ? {
+        id: approval.id, type: approval.approvalType, approvedBy: approval.approvedBy,
+        approvedAt: approval.approvedAt, versionChecksum: approval.versionChecksum,
+      } : null,
+      songLabEvidenceVersionId: link.selectedSongVersionId,
+    }
   }
 
   async export(orgId: string, id: string) {
