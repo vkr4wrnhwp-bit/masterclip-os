@@ -40,6 +40,9 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
   }
 
   if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    // Bound costly, explicit user-triggered measurement on each API worker.
+    // This is not a distributed quota; normal global rate limits still apply.
+    const measuringOrgs = new Set<string>()
     const params = z.object({ id: z.string().min(1).max(128) })
     const pairQuery = z.object({
       left: z.string().min(1).max(128),
@@ -59,8 +62,13 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const actor = await authorizeLink(request, id)
       const { left, right } = pairQuery.parse(request.query)
       const pair = await journey.compareSongVersions(actor.orgId, id, left, right)
+      if (measuringOrgs.has(actor.orgId)) {
+        return reply.code(429).send({ error: { message: 'This workspace is already measuring a comparison. Try again after it finishes.' } })
+      }
+      measuringOrgs.add(actor.orgId)
+      try {
       // Do not measure two versions pointing to the same source or expose an
-      // unverified signed URL. A real click is required before any work occurs.
+      // unverified audio URL. A real click is required before any work occurs.
       const a = !pair.sameAsset && pair.left.sourceAssetId
         ? await measureSongVersion(runtime, actor.orgId, pair.left.songLabProjectId, pair.left.sourceAssetId)
         : null
@@ -83,6 +91,9 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
             ? 'Only part of the level difference can be matched within the safe 6 dB limit. The source files remain untouched.'
             : 'The playback controls apply measured, safe attenuation only. Device output is not a certified true-peak measurement.')
           : proposal.reason,
+      }
+      } finally {
+        measuringOrgs.delete(actor.orgId)
       }
     })
 
