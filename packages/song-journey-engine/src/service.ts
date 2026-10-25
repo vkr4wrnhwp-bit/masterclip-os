@@ -1,4 +1,5 @@
 import type { Db } from '@masterclip/database'
+import { selectVersionPair } from './version-compare.js'
 import { forbidden, AppError, systemClock, type Clock } from '@masterclip/shared'
 import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -39,6 +40,13 @@ export class SongJourneyService {
       throw forbidden('Select versions that belong to the linked source records.')
     }
     return this.links.selectVersions(orgId, id, songVersionId, studioVersionId)
+  }
+
+  /** Job 45: inspect existing song history without granting playback or approval. */
+  async compareSongVersions(orgId: string, linkId: string, leftId: string, rightId: string) {
+    const link = await this.links.get(orgId, linkId)
+    const versions = await this.songVersions.list(orgId, link.songLabProjectId)
+    return selectVersionPair(orgId, link.songLabProjectId, versions, leftId, rightId)
   }
 
   async export(orgId: string, id: string) {
