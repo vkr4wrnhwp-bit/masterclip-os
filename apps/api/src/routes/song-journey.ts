@@ -3,7 +3,8 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
-import { SongJourneyService } from '@masterclip/song-journey-engine'
+import { SongJourneyService, proposeLevelMatch } from '@masterclip/song-journey-engine'
+import { measureSongVersion } from './song-journey-loudness.js'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -27,65 +28,64 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     return songActor
   }
 
-  // Job 45 foundation: metadata only. No playback or approval claims.
-  // Registered only when the independently default-off feature is enabled.
+  // The link's Studio permission matters even inside one organization.
+  // Song Lab analysis access alone cannot reveal a collaborator's Studio approval.
+  const authorizeLink = async (request: Parameters<typeof requireSongLab>[1], id: string) => {
+    const actor = await authorize(request)
+    const link = await journey.links.get(actor.orgId, id)
+    await requireStudio(runtime, request, 'studio.access', {
+      project: { id: link.studioProjectId, permission: 'view' },
+    })
+    return actor
+  }
+
   if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    const params = z.object({ id: z.string().min(1).max(128) })
+    const pairQuery = z.object({
+      left: z.string().min(1).max(128),
+      right: z.string().min(1).max(128),
+    })
     app.get('/api/song-journey/links/:id/version-pair', async (request, reply) => {
       void reply.header('cache-control', 'no-store')
-      const actor = await authorize(request)
-      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
-      const { left, right } = z.object({ left: z.string().min(1).max(128), right: z.string().min(1).max(128) }).parse(request.query)
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const { left, right } = pairQuery.parse(request.query)
       return journey.compareSongVersions(actor.orgId, id, left, right)
     })
-  }
 
-  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
     app.get('/api/song-journey/links/:id/version-pair-loudness', async (request, reply) => {
       void reply.header('cache-control', 'no-store')
-      const actor = await authorize(request)
-      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
-      const { left, right } = z.object({
-        left: z.string().min(1).max(128), right: z.string().min(1).max(128),
-      }).parse(request.query)
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const { left, right } = pairQuery.parse(request.query)
       const pair = await journey.compareSongVersions(actor.orgId, id, left, right)
-      const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
-      const read = async (version: typeof pair.left) => {
-        if (!version.sourceAssetId) return null
-        const [analysis, asset] = await Promise.all([
-          analyses.latestForVersion(actor.orgId, version.id),
-          runtime.db.get('SELECT checksum FROM audio_assets WHERE org_id = ? AND id = ? AND project_id = ?', [
-            actor.orgId, version.sourceAssetId, version.songLabProjectId,
-          ]),
-        ])
-        if (!analysis || analysis.status !== 'complete' || !asset ||
-            !analysis.sourceChecksum || analysis.sourceChecksum !== String(asset['checksum'])) return null
-        return {
-          assetId: version.sourceAssetId, analysisId: analysis.id,
-          integratedLufs: analysis.loudness, samplePeakDbfs: analysis.peakDbfs,
-        }
-      }
-      const [a, b] = await Promise.all([read(pair.left), read(pair.right)])
+      // Do not measure two versions pointing to the same source or expose an
+      // unverified signed URL. A real click is required before any work occurs.
+      const a = !pair.sameAsset && pair.left.sourceAssetId
+        ? await measureSongVersion(runtime, actor.orgId, pair.left.songLabProjectId, pair.left.sourceAssetId)
+        : null
+      const b = !pair.sameAsset && pair.right.sourceAssetId
+        ? await measureSongVersion(runtime, actor.orgId, pair.right.songLabProjectId, pair.right.sourceAssetId)
+        : null
+      const proposal = a && b ? proposeLevelMatch(a, b)
+        : { available: false as const, reason: 'Both exact song versions need accessible, verified audio files under the measurement limit.' }
       return {
         leftVersionId: pair.left.id, rightVersionId: pair.right.id,
-        state: a && b ? 'diagnostic_estimate' : 'missing',
-        // Song Lab's current 'loudness' is gated-block RMS (LUFS-like), not
-        // K-weighted BS.1770 integrated LUFS. Never feed it into a gain plan.
-        measurements: a && b ? { left: a, right: b, method: 'gated_block_rms_estimate' } : null,
-        proposal: {
-          available: false,
-          reason: 'Song Lab loudness is an approximation, not verified integrated LUFS. Use exact-asset standards-based measurements before enabling gain.',
-        },
-        playbackVerified: false,
-        note: 'Diagnostic comparison only. No audible level matching or true-peak validation has occurred.',
+        state: a && b && proposal.available ? 'ready' : 'unavailable',
+        measurements: a && b ? { left: a, right: b, method: a.method } : null,
+        proposal, playbackVerified: false,
+        note: proposal.available
+          ? (proposal.limited
+            ? 'Only part of the level difference can be matched within the safe 6 dB limit. The source files remain untouched.'
+            : 'The playback controls apply measured, safe attenuation only. Device output is not a certified true-peak measurement.')
+          : proposal.reason,
       }
     })
-  }
 
-  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
     app.get('/api/song-journey/links/:id/final-approval', async (request, reply) => {
       void reply.header('cache-control', 'no-store')
-      const actor = await authorize(request)
-      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
       return journey.finalApproval(actor.orgId, id)
     })
   }
