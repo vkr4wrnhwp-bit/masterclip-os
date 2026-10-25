@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { AppError } from '@masterclip/shared'
 import type { SongVersionRecord } from '@masterclip/song-lab-domain'
 import { selectVersionPair } from './version-compare.js'
 
@@ -21,8 +22,8 @@ describe('Song Lab Job 45 version pair selection', () => {
 
   it('rejects same-version and cross-tenant or cross-project pairs', () => {
     const versions = [version('v1'), version('v2', { orgId: 'org-b' }), version('v3', { songLabProjectId: 'song-b' })]
-    expect(() => selectVersionPair('org-a', 'song-a', versions, 'v1', 'v1')).toThrow()
-    expect(() => selectVersionPair('org-a', 'song-a', versions, 'v1', 'v2')).toThrow()
+    expect(() => selectVersionPair('org-a', 'song-a', versions, 'v1', 'v1')).toThrow(AppError)
+    expect(() => selectVersionPair('org-a', 'song-a', versions, 'v1', 'v2')).toThrow(AppError)
     expect(() => selectVersionPair('org-a', 'song-a', versions, 'v1', 'v3')).toThrow()
     expect(() => selectVersionPair('org-b', 'song-a', versions, 'v1', 'v2')).toThrow()
   })
