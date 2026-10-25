@@ -18,14 +18,13 @@ describe('Job 45: actual FFmpeg measurement on synthetic owned audio', () => {
       ], { timeoutMs: 20_000 })
       const bytes = await readFile(filename)
       const checksum = createHash('sha256').update(bytes).digest('hex')
+      const asset = { id: 'tone', projectId: 'song', projectType: 'song_lab', checksum,
+        deletedAt: null, fileSize: bytes.length, mimeType: 'audio/wav' }
       const runtime = {
-        audio: { assets: {
-          materialize: async () => ({
-            asset: { id: 'tone', projectId: 'song', projectType: 'song_lab', checksum,
-              deletedAt: null, fileSize: bytes.length, mimeType: 'audio/wav' },
-            bytes,
-          }),
-        } },
+        audio: {
+          repos: { assets: { get: async () => asset } },
+          assets: { materialize: async () => ({ asset, bytes }) },
+        },
       } as unknown as Runtime
       const value = await measureSongVersion(runtime, 'org', 'song', 'tone')
       expect(value?.sourceChecksum).toBe(checksum)
