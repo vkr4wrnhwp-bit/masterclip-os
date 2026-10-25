@@ -15,7 +15,7 @@ import { sha256Hex } from '@masterclip/shared'
  * file cannot be verified in full, there is no listening-gain proposal.
  */
 export const SONG_JOURNEY_LOUDNESS_METHOD = 'ffmpeg_ebur128_k_weighted_bs1770_4_true_peak'
-const MAX_MEASUREMENT_BYTES = 64 * 1024 * 1024
+export const MAX_A_B_AUDIO_BYTES = 64 * 1024 * 1024
 
 export interface VerifiedSongLoudness {
   assetId: string
@@ -24,7 +24,6 @@ export interface VerifiedSongLoudness {
   integratedLufs: number
   truePeakDbtp: number
   method: typeof SONG_JOURNEY_LOUDNESS_METHOD
-  audioUrl: string
 }
 
 export function parseEbur128Summary(log: string): { integratedLufs: number; truePeakDbtp: number } | null {
@@ -42,28 +41,36 @@ export function parseEbur128Summary(log: string): { integratedLufs: number; true
   return { integratedLufs, truePeakDbtp }
 }
 
+/** Read only Song Lab's owned, undeleted source bytes and verify them. This
+ * same check protects both the meter and the session-authenticated player.
+ */
+export async function verifiedSongAudio(
+  runtime: Runtime, orgId: string, projectId: string, assetId: string,
+) {
+  try {
+    const { asset, bytes } = await runtime.audio.assets.materialize(orgId, assetId)
+    if (asset.projectType !== 'song_lab' || asset.projectId !== projectId ||
+        asset.deletedAt !== null || !/^[a-f0-9]{64}$/i.test(asset.checksum) ||
+        bytes.length === 0 || bytes.length > MAX_A_B_AUDIO_BYTES ||
+        bytes.length !== asset.fileSize ||
+        sha256Hex(Buffer.from(bytes)).toLowerCase() !== asset.checksum.toLowerCase()) {
+      return null
+    }
+    return { asset, bytes }
+  } catch {
+    return null
+  }
+}
+
 export async function measureSongVersion(
   runtime: Runtime,
   orgId: string,
   projectId: string,
   assetId: string,
 ): Promise<VerifiedSongLoudness | null> {
-  let asset: Awaited<ReturnType<typeof runtime.audio.assets.materialize>>['asset']
-  let bytes: Uint8Array
-  try {
-    const materialized = await runtime.audio.assets.materialize(orgId, assetId)
-    asset = materialized.asset
-    bytes = materialized.bytes
-  } catch {
-    return null
-  }
-  if (asset.projectType !== 'song_lab' || asset.projectId !== projectId ||
-      asset.deletedAt !== null || !/^[a-f0-9]{64}$/i.test(asset.checksum) ||
-      bytes.length === 0 || bytes.length > MAX_MEASUREMENT_BYTES ||
-      bytes.length !== asset.fileSize ||
-      sha256Hex(Buffer.from(bytes)).toLowerCase() !== asset.checksum.toLowerCase()) {
-    return null
-  }
+  const verified = await verifiedSongAudio(runtime, orgId, projectId, assetId)
+  if (!verified) return null
+  const { asset, bytes } = verified
   const dir = await mkdtemp(join(tmpdir(), 'song-journey-loudness-'))
   try {
     // A fixed local name avoids injecting any user-supplied filename into FFmpeg.
@@ -76,12 +83,10 @@ export async function measureSongVersion(
     ], { timeoutMs: 90_000, maxBufferBytes: 4 * 1024 * 1024 })
     const result = parseEbur128Summary(stderr)
     if (!result) return null
-    // A fresh signed URL is issued through the existing tenant-safe asset door.
-    const { url } = await runtime.audio.assets.signedUrl(orgId, assetId)
     return {
       assetId, analysisId: `ebur128:${assetId}:${asset.checksum}`,
       sourceChecksum: asset.checksum,
-      ...result, method: SONG_JOURNEY_LOUDNESS_METHOD, audioUrl: url,
+      ...result, method: SONG_JOURNEY_LOUDNESS_METHOD,
     }
   } catch {
     // Missing FFmpeg, unsupported codecs, corrupt assets and timeouts fail closed.
