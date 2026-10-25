@@ -3,7 +3,7 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
-import { SongJourneyService } from '@masterclip/song-journey-engine'
+import { SongJourneyService, proposeLevelMatch } from '@masterclip/song-journey-engine'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -35,6 +35,43 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
       const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
       const { left, right } = z.object({ left: z.string().min(1).max(128), right: z.string().min(1).max(128) }).parse(request.query)
       return journey.compareSongVersions(actor.orgId, id, left, right)
+    })
+  }
+
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    app.get('/api/song-journey/links/:id/version-pair-loudness', async request => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
+      const { left, right } = z.object({
+        left: z.string().min(1).max(128), right: z.string().min(1).max(128),
+      }).parse(request.query)
+      const pair = await journey.compareSongVersions(actor.orgId, id, left, right)
+      const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
+      const read = async (version: typeof pair.left) => {
+        if (!version.sourceAssetId) return null
+        const [analysis, asset] = await Promise.all([
+          analyses.latestForVersion(actor.orgId, version.id),
+          runtime.db.get('SELECT checksum FROM audio_assets WHERE org_id = ? AND id = ? AND project_id = ?', [
+            actor.orgId, version.sourceAssetId, version.songLabProjectId,
+          ]),
+        ])
+        if (!analysis || analysis.status !== 'complete' || !asset ||
+            !analysis.sourceChecksum || analysis.sourceChecksum !== String(asset['checksum'])) return null
+        return {
+          assetId: version.sourceAssetId, analysisId: analysis.id,
+          integratedLufs: analysis.loudness, samplePeakDbfs: analysis.peakDbfs,
+        }
+      }
+      const [a, b] = await Promise.all([read(pair.left), read(pair.right)])
+      return {
+        leftVersionId: pair.left.id, rightVersionId: pair.right.id,
+        state: a && b ? 'measured' : 'missing',
+        proposal: a && b ? proposeLevelMatch(a, b) : {
+          available: false, reason: 'Both versions require completed, checksum-matched analysis of their exact audio assets.',
+        },
+        playbackVerified: false,
+        note: 'Sample-peak gain proposal only. No audible level matching or true-peak validation has occurred.',
+      }
     })
   }
 
