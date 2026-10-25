@@ -74,9 +74,11 @@ export function SongVersionAB({
     if (side === 'left') setLeft(value)
     else setRight(value)
   }
-  const ready = result?.state === 'ready' && result.proposal.available && result.measurements
-  const measurements = ready ? result.measurements : null
-  const plan = ready && result.proposal.available ? result.proposal : null
+  const measurements = result?.state === 'ready' && result.proposal.available
+    ? result.measurements : null
+  const plan = result?.state === 'ready' && result.proposal.available
+    ? result.proposal : null
+  const ready = Boolean(measurements && plan)
   const leftLabel = versions.find(row => row.id === left)?.label ?? 'Version A'
   const rightLabel = versions.find(row => row.id === right)?.label ?? 'Version B'
 
