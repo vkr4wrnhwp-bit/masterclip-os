@@ -5,6 +5,7 @@ type ApprovalEvidence = {
   state: 'not_selected' | 'not_approved' | 'approved'
   studioVersionId: string | null
   studioChecksum?: string | null
+  audioAssetVerified?: boolean
   songLabEvidenceVersionId: string | null
   approval: null | {
     id: string; type: 'mix' | 'master'; approvedBy: string
@@ -35,7 +36,7 @@ export function StudioFinalApproval({ linkId, studioVersionId }: { linkId: strin
           <p>Version: <code>{record.studioVersionId}</code></p>
           <p>Receipt: <code>{record.approval.id}</code> · {record.approval.approvedAt}</p>
           <p>Song Lab supporting version: <code>{record.songLabEvidenceVersionId ?? 'Not selected'}</code></p></>
-        : <><strong>Not approved</strong><p>No current checksum-matched Studio mix/master approval exists for the selected version.</p></>}
+        : <><strong>Not approved</strong><p>{record.audioAssetVerified === false ? 'The selected Studio audio asset is missing or its checksum cannot be verified. Approval is unavailable.' : 'No current checksum-matched Studio mix/master approval exists for the selected version.'}</p></>}
     </div>}
   </section>
 }
