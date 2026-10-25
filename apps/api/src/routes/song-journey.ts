@@ -27,6 +27,17 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     return songActor
   }
 
+  // Job 45 foundation: metadata only. No playback or approval claims.
+  // Registered only when the independently default-off feature is enabled.
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    app.get('/api/song-journey/links/:id/version-pair', async request => {
+      const actor = await authorize(request)
+      const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
+      const { left, right } = z.object({ left: z.string().min(1).max(128), right: z.string().min(1).max(128) }).parse(request.query)
+      return journey.compareSongVersions(actor.orgId, id, left, right)
+    })
+  }
+
   if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {
     const analyses = new SongAnalysisRepo(runtime.db, runtime.clock)
     const sections = new SongSectionRepo(runtime.db, runtime.clock)
