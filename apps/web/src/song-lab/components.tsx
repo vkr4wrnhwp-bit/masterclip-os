@@ -241,23 +241,24 @@ export function AbPlayer({ tracks }: {
       setGainError('This browser cannot apply the level match. No adjusted playback is available.')
       return
     }
-    let context: AudioContext
+    let context: AudioContext | null = null
     const connected: Array<{ element: HTMLAudioElement; listener: () => void; source: MediaElementAudioSourceNode; gain: GainNode }> = []
     try {
-      context = new window.AudioContext()
+      const ctx = new window.AudioContext()
+      context = ctx
       for (const track of tracks) {
         const element = refs.current[track.id]
         if (!element || !track.url || !Number.isFinite(track.gainDb) ||
             (track.gainDb ?? 0) > 0 || (track.gainDb ?? 0) < -6) {
           throw new Error('Invalid playback source or gain.')
         }
-        const source = context.createMediaElementSource(element)
-        const gain = context.createGain()
+        const source = ctx.createMediaElementSource(element)
+        const gain = ctx.createGain()
         gain.gain.value = Math.pow(10, (track.gainDb ?? 0) / 20)
         source.connect(gain)
-        gain.connect(context.destination)
+        gain.connect(ctx.destination)
         const listener = () => {
-          void context.resume().catch(() => {
+          void ctx.resume().catch(() => {
             element.pause()
             setGainError('Your browser blocked the audio adjustment. Listening at matched levels is unavailable.')
           })
@@ -273,7 +274,7 @@ export function AbPlayer({ tracks }: {
         item.source.disconnect()
         item.gain.disconnect()
       }
-      if (context!) void context.close()
+      if (context) void context.close()
       return
     }
     return () => {
@@ -282,7 +283,7 @@ export function AbPlayer({ tracks }: {
         item.source.disconnect()
         item.gain.disconnect()
       }
-      void context.close()
+      if (context) void context.close()
     }
   }, [sources, gainRequired])
 
