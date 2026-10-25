@@ -30,7 +30,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
   // Job 45 foundation: metadata only. No playback or approval claims.
   // Registered only when the independently default-off feature is enabled.
   if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
-    app.get('/api/song-journey/links/:id/version-pair', async request => {
+    app.get('/api/song-journey/links/:id/version-pair', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
       const actor = await authorize(request)
       const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
       const { left, right } = z.object({ left: z.string().min(1).max(128), right: z.string().min(1).max(128) }).parse(request.query)
@@ -39,7 +40,8 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
   }
 
   if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
-    app.get('/api/song-journey/links/:id/version-pair-loudness', async request => {
+    app.get('/api/song-journey/links/:id/version-pair-loudness', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
       const actor = await authorize(request)
       const { id } = z.object({ id: z.string().min(1).max(128) }).parse(request.params)
       const { left, right } = z.object({
