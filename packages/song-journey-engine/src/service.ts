@@ -59,8 +59,18 @@ export class SongJourneyService {
     }
     const version = await this.studioVersions.get(orgId, link.selectedStudioVersionId)
     if (version.studioProjectId !== link.studioProjectId) throw forbidden('Selected Studio version does not belong to this linked project.')
+    // A saved checksum alone is insufficient if the underlying audio asset has
+    // since been deleted or no longer matches the selected Studio version.
+    const asset = version.assetId && version.assetChecksum
+      ? await this.db.get(
+        'SELECT checksum FROM audio_assets WHERE id = ? AND org_id = ? AND deleted_at IS NULL',
+        [version.assetId, orgId],
+      )
+      : null
+    const verifiedChecksum = asset && String(asset['checksum']) === version.assetChecksum
+      ? version.assetChecksum : null
     const approvals = await new StudioApprovalRepo(this.db, this.clock).list(orgId, link.studioProjectId)
-    const approval = authoritativeStudioApproval(version.id, version.assetChecksum, approvals)
+    const approval = authoritativeStudioApproval(version.id, verifiedChecksum, approvals)
     return {
       state: approval ? 'approved' as const : 'not_approved' as const,
       studioVersionId: version.id,
