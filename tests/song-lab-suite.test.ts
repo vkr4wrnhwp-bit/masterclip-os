@@ -21,9 +21,9 @@ function mint(payload: Record<string, unknown>, age = 0, secret = SECRET) {
   return `${signed}.${createHmac('sha1', key).update(signed).digest('base64url')}`
 }
 let db: Db, runtime: Runtime, app: FastifyInstance, root: string
-async function boot(enabled = true, sso = true, live = false) {
+async function boot(enabled = true, sso = true, live = false, versionCompare = false) {
   db = await createTestDb(); root = await mkdtemp(join(tmpdir(), 'songlab-suite-'))
-  const config = loadConfig({ NODE_ENV: 'test', SONG_LAB_SUITE_ENABLED: enabled ? '1' : '0', SONG_LAB_SUITE_SUITE_SSO_ENABLED: sso ? '1' : '0', STAGE_LIVE_LAB_ENABLED: live ? '1' : '0', SUITE_SSO_SECRET_SONG_LAB: SECRET, SESSION_SECRET: 'fixture-session', ASSET_SIGNING_SECRET: 'fixture-storage', RATE_LIMIT_ENABLED: '0' }, true)
+  const config = loadConfig({ NODE_ENV: 'test', SONG_LAB_SUITE_ENABLED: enabled ? '1' : '0', SONG_LAB_SUITE_SUITE_SSO_ENABLED: sso ? '1' : '0', STAGE_LIVE_LAB_ENABLED: live ? '1' : '0', SONG_LAB_SUITE_LINKED_RECORDS_ENABLED: versionCompare ? '1' : '0', SONG_LAB_SUITE_FEATURE_VERSION_COMPARE: versionCompare ? '1' : '0', SUITE_SSO_SECRET_SONG_LAB: SECRET, SESSION_SECRET: 'fixture-session', ASSET_SIGNING_SECRET: 'fixture-storage', RATE_LIMIT_ENABLED: '0' }, true)
   runtime = await createRuntime({ config, db, logger: silentLogger, mockOnly: true, storage: new LocalStorage({ root, signingSecret: 'fixture-storage' }) })
   app = await buildServer({ runtime }); await app.ready()
 }
@@ -39,6 +39,33 @@ afterEach(async () => { await app?.close(); await runtime?.close(); if(root) awa
 
 describe('Song Lab suite server boundary', () => {
   beforeEach(() => boot())
+  it('keeps Job 45 version comparison unavailable by default', async () => {
+    const config = await app.inject({ url: '/api/song-lab-suite' })
+    expect(config.statusCode).toBe(200)
+    expect(config.json().versionCompareEnabled).toBe(false)
+    const { session } = await arrival({ plan: 'pro' })
+    const headers = { cookie: `masterclip_session=${session}` }
+    const pair = await app.inject({ url: '/api/song-journey/links/unknown/version-pair?left=v1&right=v2', headers })
+    const loudness = await app.inject({ url: '/api/song-journey/links/unknown/version-pair-loudness?left=v1&right=v2', headers })
+    expect(pair.statusCode).toBe(404)
+    expect(loudness.statusCode).toBe(404)
+    const audio = await app.inject({ url: '/api/song-journey/links/unknown/version-audio/v1', headers })
+    expect(audio.statusCode).toBe(404)
+    const approval = await app.inject({ url: '/api/song-journey/links/unknown/final-approval', headers })
+    expect(approval.statusCode).toBe(404)
+  })
+  it('gates Job 45 comparison routes by session and linked-record ownership', async () => {
+    await app.close(); await runtime.close(); if (root) await rm(root, { recursive: true, force: true })
+    await boot(true, true, false, true)
+    expect((await app.inject({ url: '/api/song-lab-suite' })).json().versionCompareEnabled).toBe(true)
+    for (const path of ['version-pair?left=v1&right=v2', 'version-pair-loudness?left=v1&right=v2', 'version-audio/v1', 'final-approval']) {
+      const url = `/api/song-journey/links/not-owned/${path}`
+      expect((await app.inject({ url })).statusCode).toBe(401)
+      const { session } = await arrival({ plan: 'pro' })
+      const response = await app.inject({ url, headers: { cookie: `masterclip_session=${session}` } })
+      expect(response.statusCode).toBe(404)
+    }
+  })
   it('only accepts a real parent identity; Pro and Label can use existing libraries', async () => {
     for (const plan of ['pro', 'label']) {
       const { result, session } = await arrival({ plan })

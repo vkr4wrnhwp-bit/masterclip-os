@@ -221,11 +221,92 @@ export function ObservationCard({
  * preserving position, so the comparison is between two arrangements rather
  * than between two moments.
  */
-export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string; url: string | null; note?: string | null }> }) {
+export function AbPlayer({ tracks }: {
+  tracks: Array<{ id: string; label: string; url: string | null; note?: string | null; gainDb?: number }>
+}) {
   const [active, setActive] = React.useState(tracks[0]?.id ?? '')
+  const [gainReady, setGainReady] = React.useState(false)
+  const [gainError, setGainError] = React.useState('')
   const refs = React.useRef<Record<string, HTMLAudioElement | null>>({})
+  const graph = React.useRef<{ context: AudioContext; disconnect: () => void } | null>(null)
+  const sources = tracks.map(track => `${track.id}:${track.url ?? ''}:${track.gainDb ?? 0}`).join('|')
+  const gainRequired = tracks.some(track => (track.gainDb ?? 0) !== 0)
+
+  React.useEffect(() => {
+    if (!tracks.some(track => track.id === active)) setActive(tracks[0]?.id ?? '')
+  }, [active, sources])
+
+  // No graph is constructed during render/effects. In Safari, audio must be
+  // unlocked by a real user gesture; StrictMode also mounts effects twice.
+  React.useEffect(() => {
+    setGainReady(false)
+    setGainError('')
+    return () => {
+      const existing = graph.current
+      graph.current = null
+      if (existing) {
+        existing.disconnect()
+        void existing.context.close().catch(() => {})
+      }
+    }
+  }, [sources])
+
+  const prepareGain = () => {
+    if (!gainRequired || graph.current || gainReady) return
+    if (typeof window.AudioContext !== 'function') {
+      setGainError('This browser cannot apply the level match. No adjusted playback is available.')
+      return
+    }
+    const connected: Array<{ source: MediaElementAudioSourceNode; gain: GainNode }> = []
+    let context: AudioContext | null = null
+    try {
+      const ctx = new window.AudioContext()
+      context = ctx
+      for (const track of tracks) {
+        const element = refs.current[track.id]
+        if (!element || !track.url || !Number.isFinite(track.gainDb) ||
+            (track.gainDb ?? 0) > 0 || (track.gainDb ?? 0) < -6) {
+          throw new Error('Invalid playback source or gain.')
+        }
+        const source = ctx.createMediaElementSource(element)
+        const gain = ctx.createGain()
+        gain.gain.value = Math.pow(10, (track.gainDb ?? 0) / 20)
+        source.connect(gain)
+        gain.connect(ctx.destination)
+        connected.push({ source, gain })
+      }
+      const disconnect = () => {
+        for (const item of connected) {
+          item.source.disconnect()
+          item.gain.disconnect()
+        }
+      }
+      graph.current = { context: ctx, disconnect }
+      void ctx.resume().then(() => {
+        if (graph.current?.context === ctx) {
+          setGainError('')
+          setGainReady(true)
+        }
+      }).catch(() => {
+        if (graph.current?.context === ctx) {
+          graph.current = null
+          disconnect()
+          void ctx.close().catch(() => {})
+          setGainError('The browser blocked the measured audio adjustment. No matched playback is available.')
+        }
+      })
+    } catch {
+      for (const item of connected) {
+        item.source.disconnect()
+        item.gain.disconnect()
+      }
+      if (context) void context.close().catch(() => {})
+      setGainError('Level-matched playback is unavailable on this device. No volume change is claimed.')
+    }
+  }
 
   const switchTo = (id: string) => {
+    if (gainRequired && !gainReady) return
     const current = refs.current[active]
     const next = refs.current[id]
     const position = current?.currentTime ?? 0
@@ -233,32 +314,36 @@ export function AbPlayer({ tracks }: { tracks: Array<{ id: string; label: string
     if (current) current.pause()
     setActive(id)
     if (next) {
-      // Clamp: an edited version can be shorter than where the original was.
-      next.currentTime = Number.isFinite(next.duration) ? Math.min(position, Math.max(0, next.duration - 0.05)) : position
-      if (playing) void next.play()
+      next.currentTime = Number.isFinite(next.duration)
+        ? Math.min(position, Math.max(0, next.duration - 0.05)) : position
+      if (playing) void next.play().catch(() => { /* A user gesture may be required. */ })
     }
   }
-
-  const current = tracks.find((track) => track.id === active) ?? tracks[0]
+  const current = tracks.find(track => track.id === active) ?? tracks[0]
+  const canPlay = !gainRequired || gainReady
 
   return (
     <div className="sl-ab">
+      {gainRequired && !gainReady && !gainError && (
+        <button type="button" className="sl-ab-gain-start" onClick={prepareGain}
+          style={{ minHeight: 44, padding: '10px 14px' }}>Enable matched listening</button>
+      )}
+      {gainError && <p role="alert">{gainError}</p>}
       <div className="sl-ab-buttons">
-        {tracks.map((track) => (
-          <button key={track.id} className={track.id === active ? 'primary small' : 'small'} onClick={() => switchTo(track.id)} disabled={!track.url}>
+        {tracks.map(track => (
+          <button key={track.id} type="button"
+            className={track.id === active ? 'primary small' : 'small'}
+            onClick={() => switchTo(track.id)} disabled={!track.url || !canPlay}>
             {track.label.toUpperCase()}
           </button>
         ))}
       </div>
-      {tracks.map((track) => (
-        <audio
-          key={track.id}
-          ref={(element) => {
-            refs.current[track.id] = element
-          }}
+      {tracks.map(track => (
+        <audio key={track.id + ':' + (track.url ?? '')}
+          ref={element => { refs.current[track.id] = element }}
           src={track.url ?? undefined}
-          controls={track.id === active}
-          hidden={track.id !== active}
+          controls={track.id === active && canPlay}
+          hidden={track.id !== active || !canPlay}
           preload="metadata"
           style={{ width: '100%', marginTop: 8 }}
         />

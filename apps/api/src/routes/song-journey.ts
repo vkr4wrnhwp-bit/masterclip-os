@@ -3,7 +3,8 @@ import { z } from 'zod/v4'
 import type { Runtime } from '@masterclip/runtime'
 import { forbidden } from '@masterclip/shared'
 import { compareToReferences, type MixMetric } from '@masterclip/mix-analysis'
-import { SongJourneyService } from '@masterclip/song-journey-engine'
+import { SongJourneyService, proposeLevelMatch } from '@masterclip/song-journey-engine'
+import { measureSongVersion, verifiedSongAudio } from './song-journey-loudness.js'
 import { SongLabProjectRepo, SongVersionRepo, SongAnalysisRepo, SongSectionRepo, SongMapCorrectionRepo } from '@masterclip/song-lab-domain'
 import { applySongMapEdits, songMapEvidence, type MapEdit } from '@masterclip/song-lab-engine'
 import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
@@ -25,6 +26,141 @@ export async function registerSongJourneyRoutes(app: FastifyInstance, runtime: R
     const studioActor = await requireStudio(runtime, request, 'studio.access')
     if (songActor.orgId !== studioActor.orgId) throw forbidden('Both journey records must belong to the same workspace.')
     return songActor
+  }
+
+  // The link's Studio permission matters even inside one organization.
+  // Song Lab analysis access alone cannot reveal a collaborator's Studio approval.
+  const authorizeLink = async (request: Parameters<typeof requireSongLab>[1], id: string) => {
+    const actor = await authorize(request)
+    const link = await journey.links.get(actor.orgId, id)
+    await requireStudio(runtime, request, 'studio.access', {
+      project: { id: link.studioProjectId, permission: 'view' },
+    })
+    return actor
+  }
+
+  if (runtime.config.SONG_LAB_SUITE_FEATURE_VERSION_COMPARE) {
+    // Bound costly, explicit user-triggered measurement on each API worker.
+    // This is not a distributed quota; normal global rate limits still apply.
+    const measuringOrgs = new Set<string>()
+    const params = z.object({ id: z.string().min(1).max(128) })
+    const pairQuery = z.object({
+      left: z.string().min(1).max(128),
+      right: z.string().min(1).max(128),
+    })
+    app.get('/api/song-journey/links/:id/version-pair', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const { left, right } = pairQuery.parse(request.query)
+      return journey.compareSongVersions(actor.orgId, id, left, right)
+    })
+
+    app.get('/api/song-journey/links/:id/version-pair-loudness', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const { left, right } = pairQuery.parse(request.query)
+      const pair = await journey.compareSongVersions(actor.orgId, id, left, right)
+      if (measuringOrgs.has(actor.orgId)) {
+        return reply.code(429).send({ error: { message: 'This workspace is already measuring a comparison. Try again after it finishes.' } })
+      }
+      measuringOrgs.add(actor.orgId)
+      try {
+      // Do not measure two versions pointing to the same source or expose an
+      // unverified audio URL. A real click is required before any work occurs.
+      const a = !pair.sameAsset && pair.left.sourceAssetId
+        ? await measureSongVersion(runtime, actor.orgId, pair.left.songLabProjectId, pair.left.sourceAssetId)
+        : null
+      const b = !pair.sameAsset && pair.right.sourceAssetId
+        ? await measureSongVersion(runtime, actor.orgId, pair.right.songLabProjectId, pair.right.sourceAssetId)
+        : null
+      const proposal = a && b ? proposeLevelMatch(a, b)
+        : { available: false as const, reason: 'Both exact song versions need accessible, verified audio files under the measurement limit.' }
+      return {
+        leftVersionId: pair.left.id, rightVersionId: pair.right.id,
+        state: a && b && proposal.available ? 'ready' : 'unavailable',
+        measurements: a && b ? {
+          left: { ...a, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.left.id)}?checksum=${encodeURIComponent(a.sourceChecksum)}` },
+          right: { ...b, audioUrl: `/api/song-journey/links/${encodeURIComponent(id)}/version-audio/${encodeURIComponent(pair.right.id)}?checksum=${encodeURIComponent(b.sourceChecksum)}` },
+          method: a.method,
+        } : null,
+        proposal, playbackVerified: false,
+        note: proposal.available
+          ? (proposal.limited
+            ? 'Only part of the level difference can be matched within the safe 6 dB limit. The source files remain untouched.'
+            : 'The playback controls apply measured, safe attenuation only. Device output is not a certified true-peak measurement.')
+          : proposal.reason,
+      }
+      } finally {
+        measuringOrgs.delete(actor.orgId)
+      }
+    })
+
+    // Same-origin, cookie-authorized original bytes for iPhone Web Audio gain.
+    // Do not publish a permanent URL, change the audio, or bypass Song Lab
+    // project ownership. Byte ranges keep native audio seeking available.
+    app.get('/api/song-journey/links/:id/version-audio/:versionId', async (request, reply) => {
+      void reply.header('cache-control', 'private, no-store')
+      void reply.header('x-content-type-options', 'nosniff')
+      const { id, versionId } = z.object({
+        id: z.string().min(1).max(128), versionId: z.string().min(1).max(128),
+      }).parse(request.params)
+      const actor = await authorizeLink(request, id)
+      const { checksum } = z.object({ checksum: z.string().regex(/^[a-f0-9]{64}$/i) }).parse(request.query)
+      const link = await journey.links.get(actor.orgId, id)
+      const version = await songVersions.get(actor.orgId, versionId)
+      if (version.songLabProjectId !== link.songLabProjectId || !version.sourceAssetId) {
+        return reply.code(404).send({ error: 'Version audio not available' })
+      }
+      const verified = await verifiedSongAudio(runtime, actor.orgId, link.songLabProjectId, version.sourceAssetId)
+      if (!verified) return reply.code(404).send({ error: 'Version audio not available' })
+      const { asset, bytes } = verified
+      // An otherwise valid replacement asset is NOT the audio we measured.
+      // A stale A/B must re-measure, never play a new set of bytes with old gain.
+      if (asset.checksum.toLowerCase() !== checksum.toLowerCase()) {
+        return reply.code(409).send({ error: 'The audio has changed. Measure these versions again.' })
+      }
+      if (!asset.mimeType.startsWith('audio/') && asset.mimeType !== 'video/mp4') {
+        return reply.code(415).send({ error: 'Audio file type unavailable' })
+      }
+      void reply.header('content-type', asset.mimeType)
+      void reply.header('accept-ranges', 'bytes')
+      const raw = request.headers.range
+      if (raw) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(raw)
+        // Safari may request the final bytes of an MP4 using a suffix range.
+        // Support one range only; never assemble unbounded multi-ranges.
+        let start = -1
+        let end = -1
+        if (match && (match[1] || match[2])) {
+          if (match[1]) {
+            start = Number(match[1])
+            end = match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1
+          } else {
+            const suffix = Number(match[2])
+            if (Number.isSafeInteger(suffix) && suffix > 0) {
+              start = Math.max(0, bytes.length - suffix)
+              end = bytes.length - 1
+            }
+          }
+        }
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+            start < 0 || start >= bytes.length || end < start) {
+          return reply.code(416).header('content-range', `bytes */${bytes.length}`).send()
+        }
+        void reply.header('content-range', `bytes ${start}-${end}/${bytes.length}`)
+        return reply.code(206).send(Buffer.from(bytes.subarray(start, end + 1)))
+      }
+      return reply.send(Buffer.from(bytes))
+    })
+
+    app.get('/api/song-journey/links/:id/final-approval', async (request, reply) => {
+      void reply.header('cache-control', 'no-store')
+      const { id } = params.parse(request.params)
+      const actor = await authorizeLink(request, id)
+      return journey.finalApproval(actor.orgId, id)
+    })
   }
 
   if (runtime.config.SONG_LAB_SUITE_FEATURE_SONG_MAP) {

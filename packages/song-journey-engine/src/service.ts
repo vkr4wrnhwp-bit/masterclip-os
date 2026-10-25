@@ -1,7 +1,9 @@
 import type { Db } from '@masterclip/database'
+import { selectVersionPair } from './version-compare.js'
+import { authoritativeStudioApproval } from './final-approval.js'
 import { forbidden, AppError, systemClock, type Clock } from '@masterclip/shared'
 import { SongLabProjectRepo, SongVersionRepo } from '@masterclip/song-lab-domain'
-import { StudioProjectRepo, StudioVersionRepo } from '@masterclip/studio-domain'
+import { StudioProjectRepo, StudioVersionRepo, StudioApprovalRepo } from '@masterclip/studio-domain'
 import { SongJourneyLinkRepo, type SongJourneyLink, type SongJourneySource } from '@masterclip/song-journey-domain'
 
 export class SongJourneyService {
@@ -39,6 +41,47 @@ export class SongJourneyService {
       throw forbidden('Select versions that belong to the linked source records.')
     }
     return this.links.selectVersions(orgId, id, songVersionId, studioVersionId)
+  }
+
+  /** Job 45: inspect existing song history without granting playback or approval. */
+  async compareSongVersions(orgId: string, linkId: string, leftId: string, rightId: string) {
+    const link = await this.links.get(orgId, linkId)
+    const versions = await this.songVersions.list(orgId, link.songLabProjectId)
+    return selectVersionPair(orgId, link.songLabProjectId, versions, leftId, rightId)
+  }
+
+  /** Studio's exact audio version is the final authority; Song Lab remains evidence. */
+  async finalApproval(orgId: string, linkId: string) {
+    const link = await this.links.get(orgId, linkId)
+    if (!link.selectedStudioVersionId) return {
+      state: 'not_selected' as const, studioVersionId: null, approval: null,
+      songLabEvidenceVersionId: link.selectedSongVersionId,
+    }
+    const version = await this.studioVersions.get(orgId, link.selectedStudioVersionId)
+    if (version.studioProjectId !== link.studioProjectId) throw forbidden('Selected Studio version does not belong to this linked project.')
+    // A saved checksum alone is insufficient if the underlying audio asset has
+    // since been deleted or no longer matches the selected Studio version.
+    const asset = version.assetId && version.assetChecksum
+      ? await this.db.get(
+        'SELECT checksum FROM audio_assets WHERE id = ? AND org_id = ? AND deleted_at IS NULL',
+        [version.assetId, orgId],
+      )
+      : null
+    const verifiedChecksum = asset && String(asset['checksum']) === version.assetChecksum
+      ? version.assetChecksum : null
+    const approvals = await new StudioApprovalRepo(this.db, this.clock).list(orgId, link.studioProjectId)
+    const approval = authoritativeStudioApproval(version.id, verifiedChecksum, approvals)
+    return {
+      state: approval ? 'approved' as const : 'not_approved' as const,
+      studioVersionId: version.id,
+      studioChecksum: version.assetChecksum,
+      audioAssetVerified: Boolean(verifiedChecksum),
+      approval: approval ? {
+        id: approval.id, type: approval.approvalType, approvedBy: approval.approvedBy,
+        approvedAt: approval.approvedAt, versionChecksum: approval.versionChecksum,
+      } : null,
+      songLabEvidenceVersionId: link.selectedSongVersionId,
+    }
   }
 
   async export(orgId: string, id: string) {

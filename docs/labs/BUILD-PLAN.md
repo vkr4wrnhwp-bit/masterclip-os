@@ -196,3 +196,39 @@ Phase 5 implementation record — Song map: SONG_LAB_SUITE_FEATURE_SONG_MAP defa
 Phase 5 implementation record — Owned-reference comparison: SONG_LAB_SUITE_FEATURE_REFERENCE_COMPARE defaults OFF; owned-song picker, saved Studio mix comparisons, provenance, mismatch warning, Decide screen and isolation tests added in draft PR #75. CI acceptance must be verified on the final commit.
 
 Phase 5 implementation record — Translation listening notes: SONG_LAB_SUITE_FEATURE_TRANSLATION_NOTES defaults OFF; version-bound notes, measured Studio facts, protected GET/PUT API, Finish screen and isolation tests added in draft PR #76. CI acceptance must be verified on the final commit.
+
+Phase 5 implementation record — Job 45 (draft PR #77): VERSION_COMPARE is independently default OFF. Authenticated dual-room Song Journey routes select two owned Song Lab versions and return read-only version metadata. An exact-asset checksum-bound diagnostic endpoint returns Song Lab's gated-block RMS *estimate* with explicit method and unavailable gain status; this is not BS.1770 integrated LUFS. A separate pure gain-proposal utility is bounded to ±6 dB and measured sample-peak headroom, but is **not wired to playback** and must not be used with the diagnostic estimate. Reuse the existing VersionsTab and AbPlayer rather than duplicating their controls. Before accepting Job 45: verify standards-based LUFS and true peak for both exact assets, playback switching and cap behavior, org/auth/flag tests, version-pinned reviewer approval receipts, 375px/browser QA, and final CI. No merge or deployment authorized by this record. Job 46 remains gated on Job 45 merge.
+
+Job 45 owner approval architecture (2026-10-25): The **Studio version is authoritative for final audio approval**. Song Lab versions and their lineage are retained as supporting evidence, not a second final sign-off. Reuse existing `studio_approvals` records; do not create parallel approval data. A read-only, feature-gated final-approval endpoint resolves only an unrevoked Studio mix/master receipt for the exact selected Studio version whose checksum matches the version's saved asset checksum. Missing, mismatched, revoked or unselected approvals must display not approved. No automatic approval is created by selecting versions or comparing audio. The owner/Claude still reviews before merge.
+
+### Job 45 implementation candidate — measured version A/B (2026-10-25)
+
+This extends draft PR #77 without enabling the feature by default.
+The old Song Lab loudness is a *gated-RMS estimate*; it is never used to match playback.
+Only an explicit **Measure and compare** click runs FFmpeg's existing `ebur128` filter
+on each source file after its original SHA-256, org, project, size and deletion state pass.
+The measurement reads K-weighted, gated BS.1770 integrated LUFS and 4× oversampled
+true peak. If either audio file is missing, changed, unsupported, over 64 MiB, fails
+FFmpeg or cannot be read inside the 90-second bound, matching stays unavailable.
+A concurrent second measurement within the same workspace is refused on this worker.
+
+The comparison uses the **existing AbPlayer**, preserving time when switching A/B.
+Its optional attenuation comes from a Web Audio gain node and a private,
+session-authorized, byte-range original-audio route on the same origin (including
+iPhone's inability to rely on HTMLMediaElement.volume). It only turns the louder
+version down, up to 6 dB; nothing is rendered, replaced, normalized or saved.
+If the measured difference exceeds 6 dB, it says **partial match**, never equal.
+If either source exceeds -1 dBTP, no adjusted listening is offered. A browser
+that cannot start Web Audio says adjustment is unavailable rather than playing
+an unlabelled unmatched comparison. The device output itself remains unmetered;
+physical iPhone Safari listening is still a review gate, not a CI claim.
+
+The existing `studio_approvals` ledger continues to decide final approval.
+The read-only approval endpoint requires both suite rights and Studio **project
+view** access. It accepts an unrevoked mix/master receipt only for the selected
+Studio version with a matching live audio checksum. Song Lab history is evidence,
+not a second approval. No approval or delivery record is created by comparison.
+The new feature is separately off under
+`SONG_LAB_SUITE_FEATURE_VERSION_COMPARE=0`; the current Song Lab, Studio,
+Live Lab, non-comparison versions and account data stay unchanged. No deploy,
+merge, service settings, workflow or billed provider call was authorized.
