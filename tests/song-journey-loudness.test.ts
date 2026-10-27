@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Runtime } from '@masterclip/runtime'
 
 const eburLog = `[Parsed_ebur128_0] Summary:
@@ -22,6 +22,7 @@ import {
   parseEbur128Summary,
   measureSongVersion,
   verifiedSongAudio,
+  clearVerifiedAudioCache,
   SONG_JOURNEY_LOUDNESS_METHOD,
 } from '../apps/api/src/routes/song-journey-loudness.js'
 
@@ -40,6 +41,28 @@ function fixture(patch: Record<string, unknown> = {}, body = bytes) {
 }
 
 describe('Job 45 exact-asset BS.1770 measurement boundary', () => {
+  beforeEach(() => clearVerifiedAudioCache())
+
+  it('serves a browser seek from verified bytes it already hashed, but never past a changed row', async () => {
+    const { runtime, materialize } = fixture()
+    const first = await verifiedSongAudio(runtime, 'org-a', 'project-a', 'asset-a')
+    const second = await verifiedSongAudio(runtime, 'org-a', 'project-a', 'asset-a')
+    expect(first?.asset.checksum).toBe(checksum)
+    expect(second).toBe(first)
+    expect(materialize).toHaveBeenCalledTimes(1)
+    // Another workspace never sees these bytes, even for the same asset id.
+    const other = fixture({ projectId: 'project-b' })
+    expect(await verifiedSongAudio(other.runtime, 'org-b', 'project-b', 'asset-a')).not.toBe(first)
+    // The row says the file was replaced: the cached bytes are not the new file.
+    const replaced = fixture({ checksum: '1'.repeat(64) })
+    expect(await verifiedSongAudio(replaced.runtime, 'org-a', 'project-a', 'asset-a')).toBeNull()
+    expect(replaced.materialize).toHaveBeenCalledTimes(1)
+    // The row says the file is gone: nothing is served from memory.
+    const deleted = fixture({ deletedAt: '2026-10-26' })
+    expect(await verifiedSongAudio(deleted.runtime, 'org-a', 'project-a', 'asset-a')).toBeNull()
+    expect(deleted.materialize).not.toHaveBeenCalled()
+  })
+
   it('accepts a complete K-weighted FFmpeg result, not a diagnostic estimate', () => {
     expect(parseEbur128Summary(eburLog)).toEqual({ integratedLufs: -15.7, truePeakDbtp: -2.6 })
     expect(parseEbur128Summary(eburLog.replace('-15.7', '-inf'))).toBeNull()

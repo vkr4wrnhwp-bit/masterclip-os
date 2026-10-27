@@ -41,6 +41,21 @@ export function parseEbur128Summary(log: string): { integratedLufs: number; true
   return { integratedLufs, truePeakDbtp }
 }
 
+/** Verified bytes kept briefly per worker, so a browser seeking through a
+ * song (Safari asks for many byte ranges) does not re-download and re-hash
+ * up to 64 MiB on every request. The database row is still checked on every
+ * call: a deleted, moved or replaced asset is never served from here, and a
+ * replaced one misses the cache because its checksum is in the key.
+ */
+const VERIFIED_AUDIO_TTL_MS = 10 * 60 * 1000
+const VERIFIED_AUDIO_MAX_ENTRIES = 2
+type VerifiedAudio = Awaited<ReturnType<Runtime['audio']['assets']['materialize']>>
+const verifiedAudio = new Map<string, { value: VerifiedAudio; at: number }>()
+
+export function clearVerifiedAudioCache() {
+  verifiedAudio.clear()
+}
+
 /** Read only Song Lab's owned, undeleted source bytes and verify them. This
  * same check protects both the meter and the session-authenticated player.
  */
@@ -57,6 +72,12 @@ export async function verifiedSongAudio(
         metadata.fileSize <= 0 || metadata.fileSize > MAX_A_B_AUDIO_BYTES) {
       return null
     }
+    const key = `${orgId}:${projectId}:${assetId}:${metadata.checksum.toLowerCase()}:${metadata.fileSize}`
+    const cached = verifiedAudio.get(key)
+    if (cached && Date.now() - cached.at < VERIFIED_AUDIO_TTL_MS) {
+      return cached.value
+    }
+    verifiedAudio.delete(key)
     const { asset, bytes } = await runtime.audio.assets.materialize(orgId, assetId)
     if (asset.projectType !== metadata.projectType || asset.projectId !== metadata.projectId ||
         asset.checksum !== metadata.checksum || asset.fileSize !== metadata.fileSize ||
@@ -64,7 +85,14 @@ export async function verifiedSongAudio(
         sha256Hex(Buffer.from(bytes)).toLowerCase() !== metadata.checksum.toLowerCase()) {
       return null
     }
-    return { asset, bytes }
+    const value = { asset, bytes }
+    verifiedAudio.set(key, { value, at: Date.now() })
+    while (verifiedAudio.size > VERIFIED_AUDIO_MAX_ENTRIES) {
+      const oldest = verifiedAudio.keys().next().value
+      if (oldest === undefined) break
+      verifiedAudio.delete(oldest)
+    }
+    return value
   } catch {
     return null
   }
